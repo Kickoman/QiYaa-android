@@ -21,6 +21,8 @@ class EqualizerProcessor(private val bus: AudioBus) : BaseAudioProcessor() {
     }
 
     override fun queueInput(inputBuffer: ByteBuffer) {
+        // An empty input would make replaceOutputBuffer(0) hand back the shared EMPTY_BUFFER.
+        if (!inputBuffer.hasRemaining()) return
         val channels = inputAudioFormat.channelCount
         val bytes = inputBuffer.remaining()
         val samples = bytes / 2
@@ -70,6 +72,8 @@ class VisTapProcessor(private val bus: AudioBus) : BaseAudioProcessor() {
     }
 
     override fun queueInput(inputBuffer: ByteBuffer) {
+        // An empty input would make replaceOutputBuffer(0) hand back the shared EMPTY_BUFFER.
+        if (!inputBuffer.hasRemaining()) return
         val channels = inputAudioFormat.channelCount
         val bytes = inputBuffer.remaining()
         val samples = bytes / 2
