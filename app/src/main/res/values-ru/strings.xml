@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tab_player">ПЛЕЕР</string>
+    <string name="tab_playlist">ПЛЕЙЛИСТ</string>
+    <string name="tab_eq">EQ</string>
+    <string name="tab_library">БИБЛИОТЕКА</string>
+
+    <string name="login_title">Вход в Яндекс Музыку</string>
+    <string name="login_step1">ШАГ 1 · КОД УСТРОЙСТВА</string>
+    <string name="login_step1_text">Откройте страницу подтверждения в любом браузере и введите этот код. Приложение завершит вход само.</string>
+    <string name="login_open_device">ОТКРЫТЬ YA.RU/DEVICE</string>
+    <string name="login_status_requesting">ЗАПРАШИВАЮ КОД…</string>
+    <string name="login_status_waiting">ЖДУ ПОДТВЕРЖДЕНИЯ</string>
+    <string name="login_status_signing_in">ПОДТВЕРЖДЕНО · ВХОЖУ…</string>
+    <string name="login_status_failed">ОШИБКА: %1$s · НАЖМИТЕ НА КОД, ЧТОБЫ ПОВТОРИТЬ</string>
+    <string name="login_step2">ШАГ 2 · ЕСЛИ КОД НЕ СРАБОТАЛ</string>
+    <string name="login_step2_text">Войдите через браузер, затем вставьте адрес страницы, на которую вас перенаправит, или сам токен.</string>
+    <string name="login_open_page">ОТКРЫТЬ СТРАНИЦУ ВХОДА</string>
+    <string name="login_use_token">ВОЙТИ С ЭТИМ ТОКЕНОМ</string>
+    <string name="login_token_error">Токена здесь нет. Вставьте адрес с #access_token=… или сам токен.</string>
+    <string name="login_footer">Токен хранится только на этом устройстве.</string>
+    <string name="login_signed_in">Вошли как %1$s</string>
+    <string name="login_error">Ошибка входа: %1$s</string>
+
+    <string name="player_no_queue">НЕТ ОЧЕРЕДИ</string>
+    <string name="player_cover_placeholder">ОБЛОЖКА</string>
+    <string name="player_vis_off">ВИЗ. ВЫКЛ · ТАП</string>
+    <string name="player_stopped">Остановлено</string>
+    <string name="player_nothing">Ничего не играет · выберите источник в Библиотеке</string>
+    <string name="player_like">НРАВИТСЯ</string>
+    <string name="player_liked">В ИЗБРАННОМ</string>
+    <string name="player_dislike_skip">НЕ НРАВИТСЯ · ДАЛЬШЕ</string>
+    <string name="player_volume">ГРОМКОСТЬ</string>
+    <string name="player_balance">БАЛАНС</string>
+    <string name="player_nothing_to_play">Нечего играть · откройте Библиотеку</string>
+    <string name="player_shuffle_on">Случайный порядок вкл</string>
+    <string name="player_shuffle_off">Случайный порядок выкл</string>
+    <string name="player_repeat_on">Повтор вкл</string>
+    <string name="player_repeat_off">Повтор выкл</string>
+    <string name="player_theme">Тема: %1$s</string>
+
+    <string name="playlist_title">ПЛЕЙЛИСТ</string>
+    <string name="playlist_loaded">%1$s · %2$d ЗАГРУЖЕНО</string>
+    <string name="playlist_empty">Плейлист пуст.\nADD или вкладка Библиотека — выберите, что слушать.</string>
+    <string name="playlist_loading_more">··· ЗАГРУЖАЮ ЕЩЁ ИЗ ВОЛНЫ ···</string>
+    <string name="playlist_loading_more_toast">Загружаю ещё треки…</string>
+    <string name="playlist_selected">ВЫБРАНО</string>
+    <string name="playlist_tap_hint">ТАП ПО НОМЕРУ — ВЫБРАТЬ</string>
+    <string name="playlist_all">ВСЕ</string>
+    <string name="playlist_none">НИЧЕГО</string>
+    <string name="playlist_clear">ОЧИСТИТЬ</string>
+
+    <string name="eq_title">ЭКВАЛАЙЗЕР</string>
+    <string name="eq_on">ВКЛ</string>
+    <string name="eq_auto">АВТО</string>
+    <string name="eq_preset">ПРЕСЕТ</string>
+    <string name="eq_builtin_count">17 ВСТРОЕННЫХ</string>
+    <string name="eq_hint_left">ТЯНИТЕ · ТАП ПО ЗНАЧЕНИЮ = 0 ДБ</string>
+    <string name="eq_hint_right">СОХРАНЯЕТСЯ АВТОМАТИЧЕСКИ</string>
+    <string name="eq_presets_title">ПРЕСЕТЫ · 17</string>
+    <string name="eq_reset_flat">СБРОСИТЬ</string>
+    <string name="eq_custom">Свой</string>
+    <string name="eq_flat">Ровный</string>
+    <string name="eq_applied">EQ: %1$s</string>
+    <string name="eq_applied_flat">EQ: ровный</string>
+
+    <string name="library_title">БИБЛИОТЕКА</string>
+    <string name="library_sign_out">ВЫЙТИ</string>
+    <string name="library_search_hint">Исполнитель, альбом или трек… (Enter)</string>
+    <string name="library_my_wave">Моя волна</string>
+    <string name="library_my_wave_sub">БЕСКОНЕЧНАЯ · ДОГРУЖАЕТСЯ</string>
+    <string name="library_liked">Мне нравится</string>
+    <string name="library_playlists">Плейлисты</string>
+    <string name="library_artists">Исполнители</string>
+    <string name="library_albums">Альбомы</string>
+    <string name="library_stations">Станции</string>
+    <string name="library_top_tracks">ПОПУЛЯРНЫЕ</string>
+    <string name="library_by_type">ПО ТИПАМ</string>
+    <string name="library_current_track">ТЕКУЩИЙ ТРЕК</string>
+    <string name="library_none">НЕТ</string>
+    <string name="library_dislike">НЕ НРАВИТСЯ</string>
+    <string name="library_open">ОТКРЫТЬ</string>
+    <string name="library_sub_title">БИБЛИОТЕКА / %1$s</string>
+    <string name="library_sub_stations">СТАНЦИИ</string>
+    <string name="library_sub_playlists">ПЛЕЙЛИСТЫ</string>
+    <string name="library_sub_artists">ИСПОЛНИТЕЛИ</string>
+    <string name="library_sub_albums">АЛЬБОМЫ</string>
+    <string name="library_group_personal">ПЕРСОНАЛЬНЫЕ</string>
+    <string name="library_group_genre">ЖАНРЫ</string>
+    <string name="library_group_mood">НАСТРОЕНИЕ</string>
+    <string name="library_group_activity">ЗАНЯТИЯ</string>
+    <string name="library_group_epoch">ЭПОХИ</string>
+    <string name="library_group_local">МЕСТНОЕ</string>
+    <string name="library_group_author">АВТОРЫ</string>
+    <string name="library_group_mine">МОИ</string>
+    <string name="library_group_saved">СОХРАНЁННЫЕ</string>
+    <string name="library_group_liked_top">ЛЮБИМЫЕ · ПОПУЛЯРНЫЕ ТРЕКИ</string>
+    <string name="library_group_liked">ЛЮБИМЫЕ</string>
+    <string name="library_loading">ЗАГРУЗКА…</string>
+    <string name="library_empty">ПУСТО</string>
+    <string name="library_error">ОШИБКА: %1$s</string>
+</resources>

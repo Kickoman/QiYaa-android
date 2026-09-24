@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">QiYaa</string>
+    <string name="brand" translatable="false">QIYAA</string>
+
+    <!-- Tabs -->
+    <string name="tab_player">PLAYER</string>
+    <string name="tab_playlist">PLAYLIST</string>
+    <string name="tab_eq">EQ</string>
+    <string name="tab_library">LIBRARY</string>
+
+    <!-- Login -->
+    <string name="login_title">Sign in to Yandex Music</string>
+    <string name="login_step1">STEP 1 · DEVICE CODE</string>
+    <string name="login_step1_text">Open the confirmation page in any browser and enter this code. The app finishes signing in on its own.</string>
+    <string name="login_open_device">OPEN YA.RU/DEVICE</string>
+    <string name="login_status_requesting">REQUESTING A CODE…</string>
+    <string name="login_status_waiting">WAITING FOR CONFIRMATION</string>
+    <string name="login_status_signing_in">CONFIRMED · SIGNING IN…</string>
+    <string name="login_status_failed">FAILED: %1$s · TAP THE CODE TO RETRY</string>
+    <string name="login_step2">STEP 2 · IF THE CODE FAILS</string>
+    <string name="login_step2_text">Sign in through the browser, then paste the address it redirects you to or the token itself.</string>
+    <string name="login_open_page">OPEN SIGN-IN PAGE</string>
+    <string name="login_token_hint" translatable="false">https://music.yandex.ru/#access_token=…</string>
+    <string name="login_use_token">SIGN IN WITH THIS TOKEN</string>
+    <string name="login_token_error">No token here. Paste an address with #access_token=… or the token itself.</string>
+    <string name="login_footer">Token is stored only on this device.</string>
+    <string name="login_signed_in">Signed in as %1$s</string>
+    <string name="login_error">Sign-in failed: %1$s</string>
+
+    <!-- Player -->
+    <string name="player_no_position" translatable="false">— / —</string>
+    <string name="player_no_queue">NO QUEUE</string>
+    <string name="player_cover_placeholder">ALBUM COVER</string>
+    <string name="player_vis_off">VIS OFF · TAP</string>
+    <string name="player_stopped">Stopped</string>
+    <string name="player_nothing">Nothing playing · pick a source in Library</string>
+    <string name="player_shuffle" translatable="false">SHF</string>
+    <string name="player_repeat" translatable="false">RPT</string>
+    <string name="player_like">LIKE</string>
+    <string name="player_liked">LIKED</string>
+    <string name="player_dislike_skip">DISLIKE · SKIP</string>
+    <string name="player_volume">VOLUME</string>
+    <string name="player_balance">BALANCE</string>
+    <string name="player_nothing_to_play">Nothing to play · open Library</string>
+    <string name="player_shuffle_on">Shuffle on</string>
+    <string name="player_shuffle_off">Shuffle off</string>
+    <string name="player_repeat_on">Repeat on</string>
+    <string name="player_repeat_off">Repeat off</string>
+    <string name="player_theme">Theme: %1$s</string>
+
+    <!-- Playlist -->
+    <string name="playlist_title">PLAYLIST</string>
+    <string name="playlist_loaded">%1$s · %2$d LOADED</string>
+    <string name="playlist_empty">Playlist is empty.\nADD or the Library tab — pick what to listen to.</string>
+    <string name="playlist_loading_more">··· LOADING MORE FROM THE WAVE ···</string>
+    <string name="playlist_loading_more_toast">Loading more tracks…</string>
+    <string name="playlist_selected">SELECTED</string>
+    <string name="playlist_tap_hint">TAP NUMBER TO SELECT</string>
+    <string name="playlist_add" translatable="false">ADD</string>
+    <string name="playlist_rem" translatable="false">REM</string>
+    <string name="playlist_all">ALL</string>
+    <string name="playlist_none">NONE</string>
+    <string name="playlist_clear">CLEAR</string>
+
+    <!-- Equalizer -->
+    <string name="eq_title">EQUALIZER</string>
+    <string name="eq_on">ON</string>
+    <string name="eq_auto">AUTO</string>
+    <string name="eq_preset">PRESET</string>
+    <string name="eq_builtin_count">17 BUILT-IN</string>
+    <string name="eq_pre" translatable="false">PRE</string>
+    <string name="eq_hint_left">DRAG · TAP VALUE = 0 DB</string>
+    <string name="eq_hint_right">SAVED AUTOMATICALLY</string>
+    <string name="eq_presets_title">PRESETS · 17</string>
+    <string name="eq_reset_flat">RESET TO FLAT</string>
+    <string name="eq_custom">Custom</string>
+    <string name="eq_flat">Flat</string>
+    <string name="eq_applied">EQ: %1$s</string>
+    <string name="eq_applied_flat">EQ: flat</string>
+
+    <!-- Library -->
+    <string name="library_title">LIBRARY</string>
+    <string name="library_sign_out">SIGN OUT</string>
+    <string name="library_search_hint">Artist, album or track… (Enter)</string>
+    <string name="library_my_wave">My Wave</string>
+    <string name="library_my_wave_sub">ENDLESS · LOADS AS YOU LISTEN</string>
+    <string name="library_liked">Liked tracks</string>
+    <string name="library_playlists">Playlists</string>
+    <string name="library_artists">Artists</string>
+    <string name="library_albums">Albums</string>
+    <string name="library_stations">Stations</string>
+    <string name="library_top_tracks">TOP TRACKS</string>
+    <string name="library_by_type">BY TYPE</string>
+    <string name="library_current_track">CURRENT TRACK</string>
+    <string name="library_none">NONE</string>
+    <string name="library_dislike">DISLIKE</string>
+    <string name="library_open">OPEN</string>
+    <string name="library_sub_title">LIBRARY / %1$s</string>
+    <string name="library_sub_stations">STATIONS</string>
+    <string name="library_sub_playlists">PLAYLISTS</string>
+    <string name="library_sub_artists">ARTISTS</string>
+    <string name="library_sub_albums">ALBUMS</string>
+    <string name="library_group_personal">PERSONAL</string>
+    <string name="library_group_genre">GENRES</string>
+    <string name="library_group_mood">MOOD</string>
+    <string name="library_group_activity">ACTIVITIES</string>
+    <string name="library_group_epoch">EPOCHS</string>
+    <string name="library_group_local">LOCAL</string>
+    <string name="library_group_author">AUTHORS</string>
+    <string name="library_group_mine">MINE</string>
+    <string name="library_group_saved">SAVED</string>
+    <string name="library_group_liked_top">LIKED · TOP TRACKS</string>
+    <string name="library_group_liked">LIKED</string>
+    <string name="library_loading">LOADING…</string>
+    <string name="library_empty">NOTHING HERE</string>
+    <string name="library_error">ERROR: %1$s</string>
+</resources>
