@@ -1,0 +1,86 @@
+# `audio/` — DSP
+
+Порт `src/audio` и `src/vis` десктопного QiYaa: десятиполосный эквалайзер на RBJ-биквадах, FFT-анализатор, спектр с падающими пиками, кольцевой буфер для визуализатора и конвертация PCM16. Пакет работает с `FloatArray` и ничего не знает про ExoPlayer, `ByteBuffer`-ы Media3 и Compose: это `playback/EqualizerProcessor`, `playback/VisualizerTapProcessor` и `ui/visualizer`.
+
+Чистая JVM, тестируется синтезированными сигналами:
+
+```bash
+grep -rlnE '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiyaa/audio/   # ничего не печатает
+```
+
+| Файл | Содержит |
+|---|---|
+| `EqualizerDsp.kt` | `EqSettings` (данные) и `EqualizerDsp` (фильтр) |
+| `EqPresets.kt` | `EqPreset`, `EqPresets` — 17 пресетов Winamp |
+| `Analyzer.kt` | `Analyzer` — окно Ханна + radix-2 FFT → dBFS |
+| `Spectrum.kt` | `Spectrum` — 19 логарифмических полос с пиками |
+| `VisualizerTap.kt` | `VisualizerTap` — lock-free кольцо последних кадров |
+| `Pcm16.kt` | `Pcm16` — 16-bit PCM ↔ float |
+| `AudioBus.kt` | `AudioBus` — что процессоры публикуют для UI |
+
+## `EqSettings`, `EqualizerDsp`
+
+```kotlin
+data class EqSettings(enabled = true, preampDb = 0.0, bandsDb: List<Double> = 10 × 0.0) {
+    val isFlat: Boolean
+    fun withBand(index: Int, db: Double): EqSettings          // db зажимается в ±MAX_DB
+    companion object { BAND_COUNT = 10; MAX_DB = 12.0; BAND_HZ = [60, 170, 310, 600, 1000, 3000, 6000, 12000, 14000, 16000]; FLAT }
+}
+
+class EqualizerDsp(sampleRate: Int = 44_100) {
+    val sampleRate: Int
+    fun setSampleRate(rate: Int)                               // ≤ 0 → 44 100
+    fun publish(settings: EqSettings)                          // с любого потока
+    fun reset()                                                // обнуляет состояние фильтров
+    fun process(frames: FloatArray, frameCount: Int, channels: Int)   // на месте, interleaved
+    companion object { Q = 1.2; MAX_CHANNELS = 2; fun compute(settings, sampleRate: Double): Coefficients; fun responseDb(settings, hz, sampleRate): Double }
+}
+```
+
+`EqSettings` требует ровно 10 полос (`require` в `init`). Полоса с |dB| < 0.05 или с центром выше 0.49 × sampleRate — тождественный биквад. Преамп — линейный множитель `10^(dB/20)`. Коэффициенты считаются заранее в `compute` (RBJ cookbook, peaking EQ, `a0`-нормированные `b0 b1 b2 a1 a2`) и публикуются одним неизменяемым объектом через `@Volatile`; аудиопоток берёт актуальный набор на следующем блоке. Фильтр — транспонированная прямая форма II, состояние `delay1/delay2` на полосу и канал; после блока значения < 1e-15 обнуляются (денормалы).
+
+`responseDb` считает АЧХ каскада в точке `hz` — им пользуется тест и может пользоваться график.
+
+**Traps:**
+- `process` обрабатывает первые `MAX_CHANNELS = 2` канала; `channels` в шаге индексации — реальное число каналов буфера.
+- Тождественная полоса обнуляет своё состояние, чтобы возврат к ненулевому усилению не щёлкал.
+- `publish` и `setSampleRate` меняют коэффициенты, но не состояние; `reset()` вызывает процессор на flush.
+
+## `EqPresets`
+
+Таблица `WINAMP_EQF` — значения из `presets/builtin.json` webamp (MIT, см. `THIRD_PARTY.md`) в шкале `.eqf` 1…64: `eqfToDb(1) = −12`, `eqfToDb(64) = +12`, и отдельно `33 ≡ 0 dB` (в формуле это +0.19 дБ; Winamp считает 33 «плоским»). Преамп всех пресетов — 0 дБ. `byName` возвращает `null` для неизвестного имени.
+
+## `Analyzer`, `Spectrum`
+
+```kotlin
+class Analyzer(val size: Int = 1024) {          // степень двойки ≥ 8, иначе IllegalArgumentException
+    val binCount: Int = size / 2 + 1
+    fun analyze(mono: FloatArray, spectrumDb: FloatArray)   // выход в dBFS: синус полной шкалы → 0 dBFS
+}
+
+class Spectrum(val barCount: Int = 19) {
+    val levels: FloatArray; val peaks: FloatArray   // 0..1
+    fun reset()
+    fun update(spectrumDb: FloatArray, fftSize: Int, sampleRate: Int)
+}
+```
+
+Полосы спектра логарифмические от 60 Гц до min(16 кГц, sampleRate/2); уровень — максимум dBFS в полосе, отображённый из [−72, −6] дБ в [0, 1]. Уровень падает на 0.07 за кадр, пик падает по квадрату возраста с коэффициентом 0.0004 (`Spectrum.PEAK_GRAVITY`). Кадр — один вызов `update`; `ui/visualizer` вызывает его каждые 33 мс.
+
+`analyze` и `VisualizerTap.read` пишут в массивы вызывающего: это единственные out-параметры в проекте, чтобы не аллоцировать на каждый кадр.
+
+## `VisualizerTap`
+
+Кольцо на `capacityFrames` (степень двойки, по умолчанию 4096) стереокадров. Аудиопоток пишет `write(frames, frameCount, channels)` (моно дублируется в оба канала), UI читает `read(outLeft, outRight, frameCount)` — последние кадры, старые первыми. Курсор — `AtomicInteger`, данные не защищены: рваное чтение допускается по замыслу (это картинка, не звук). `read` с `frameCount > capacityFrames` — `IllegalArgumentException`.
+
+## `Pcm16`
+
+`decode(ShortBuffer, sampleCount, out)` делит на 32768; `encode(samples, sampleCount, ByteBuffer)` умножает на 32767, зажимает в [−32768, 32767] и пишет `putShort` в порядке байтов буфера.
+
+## `AudioBus`
+
+Одна точка обмена между процессорами и UI: `equalizer`, `visualizerTap`, `StateFlow`-ы `sampleRate`, `channels`, `bitrateKbps` и `@Volatile` `gainLeft`/`gainRight` для баланса. `setBalance(−100…100)`: положительный баланс ослабляет левый канал линейно, отрицательный — правый. `volumeGain(0…100) = (v/100)²` — кривая громкости Winamp.
+
+## Not here
+
+- Media3-процессоры и байтовые буферы — `playback/`. Отрисовка спектра и осциллографа — `ui/visualizer/VisualizerStrip.kt`. Сохранение настроек EQ — `data/Settings`.

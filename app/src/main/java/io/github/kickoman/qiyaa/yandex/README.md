@@ -1,0 +1,162 @@
+# `yandex/` — клиент Яндекс Музыки
+
+Пакет говорит с `api.music.yandex.net` и `oauth.yandex.ru`: конверт `{invocationInfo, result}`, вход по коду устройства, подпись ссылки на mp3, нормализация токена и источники библиотеки (лайки, плейлисты, волна, поиск). Он **не** хранит токен (это `data/TokenStore`), **не** знает про ExoPlayer и очередь (это `playback/`) и не показывает ничего пользователю: любая ошибка — исключение из дерева ниже, любой ожидаемый промах — данные.
+
+Чистая JVM: пакет не импортирует `android.*` и тестируется против `MockWebServer`.
+
+```bash
+grep -rlnE '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiyaa/yandex/   # ничего не печатает
+```
+
+| Файл | Содержит |
+|---|---|
+| `Errors.kt` | `YandexException` и четыре наследника |
+| `JsonFields.kt` | мягкий доступ к JSON: `objectOrEmpty`, `arrayOrEmpty`, `string`, `int`, `long`, `boolean`, `scalarString`, `idString`, `parseJsonObjectOrNull` |
+| `Models.kt` | `Account`, `Track`, `NamedRef`, `PlaylistRef`, `Station`, `WaveBatch`, `SearchResult`, `DownloadVariant`, `DownloadInfo`, `ResolvedUrl` |
+| `YandexApi.kt` | `YandexApi` — транспорт (OkHttp), конверт, `accountStatus`, `tracks`, `resolveTrackUrl`, `reportPlayStarted` |
+| `TrackParsing.kt` | `TrackParsing` — `JsonElement` → `Track` |
+| `TrackUrl.kt` | `TrackUrl` — выбор варианта и подпись ссылки на mp3 |
+| `Library.kt` | `Library` — аккаунт, лайки, источники треков, волна, поиск |
+| `DeviceAuth.kt` | `DeviceAuth` — OAuth «код устройства» |
+| `TokenNormalizer.kt` | `TokenNormalizer` — из вставленного текста в чистый токен |
+
+Зависимости внутри пакета: `Library → YandexApi → TrackParsing, TrackUrl → JsonFields, Models, Errors`. `DeviceAuth` и `TokenNormalizer` зависят только от `JsonFields` и `Errors`.
+
+## Исключения
+
+```
+YandexException : IOException
+├── HttpException(status, method, path, reason)      // сервер ответил ≥ 400
+│     isTokenRejected == status in {401, 403}
+├── NetworkException(method, path, cause)            // OkHttp не получил ответ
+├── MalformedResponseException(method, path, detail) // ответ 2xx, но без нужного поля
+└── AuthException(message)                           // OAuth-поток или токен не принят
+```
+
+Корень наследует `IOException` намеренно: `playback/TrackResolver` вызывает `resolveTrackUrl` из `ResolvingDataSource.Resolver`, которому ExoPlayer разрешает бросать только `IOException`. Сообщения всегда содержат метод и путь: `HTTP 401 on GET /users/42/likes/artists: Token expired`.
+
+Данные, а не исключения: пустой `uid` в `Account` (`isValid == false`), `null` от `TrackUrl.pickBestVariant` и `parseDownloadInfo`, `""` от `TokenNormalizer.normalize`, пустые списки от `Library` при пустых ответах.
+
+## `YandexApi`
+
+```kotlin
+class YandexApi(client: OkHttpClient, val baseUrl: String = "https://api.music.yandex.net") {
+    @Volatile var token: String                                  // "" = без Authorization
+    suspend fun getJson(path: String, query: Map<String, String> = emptyMap()): JsonElement
+    suspend fun postForm(path: String, form: List<Pair<String, String>>): JsonElement
+    suspend fun postJson(path: String, body: JsonObject): JsonElement
+    suspend fun getText(fullUrl: String): String                 // без конверта, для download-info
+    suspend fun accountStatus(): Account
+    suspend fun tracks(ids: List<String>): List<Track>           // POST /tracks/, до 250 id за раз
+    suspend fun resolveTrackUrl(trackId: String): ResolvedUrl    // "id" или "id:albumId"
+    suspend fun reportPlayStarted(account: Account, track: Track, playId: String)
+    companion object { fun formatSeconds(durationMs: Long): String }
+}
+```
+
+Каждый запрос уходит с `Accept-Language: ru` и, при непустом токене, `Authorization: OAuth <token>`. Все вызовы выполняются на `Dispatchers.IO`.
+
+Конверт: тело ответа — объект с полем `result`; оно и возвращается. При статусе ≥ 400 сообщение берётся из `error.message`, затем из строкового `error`, затем из HTTP reason phrase. Ответ 2xx без `result` — `MalformedResponseException`.
+
+`resolveTrackUrl` делает два запроса: `GET /tracks/{id}/download-info` → список вариантов; затем `GET <downloadInfoUrl>?format=json` → `{host, path, ts, s}` → подпись (см. `TrackUrl`). `accountStatus` без `uid` в ответе — `AuthException` (токен не принят).
+
+`reportPlayStarted` отправляет форму `POST /play-audio` с полями `track-id`, `album-id`, `from=web-own_tracks-track-track-main`, `play-id`, `uid`, `timestamp` и `client-now` (одно и то же значение, `yyyy-MM-dd'T'HH:mm:ss.SSS'Z'` в UTC), `track-length-seconds` (формат `QString::number`: `180`, `201.5`), `total-played-seconds=0`, `end-position-seconds=0`.
+
+**Traps:**
+- `token` читается в момент сборки запроса; смена токена не влияет на уже отправленные вызовы.
+- `getText` не распаковывает конверт и не парсит JSON — только для второго прыжка `download-info`.
+- `formatSeconds` эмулирует Qt: целые секунды без `.0`. Так делает десктопный QiYaa, и сервер это принимает.
+
+## `TrackParsing`
+
+```kotlin
+object TrackParsing {
+    const val COVER_SIZE = "400x400"
+    fun parseTrack(element: JsonElement): Track
+    fun parseTrackArray(element: JsonElement?): List<Track>   // распаковывает {"track": {...}}
+    fun coverUrl(uri: String, size: String = COVER_SIZE): String?   // null при пустом uri
+}
+```
+
+`title` получает суффикс ` (version)`, если есть `version`. `albumId` — id первого элемента `albums`. `coverUri` берётся из трека, иначе из первого альбома; `%%` заменяется на размер, `https://` добавляется, если схемы нет. `durationMs` через `double`, `available` по умолчанию `true`.
+
+## `TrackUrl`
+
+```kotlin
+object TrackUrl {
+    fun parseDownloadVariants(result: JsonElement): List<DownloadVariant>
+    fun pickBestVariant(variants: List<DownloadVariant>): DownloadVariant?   // null для пустого списка
+    fun parseDownloadInfo(json: String): DownloadInfo?                       // null, если нет host/path/s
+    fun buildTrackUrl(info: DownloadInfo): String
+}
+```
+
+Выбор: mp3 без `preview` с максимальным `bitrateInKbps`; если таких нет — первый вариант. Варианты без `downloadInfoUrl` с `http(s)://` отбрасываются.
+
+Подпись: `md5("XGRlBW9FXlekgbPrRHuSiA" + path.substring(1) + s)` в hex, ссылка `https://{host}/get-mp3/{md5}/{ts}{path}`. `ts` может прийти числом — `scalarString` приводит его к строке без дробной части.
+
+**Traps:** `path` обязан начинаться с `/` (иначе `null`), потому что подписывается без первого символа.
+
+## `Library`
+
+```kotlin
+class Library(val api: YandexApi) {
+    val account: StateFlow<Account>;  val likedIds: StateFlow<Set<String>>
+    val isLoggedIn: Boolean;  fun isLiked(trackId: String): Boolean
+    suspend fun connectAccount(): Account;  fun logout()
+    suspend fun tracksByIds(ids: List<String>): List<Track>          // чанками по TRACKS_PER_REQUEST = 250
+    suspend fun likedTrackIds(): List<String>;  suspend fun likedTracks(): List<Track>
+    suspend fun userPlaylists(): List<PlaylistRef>;  suspend fun playlistTracks(playlist: PlaylistRef): List<Track>
+    suspend fun likedArtists(): List<NamedRef>;  suspend fun artistTopTracks(artistId: String): List<Track>  // ≤ 100
+    suspend fun likedAlbums(): List<NamedRef>;  suspend fun albumTracks(albumId: String): List<Track>
+    suspend fun stations(): List<Station>                            // GET /rotor/stations/list?language=ru
+    suspend fun startWave(seeds: List<String>): WaveBatch;  suspend fun moreWave(sessionId: String, queue: List<String>): WaveBatch
+    suspend fun search(text: String): SearchResult
+    suspend fun setLiked(trackId: String, liked: Boolean);  suspend fun dislike(trackId: String)
+    companion object { fun parseWaveBatch(result: JsonElement): WaveBatch; fun stationGroupKey(type: String): String }
+}
+```
+
+Эндпоинты и формы:
+
+| Метод | Путь | Тело / query |
+|---|---|---|
+| GET | `/users/{uid}/likes/tracks` | — → `library.tracks[].id` |
+| GET | `/users/{uid}/playlists/list` | — → `uid`/`owner.uid`, `kind`, `title`, `trackCount` |
+| GET | `/users/{ownerUid}/playlists/{kind}` | — → `tracks[]` (вложенные `track` или только `id`) |
+| GET | `/users/{uid}/likes/artists`, `/likes/albums` | элементы могут быть обёрнуты в `artist`/`album` |
+| GET | `/artists/{id}/track-ids-by-rating` | — → `tracks[]` |
+| POST | `/albums` | `album-ids=1,2` (подкасты пропускаются) |
+| GET | `/albums/{id}/with-tracks` | — → `volumes[][]`, `albumId` подставляется при отсутствии |
+| POST | `/rotor/session/new` | JSON `{seeds, includeTracksInResponse, includeWaveModel, interactive: true}` |
+| POST | `/rotor/session/{id}/tracks` | JSON `{queue: [последние id]}` |
+| GET | `/search` | `text`, `type=all`, `page=0` → `best.{type,result}`, `tracks.results` |
+| POST | `/users/{uid}/likes/tracks/add-multiple`, `…/remove`, `…/dislikes/tracks/add-multiple` | `track-ids=<id>` |
+
+`stationGroupKey` сводит тип `user` к `personal`; остальные типы — ключ как есть. Порядок и названия групп задаёт `ui/screens/LibrarySectionScreen`.
+
+**Traps:**
+- `likedIds` заполняется только `likedTrackIds()`/`likedTracks()` и правится `setLiked`/`dislike`; `connectAccount` его не трогает — UI вызывает предзагрузку сам.
+- `moreWave` возвращает `sessionId` из запроса, если сервер его не прислал.
+- `startWave` без `radioSessionId` — `MalformedResponseException`, а не пустая волна.
+
+## `DeviceAuth`
+
+```kotlin
+class DeviceAuth(client: OkHttpClient, baseUrl = "https://oauth.yandex.ru", deviceName = "QiYaa", clock: () -> Long) {
+    data class Code(deviceCode, userCode, verificationUrl, intervalMs, deadlineMs)
+    suspend fun requestCode(): Code            // POST /device/code
+    suspend fun waitForToken(code: Code): String   // POST /token, опрос до токена или AuthException
+    companion object { CLIENT_ID, CLIENT_SECRET, BROWSER_LOGIN_URL, DEFAULT_VERIFICATION_URL, DEFAULT_INTERVAL_SECONDS = 5, DEFAULT_EXPIRES_IN_SECONDS = 300, SLOW_DOWN_STEP_MS = 2_000 }
+}
+```
+
+`device_name` отправляется как `QiYaa (<deviceName>)`. Интервал опроса не меньше 1 с; `slow_down` прибавляет 2 с; `authorization_pending` продолжает; любой другой `error` — `AuthException(error_description | error)`. Дедлайн — `clock() + expires_in`. Клиент — публичный клиент Яндекс Музыки, тот же, что в Yaamp и yandex-music-api.
+
+## `TokenNormalizer`
+
+Принимает сырой токен, JSON-строку или объект с `access_token`, URL `…#access_token=…` и префикс `OAuth `; возвращает токен, если он совпадает с `^[A-Za-z0-9._\-]{10,}$`, иначе `""`.
+
+## Not here
+
+- Хранение токена — `data/TokenStore`. Очередь и отметки прослушивания по событиям плеера — `playback/QueueManager`. Тексты для пользователя — `ui/`.
