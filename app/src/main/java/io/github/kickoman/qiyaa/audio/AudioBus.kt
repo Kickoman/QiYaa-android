@@ -4,32 +4,19 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/** Live audio facts published by the processors for the UI readouts. */
 class AudioBus {
-    val eq = EqualizerDsp()
-    val visTap = VisTap()
+    val equalizer = EqualizerDsp()
+    val visualizerTap = VisualizerTap()
 
-    private val _sampleRate = MutableStateFlow(0)
-    val sampleRate: StateFlow<Int> = _sampleRate.asStateFlow()
+    private val mutableSampleRate = MutableStateFlow(0)
+    val sampleRate: StateFlow<Int> = mutableSampleRate.asStateFlow()
 
-    private val _channels = MutableStateFlow(0)
-    val channels: StateFlow<Int> = _channels.asStateFlow()
+    private val mutableChannels = MutableStateFlow(0)
+    val channels: StateFlow<Int> = mutableChannels.asStateFlow()
 
-    private val _bitrateKbps = MutableStateFlow(0)
-    val bitrateKbps: StateFlow<Int> = _bitrateKbps.asStateFlow()
+    private val mutableBitrateKbps = MutableStateFlow(0)
+    val bitrateKbps: StateFlow<Int> = mutableBitrateKbps.asStateFlow()
 
-    fun setFormat(sampleRate: Int, channels: Int) {
-        _sampleRate.value = sampleRate
-        _channels.value = channels
-        eq.setSampleRate(sampleRate)
-        visTap.sampleRate = sampleRate
-    }
-
-    fun setBitrate(kbps: Int) {
-        _bitrateKbps.value = kbps
-    }
-
-    /** Balance -100..100 → per-channel linear gains; the opposite channel is attenuated. */
     @Volatile
     var gainLeft = 1f
         private set
@@ -38,17 +25,30 @@ class AudioBus {
     var gainRight = 1f
         private set
 
+    fun setFormat(sampleRate: Int, channels: Int) {
+        mutableSampleRate.value = sampleRate
+        mutableChannels.value = channels
+        equalizer.setSampleRate(sampleRate)
+        visualizerTap.sampleRate = sampleRate
+    }
+
+    fun setBitrate(kbps: Int) {
+        mutableBitrateKbps.value = kbps
+    }
+
     fun setBalance(balance: Int) {
-        val b = balance.coerceIn(-100, 100) / 100f
-        gainLeft = if (b > 0) 1f - b else 1f
-        gainRight = if (b < 0) 1f + b else 1f
+        val fraction = balance.coerceIn(-MAX_BALANCE, MAX_BALANCE) / MAX_BALANCE.toFloat()
+        gainLeft = if (fraction > 0) 1f - fraction else 1f
+        gainRight = if (fraction < 0) 1f + fraction else 1f
     }
 
     companion object {
-        /** Winamp-like volume curve: 0..100 → (v/100)². */
+        const val MAX_VOLUME = 100
+        const val MAX_BALANCE = 100
+
         fun volumeGain(volume: Int): Float {
-            val v = volume.coerceIn(0, 100) / 100f
-            return v * v
+            val fraction = volume.coerceIn(0, MAX_VOLUME) / MAX_VOLUME.toFloat()
+            return fraction * fraction
         }
     }
 }

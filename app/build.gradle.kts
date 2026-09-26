@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ktlint)
 }
 
 android {
@@ -27,9 +28,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
     buildFeatures {
         compose = true
     }
@@ -39,6 +37,23 @@ android {
     testOptions {
         unitTests.isReturnDefaultValues = true
     }
+    lint {
+        abortOnError = true
+        warningsAsErrors = true
+        // Dependency freshness is a maintenance decision, not a code defect.
+        disable += setOf("GradleDependency", "AndroidGradlePluginVersion")
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        allWarningsAsErrors.set(true)
+    }
+}
+
+ktlint {
+    version.set(libs.versions.ktlint.get())
 }
 
 dependencies {

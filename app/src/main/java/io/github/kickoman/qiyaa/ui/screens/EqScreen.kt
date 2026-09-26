@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -43,75 +42,52 @@ import io.github.kickoman.qiyaa.ui.components.tap
 import io.github.kickoman.qiyaa.ui.formatDb
 import io.github.kickoman.qiyaa.ui.theme.LabelStyle
 import io.github.kickoman.qiyaa.ui.theme.Qi
+import io.github.kickoman.qiyaa.ui.theme.ReadoutStyle
 import io.github.kickoman.qiyaa.ui.theme.mono
 import io.github.kickoman.qiyaa.ui.theme.sans
+import kotlin.math.abs
+
+private val BAND_LABELS = listOf("60", "170", "310", "600", "1K", "3K", "6K", "12K", "14K", "16K")
+private const val DISABLED_ALPHA = 0.35f
+private const val ZERO_DB_EPSILON = 0.05
+private const val MIN_PRESET_BAR = 0.02f
 
 @Composable
-fun EqScreen(vm: PlayerViewModel) {
-    val c = Qi.colors
-    val eq by vm.settings.eq.collectAsStateWithLifecycle()
-    val auto by vm.settings.eqAuto.collectAsStateWithLifecycle()
-    val preset by vm.eqPreset.collectAsStateWithLifecycle()
-    val graphAlpha = if (eq.enabled) 1f else 0.35f
+fun EqScreen(viewModel: PlayerViewModel) {
+    val colors = Qi.colors
+    val eq by viewModel.settings.eq.collectAsStateWithLifecycle()
+    val auto by viewModel.settings.eqAuto.collectAsStateWithLifecycle()
+    val preset by viewModel.eqPreset.collectAsStateWithLifecycle()
+    val graphAlpha = if (eq.enabled) 1f else DISABLED_ALPHA
 
     Column(Modifier.fillMaxSize()) {
         ScreenHeader(stringResource(R.string.eq_title)) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                PillToggle(stringResource(R.string.eq_on), eq.enabled) { vm.setEqEnabled(!eq.enabled) }
-                PillToggle(stringResource(R.string.eq_auto), auto) { vm.setEqAuto(!auto) }
+                PillToggle(stringResource(R.string.eq_on), eq.enabled) { viewModel.setEqEnabled(!eq.enabled) }
+                PillToggle(stringResource(R.string.eq_auto), auto) { viewModel.setEqAuto(!auto) }
             }
         }
 
-        // Preset row.
         Row(
             Modifier
                 .padding(start = 16.dp, end = 16.dp, top = 16.dp)
                 .fillMaxWidth()
                 .height(56.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(c.surface)
-                .tap { vm.openPresets() }
+                .background(colors.surface)
+                .tap { viewModel.openPresets() }
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            QiText(stringResource(R.string.eq_preset), LabelStyle, color = c.dim)
-            QiText(preset, sans(15.sp, 600), Modifier.weight(1f), color = c.text, maxLines = 1)
-            QiText(stringResource(R.string.eq_builtin_count), mono(11.sp, 400, 1.sp), color = c.dim)
-            QiText("›", mono(14.sp, 400), color = c.dim)
+            QiText(stringResource(R.string.eq_preset), LabelStyle, color = colors.dim)
+            QiText(preset, sans(15.sp, 600), Modifier.weight(1f), color = colors.text, maxLines = 1)
+            QiText(stringResource(R.string.eq_builtin_count), mono(11.sp, 400, 1.sp), color = colors.dim)
+            QiText("›", mono(14.sp, 400), color = colors.dim)
         }
 
-        // Response curve.
-        Box(
-            Modifier
-                .padding(start = 16.dp, end = 16.dp, top = 12.dp)
-                .fillMaxWidth()
-                .height(88.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .background(c.deep)
-                .border(1.dp, c.insetBorder, RoundedCornerShape(6.dp))
-                .alpha(graphAlpha),
-        ) {
-            Canvas(Modifier.fillMaxSize()) {
-                val h = size.height
-                val w = size.width
-                drawLine(c.border, Offset(0f, h / 2), Offset(w, h / 2), 1f)
-                drawLine(c.insetBorder, Offset(0f, h / 4), Offset(w, h / 4), 1f)
-                drawLine(c.insetBorder, Offset(0f, h * 3 / 4), Offset(w, h * 3 / 4), 1f)
-                val path = Path()
-                val n = EqSettings.BANDS
-                for (i in 0 until n) {
-                    val x = w * (10f + i * (344f / 9f)) / 364f
-                    val y = h * (44f - (eq.bandsDb[i] / 12.0).toFloat() * 36f) / 88f
-                    if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
-                }
-                drawPath(path, c.acc, style = Stroke(width = 2.dp.toPx()))
-            }
-            QiText("+12", mono(10.sp, 400, 1.sp), Modifier.align(Alignment.TopStart).padding(start = 10.dp, top = 8.dp), color = c.dimmer)
-            QiText("-12", mono(10.sp, 400, 1.sp), Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = 6.dp), color = c.dimmer)
-        }
+        ResponseCurve(eq, Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp).alpha(graphAlpha))
 
-        // Faders: PRE + 10 bands.
         Row(
             Modifier
                 .padding(start = 16.dp, end = 16.dp, top = 16.dp)
@@ -120,82 +96,184 @@ fun EqScreen(vm: PlayerViewModel) {
                 .alpha(graphAlpha),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            val labels = listOf(stringResource(R.string.eq_pre)) + EqSettings.BAND_LABELS
-            for (i in 0..EqSettings.BANDS) {
-                val db = if (i == 0) eq.preampDb else eq.bandsDb[i - 1]
-                Column(Modifier.weight(1f).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Box(Modifier.height(20.dp).tap { if (i == 0) vm.setPreamp(0.0) else vm.setBand(i - 1, 0.0) }, contentAlignment = Alignment.Center) {
-                        QiText(formatDb(db), mono(11.sp, 500), color = if (kotlin.math.abs(db) < 0.05) c.dim else c.acc)
+            val labels = listOf(stringResource(R.string.eq_pre)) + BAND_LABELS
+            for (column in 0..EqSettings.BAND_COUNT) {
+                val isPreamp = column == 0
+                val band = column - 1
+                val db = if (isPreamp) eq.preampDb else eq.bandsDb[band]
+                Column(
+                    Modifier.weight(1f).fillMaxHeight(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Box(
+                        Modifier.height(20.dp).tap {
+                            if (isPreamp) viewModel.setPreamp(0.0) else viewModel.setBand(band, 0.0)
+                        },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        QiText(
+                            formatDb(db),
+                            mono(11.sp, 500),
+                            color = if (abs(db) <
+                                ZERO_DB_EPSILON
+                            ) {
+                                colors.dim
+                            } else {
+                                colors.accent
+                            },
+                        )
                     }
                     VerticalFader(
                         value = db,
-                        onChange = { v -> if (i == 0) vm.setPreamp(v) else vm.setBand(i - 1, v) },
+                        onChange = { if (isPreamp) viewModel.setPreamp(it) else viewModel.setBand(band, it) },
                         modifier = Modifier.weight(1f).fillMaxWidth(),
-                        thumbColor = if (i == 0) c.muted else c.acc,
+                        thumbColor = if (isPreamp) colors.muted else colors.accent,
                         enabled = eq.enabled,
                     )
-                    QiText(labels[i], mono(9.sp, 500, 0.5.sp), color = c.dim)
+                    QiText(labels[column], mono(9.sp, 500, 0.5.sp), color = colors.dim)
                 }
             }
         }
 
-        Row(Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            QiText(stringResource(R.string.eq_hint_left), mono(10.sp, 400, 1.5.sp), color = c.dimmer)
-            QiText(stringResource(R.string.eq_hint_right), mono(10.sp, 400, 1.5.sp), color = c.dimmer)
+        Row(
+            Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 12.dp).fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            QiText(stringResource(R.string.eq_hint_left), ReadoutStyle, color = colors.dimmer)
+            QiText(stringResource(R.string.eq_hint_right), ReadoutStyle, color = colors.dimmer)
         }
     }
 }
 
-/** Bottom sheet with the 17 built-in presets; drawn over the whole app. */
+// The curve joins the band values at the mock's x positions (10 + i * 344 / 9 of 364) and y = 44 ∓ 36 of 88.
 @Composable
-fun PresetsSheet(vm: PlayerViewModel) {
-    val c = Qi.colors
-    val current by vm.eqPreset.collectAsStateWithLifecycle()
+private fun ResponseCurve(eq: EqSettings, modifier: Modifier) {
+    val colors = Qi.colors
+    Box(
+        modifier
+            .fillMaxWidth()
+            .height(88.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(colors.deep)
+            .border(1.dp, colors.insetBorder, RoundedCornerShape(6.dp)),
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            val height = size.height
+            val width = size.width
+            drawLine(colors.border, Offset(0f, height / 2), Offset(width, height / 2), 1f)
+            drawLine(colors.insetBorder, Offset(0f, height / 4), Offset(width, height / 4), 1f)
+            drawLine(colors.insetBorder, Offset(0f, height * 3 / 4), Offset(width, height * 3 / 4), 1f)
+            val path = Path()
+            for (band in 0 until EqSettings.BAND_COUNT) {
+                val x = width * (10f + band * (344f / 9f)) / 364f
+                val y = height * (44f - (eq.bandsDb[band] / EqSettings.MAX_DB).toFloat() * 36f) / 88f
+                if (band == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            drawPath(path, colors.accent, style = Stroke(width = 2.dp.toPx()))
+        }
+        QiText(
+            "+12",
+            mono(10.sp, 400, 1.sp),
+            Modifier.align(Alignment.TopStart).padding(start = 10.dp, top = 8.dp),
+            color = colors.dimmer,
+        )
+        QiText(
+            "-12",
+            mono(10.sp, 400, 1.sp),
+            Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = 6.dp),
+            color = colors.dimmer,
+        )
+    }
+}
+
+@Composable
+fun PresetsSheet(viewModel: PlayerViewModel) {
+    val colors = Qi.colors
+    val current by viewModel.eqPreset.collectAsStateWithLifecycle()
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize().background(c.deep.copy(alpha = 0.7f)).tap { vm.closePresets() })
+        Box(
+            Modifier.fillMaxSize().background(colors.deep.copy(alpha = 0.7f)).tap {
+                viewModel.closePresets()
+            },
+        )
         Column(
             Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .height(maxHeight * 0.78f)
                 .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-                .background(c.surface),
+                .background(colors.surface),
         ) {
-            Box(Modifier.align(Alignment.CenterHorizontally).padding(top = 10.dp).width(36.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(c.handle))
+            Box(
+                Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(top = 10.dp)
+                    .width(36.dp)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(colors.handle),
+            )
             Row(
                 Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                QiText(stringResource(R.string.eq_presets_title), LabelStyle, color = c.dim)
-                QiText(stringResource(R.string.eq_reset_flat), LabelStyle, Modifier.tap { vm.resetFlat() }, color = c.acc)
+                QiText(stringResource(R.string.eq_presets_title), LabelStyle, color = colors.dim)
+                QiText(
+                    stringResource(R.string.eq_reset_flat),
+                    LabelStyle,
+                    Modifier.tap {
+                        viewModel.resetFlat()
+                    },
+                    color = colors.accent,
+                )
             }
             LazyColumn(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 8.dp)) {
-                items(EqPresets.builtin, key = { it.name }) { p ->
-                    val active = p.name == current
-                    val color = if (active) c.acc else c.text
+                items(EqPresets.builtin, key = { it.name }) { preset ->
+                    val active = preset.name == current
+                    val color = if (active) colors.accent else colors.text
                     Row(
                         Modifier
                             .fillMaxWidth()
                             .height(48.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(if (active) c.accBg else c.surface)
-                            .tap { vm.applyPreset(p.name) }
+                            .background(if (active) colors.accentBackground else colors.surface)
+                            .tap { viewModel.applyPreset(preset.name) }
                             .padding(horizontal = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Row(Modifier.width(40.dp).height(18.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                            for (v in p.raw) {
-                                val pct = ((v - 1) / 63f).coerceIn(0.02f, 1f)
-                                Box(Modifier.weight(1f).fillMaxHeight(pct).background(color.copy(alpha = 0.7f)))
+                        Row(
+                            Modifier.width(40.dp).height(18.dp),
+                            verticalAlignment = Alignment.Bottom,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            for (level in preset.eqfLevels) {
+                                Box(
+                                    Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight(eqfFraction(level))
+                                        .background(color.copy(alpha = 0.7f)),
+                                )
                             }
                         }
-                        QiText(p.name, sans(14.sp, 500), Modifier.weight(1f), color = color, maxLines = 1)
+                        QiText(
+                            preset.name,
+                            sans(14.sp, 500),
+                            Modifier.weight(1f),
+                            color = color,
+                            maxLines = 1,
+                        )
                         QiText("●", mono(11.sp, 500), Modifier.alpha(if (active) 1f else 0f), color = color)
                     }
                 }
             }
         }
     }
+}
+
+private fun eqfFraction(level: Int): Float {
+    val span = (EqPresets.EQF_MAX - EqPresets.EQF_MIN).toFloat()
+    return ((level - EqPresets.EQF_MIN) / span).coerceIn(MIN_PRESET_BAR, 1f)
 }

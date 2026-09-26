@@ -20,10 +20,10 @@ class MainActivity : ComponentActivity() {
         askNotificationPermission()
     }
 
-    /** Android 13+: the playback notification needs runtime consent. */
     private fun askNotificationPermission() {
-        if (Build.VERSION.SDK_INT < 33) return
-        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        if (!granted) notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val permission = Manifest.permission.POST_NOTIFICATIONS
+        val granted = ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+        if (!granted) notifications.launch(permission)
     }
 }

@@ -1,39 +1,36 @@
 package io.github.kickoman.qiyaa.yandex
 
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 
-/**
- * Port of src/yandex/Token.cpp: accepts a raw token, a JSON string/object with `access_token`,
- * or the redirect URL `https://music.yandex.ru/#access_token=…`, and returns a clean token or "".
- */
 object TokenNormalizer {
-    private val fragment = Regex("access_token=([^&#\\s]+)")
-    private val valid = Regex("^[A-Za-z0-9._\\-]{10,}$")
+    private val fragmentPattern = Regex("access_token=([^&#\\s]+)")
+    private val tokenPattern = Regex("^[A-Za-z0-9._\\-]{10,}$")
 
     fun normalize(raw: String?): String {
-        var s = raw?.trim().orEmpty()
-        if (s.isEmpty()) return ""
+        var text = raw?.trim().orEmpty()
+        if (text.isEmpty()) return ""
+        if (text.startsWith('{') || text.startsWith('"')) text = unwrapJson(text)
+        fragmentPattern.find(text)?.let { text = it.groupValues[1] }
+        if (text.startsWith("OAuth ", ignoreCase = true)) text = text.substring("OAuth ".length).trim()
+        return if (tokenPattern.matches(text)) text else ""
+    }
 
-        if (s.startsWith('{') || s.startsWith('"')) {
+    private fun unwrapJson(text: String): String {
+        val parsed =
             try {
-                val arr = Json.parseToJsonElement("[$s]") as? JsonArray
-                when (val v = arr?.firstOrNull()) {
-                    is JsonPrimitive -> if (v.isString) s = v.content.trim()
-                    is JsonObject -> s = (v["access_token"] as? JsonPrimitive)?.contentOrNull?.trim().orEmpty()
-                    else -> {}
-                }
-            } catch (_: Exception) {
+                Json.parseToJsonElement("[$text]") as? JsonArray
+            } catch (ignored: SerializationException) {
+                null
             }
+        return when (val value = parsed?.firstOrNull()) {
+            is JsonPrimitive -> if (value.isString) value.content.trim() else text
+            is JsonObject -> (value["access_token"] as? JsonPrimitive)?.contentOrNull?.trim().orEmpty()
+            else -> text
         }
-
-        fragment.find(s)?.let { s = it.groupValues[1] }
-
-        if (s.startsWith("OAuth ", ignoreCase = true)) s = s.substring(6).trim()
-
-        return if (valid.matches(s)) s else ""
     }
 }

@@ -3,10 +3,12 @@ package io.github.kickoman.qiyaa.playback
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import io.github.kickoman.qiyaa.playback.QueueEvent.Stage
 import io.github.kickoman.qiyaa.yandex.Library
 import io.github.kickoman.qiyaa.yandex.Track
 import io.github.kickoman.qiyaa.yandex.WaveBatch
 import io.github.kickoman.qiyaa.yandex.YandexApi
+import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -19,33 +21,25 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.util.UUID
+import kotlinx.coroutines.withContext
 
-/** What the UI needs to know about the queue beyond what ExoPlayer exposes. */
 data class QueueState(
     val tracks: List<Track> = emptyList(),
     val title: String = "",
     val isWave: Boolean = false,
     val loadingMore: Boolean = false,
     val selected: Set<Int> = emptySet(),
-    /** Station or source id currently playing, for chip highlighting. */
     val activeSourceId: String? = null,
 )
 
-/**
- * Port of the queue half of src/core/Player.cpp on top of ExoPlayer: sources (finite lists or
- * an endless wave), refill when ≤ 2 tracks are left, play-audio reporting, dislike = skip.
- * The player is owned by [PlaybackService] and attached here while the service lives.
- */
 class QueueManager(private val library: Library, private val api: YandexApi) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    private val _state = MutableStateFlow(QueueState())
-    val state: StateFlow<QueueState> = _state.asStateFlow()
+    private val mutableState = MutableStateFlow(QueueState())
+    val state: StateFlow<QueueState> = mutableState.asStateFlow()
 
-    private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 8)
-    /** Status toasts ("My Wave: wave started", errors). */
-    val messages: SharedFlow<String> = _messages.asSharedFlow()
+    private val mutableEvents = MutableSharedFlow<QueueEvent>(extraBufferCapacity = EVENT_BUFFER)
+    val events: SharedFlow<QueueEvent> = mutableEvents.asSharedFlow()
 
     @Volatile
     var player: Player? = null
@@ -57,40 +51,32 @@ class QueueManager(private val library: Library, private val api: YandexApi) {
     private var loadJob: Job? = null
     private var reportedItemId: String? = null
 
-    fun say(msg: String) {
-        _messages.tryEmit(msg)
-    }
-
-    private val listener = object : Player.Listener {
-        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-            val p = player ?: return
-            if (mediaItem != null && reportedItemId != mediaItem.mediaId) {
-                reportedItemId = mediaItem.mediaId
-                reportPlay(MediaItems.toTrack(mediaItem))
+    private val listener =
+        object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                val current = player ?: return
+                if (mediaItem != null && reportedItemId != mediaItem.mediaId) {
+                    reportedItemId = mediaItem.mediaId
+                    reportPlay(MediaItems.toTrack(mediaItem))
+                }
+                maybeLoadMore(current)
             }
-            maybeLoadMore(p)
-        }
 
-        override fun onPlaybackStateChanged(playbackState: Int) {
-            val p = player ?: return
-            if (playbackState == Player.STATE_ENDED) maybeLoadMore(p)
-        }
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                val current = player ?: return
+                if (playbackState == Player.STATE_ENDED) maybeLoadMore(current)
+            }
 
-        override fun onPlayerError(error: PlaybackException) {
-            val cause = error.cause
-            val msg = cause?.message ?: error.errorCodeName
-            say("Playback error: $msg")
-            val p = player ?: return
-            // Skip a broken track (same as the desktop app: failed stream → next).
-            if (p.hasNextMediaItem()) {
-                p.seekToNextMediaItem()
-                p.prepare()
-                p.play()
+            override fun onPlayerError(error: PlaybackException) {
+                emit(QueueEvent.Failed(Stage.PLAYBACK, error.cause?.message ?: error.errorCodeName))
+                val current = player ?: return
+                if (current.hasNextMediaItem()) {
+                    current.seekToNextMediaItem()
+                    current.prepare()
+                    current.play()
+                }
             }
         }
-    }
-
-    // ------------------------------------------------------------------ service wiring
 
     fun attach(player: Player) {
         this.player = player
@@ -102,154 +88,167 @@ class QueueManager(private val library: Library, private val api: YandexApi) {
         if (this.player === player) this.player = null
     }
 
-    // ------------------------------------------------------------------ sources
-
-    /** Takes a ticket before an async load; only the latest ticket may apply its result. */
-    private fun newSourceRequest(): Long = ++sourceTicket
-
-    private fun isLatest(ticket: Long) = ticket == sourceTicket
-
-    /** Loads a finite source; the loader runs on IO and only the newest request wins. */
-    fun loadSource(title: String, sourceId: String? = null, autoplay: Boolean = true, loader: suspend () -> List<Track>) {
+    fun loadSource(
+        title: String,
+        sourceId: String? = null,
+        autoplay: Boolean = true,
+        loader: suspend () -> List<Track>,
+    ) {
         val ticket = newSourceRequest()
         loadJob?.cancel()
-        loadJob = scope.launch {
-            val tracks = try {
-                kotlinx.coroutines.withContext(Dispatchers.IO) { loader() }
-            } catch (e: Exception) {
-                if (isLatest(ticket)) say("Error: ${e.message}")
-                return@launch
+        loadJob =
+            scope.launch {
+                val tracks =
+                    try {
+                        withContext(Dispatchers.IO) { loader() }
+                    } catch (failed: Exception) {
+                        if (isLatest(ticket)) emit(QueueEvent.Failed(Stage.SOURCE, describe(failed)))
+                        return@launch
+                    }
+                if (!isLatest(ticket)) return@launch
+                if (tracks.isEmpty()) {
+                    emit(QueueEvent.SourceEmpty(title))
+                    return@launch
+                }
+                setQueue(tracks, title, isWave = false, autoplay = autoplay, sourceId = sourceId)
+                emit(QueueEvent.SourceLoaded(title, mutableState.value.tracks.size))
             }
-            if (!isLatest(ticket)) return@launch
-            if (tracks.isEmpty()) {
-                say("$title: empty")
-                return@launch
-            }
-            setQueue(tracks, title, isWave = false, autoplay = autoplay, sourceId = sourceId)
-            say("$title: ${_state.value.tracks.size} tracks")
-        }
     }
 
-    /** Starts an endless rotor wave from [seeds] (e.g. `user:onyourwave` or a station id). */
     fun playWave(seeds: List<String>, title: String, sourceId: String = seeds.first()) {
         val ticket = newSourceRequest()
         loadJob?.cancel()
-        say("$title: loading…")
-        loadJob = scope.launch {
-            val batch = try {
-                kotlinx.coroutines.withContext(Dispatchers.IO) { library.startWave(seeds) }
-            } catch (e: Exception) {
-                if (isLatest(ticket)) say("Wave error: ${e.message}")
-                return@launch
+        emit(QueueEvent.SourceLoading(title))
+        loadJob =
+            scope.launch {
+                val batch =
+                    try {
+                        withContext(Dispatchers.IO) { library.startWave(seeds) }
+                    } catch (failed: Exception) {
+                        if (isLatest(ticket)) emit(QueueEvent.Failed(Stage.WAVE, describe(failed)))
+                        return@launch
+                    }
+                if (!isLatest(ticket)) return@launch
+                waveSessionId = batch.sessionId
+                setQueue(batch.tracks, title, isWave = true, autoplay = true, sourceId = sourceId)
+                emit(QueueEvent.WaveStarted(title))
             }
-            if (!isLatest(ticket)) return@launch
-            waveSessionId = batch.sessionId
-            setQueue(batch.tracks, title, isWave = true, autoplay = true, sourceId = sourceId)
-            say("$title: wave started")
-        }
     }
 
-    fun playMyWave() = playWave(listOf("user:onyourwave"), "My Wave")
-
-    fun search(text: String) {
-        val title = "Search: $text"
+    fun search(text: String, title: String) {
         val ticket = newSourceRequest()
         loadJob?.cancel()
-        say("$title…")
-        loadJob = scope.launch {
-            try {
-                val r = kotlinx.coroutines.withContext(Dispatchers.IO) { library.search(text) }
-                if (!isLatest(ticket)) return@launch
-                val (tracks, name) = kotlinx.coroutines.withContext(Dispatchers.IO) {
-                    when {
-                        r.bestType == "artist" && r.bestId.isNotEmpty() -> library.artistTopTracks(r.bestId) to r.bestName
-                        r.bestType == "album" && r.bestId.isNotEmpty() -> library.albumTracks(r.bestId) to r.bestName
-                        else -> r.tracks to title
+        emit(QueueEvent.SearchStarted(title))
+        loadJob =
+            scope.launch {
+                try {
+                    val result = withContext(Dispatchers.IO) { library.search(text) }
+                    if (!isLatest(ticket)) return@launch
+                    val (tracks, name) =
+                        withContext(Dispatchers.IO) {
+                            when {
+                                result.bestType == "artist" && result.bestId.isNotEmpty() ->
+                                    library.artistTopTracks(result.bestId) to result.bestName
+                                result.bestType == "album" && result.bestId.isNotEmpty() ->
+                                    library.albumTracks(result.bestId) to result.bestName
+                                else -> result.tracks to title
+                            }
+                        }
+                    if (!isLatest(ticket)) return@launch
+                    if (tracks.isEmpty()) {
+                        emit(QueueEvent.NothingFound)
+                        return@launch
                     }
+                    setQueue(tracks, name, isWave = false, autoplay = true, sourceId = null)
+                    emit(QueueEvent.SourceLoaded(name, mutableState.value.tracks.size))
+                } catch (failed: Exception) {
+                    if (isLatest(ticket)) emit(QueueEvent.Failed(Stage.SEARCH, describe(failed)))
                 }
-                if (!isLatest(ticket)) return@launch
-                if (tracks.isEmpty()) {
-                    say("Nothing found")
-                    return@launch
-                }
-                setQueue(tracks, name, isWave = false, autoplay = true, sourceId = null)
-                say("$name: ${_state.value.tracks.size} tracks")
-            } catch (e: Exception) {
-                if (isLatest(ticket)) say("Search error: ${e.message}")
             }
-        }
     }
 
-    // ------------------------------------------------------------------ queue edits
-
     fun setQueue(tracks: List<Track>, title: String, isWave: Boolean, autoplay: Boolean, sourceId: String?) {
-        val p = player
-        if (p == null) {
-            say("Player is still starting, try again")
+        val current = player
+        if (current == null) {
+            emit(QueueEvent.PlayerNotReady)
             return
         }
         queueGeneration++
         val playable = tracks.filter { it.available }
         if (!isWave) waveSessionId = null
-        _state.value = QueueState(tracks = playable, title = title, isWave = isWave, activeSourceId = sourceId)
+        mutableState.value =
+            QueueState(tracks = playable, title = title, isWave = isWave, activeSourceId = sourceId)
         reportedItemId = null
-        p.setMediaItems(playable.map(MediaItems::toMediaItem), 0, 0L)
-        p.prepare()
-        p.playWhenReady = autoplay
+        current.setMediaItems(playable.map(MediaItems::toMediaItem), 0, 0L)
+        current.prepare()
+        current.playWhenReady = autoplay
     }
 
     fun appendTracks(tracks: List<Track>) {
-        val p = player ?: return
+        val current = player ?: return
         val playable = tracks.filter { it.available }
         if (playable.isEmpty()) return
-        _state.update { it.copy(tracks = it.tracks + playable) }
-        p.addMediaItems(playable.map(MediaItems::toMediaItem))
+        mutableState.update { it.copy(tracks = it.tracks + playable) }
+        current.addMediaItems(playable.map(MediaItems::toMediaItem))
     }
 
     fun clear() {
-        val p = player ?: return
+        val current = player ?: return
         queueGeneration++
         waveSessionId = null
-        _state.value = QueueState()
-        p.stop()
-        p.clearMediaItems()
+        mutableState.value = QueueState()
+        current.stop()
+        current.clearMediaItems()
     }
 
     fun removeIndices(indices: Set<Int>) {
-        val p = player ?: return
+        val current = player ?: return
         if (indices.isEmpty()) return
-        val sorted = indices.filter { it in _state.value.tracks.indices }.sortedDescending()
-        for (i in sorted) p.removeMediaItem(i)
-        _state.update { s -> s.copy(tracks = s.tracks.filterIndexed { i, _ -> i !in indices }, selected = emptySet()) }
+        val sorted = indices.filter { it in mutableState.value.tracks.indices }.sortedDescending()
+        for (index in sorted) current.removeMediaItem(index)
+        mutableState.update { state ->
+            state.copy(
+                tracks = state.tracks.filterIndexed { index, _ ->
+                    index !in indices
+                },
+                selected = emptySet(),
+            )
+        }
     }
 
-    fun toggleSelected(index: Int) = _state.update { s ->
-        s.copy(selected = if (index in s.selected) s.selected - index else s.selected + index)
+    fun toggleSelected(index: Int) = mutableState.update { state ->
+        state.copy(
+            selected = if (index in
+                state.selected
+            ) {
+                state.selected - index
+            } else {
+                state.selected + index
+            },
+        )
     }
 
-    fun selectAllOrNone() = _state.update { s ->
-        s.copy(selected = if (s.selected.size == s.tracks.size) emptySet() else s.tracks.indices.toSet())
+    fun selectAllOrNone() = mutableState.update { state ->
+        val all = state.selected.size == state.tracks.size
+        state.copy(selected = if (all) emptySet() else state.tracks.indices.toSet())
     }
 
-    /** Keeps [state.tracks] in sync when ExoPlayer's timeline changed through the session (e.g. notification). */
     fun syncFromPlayer() {
-        val p = player ?: return
-        val n = p.mediaItemCount
-        if (n == _state.value.tracks.size) return
-        val tracks = (0 until n).map { MediaItems.toTrack(p.getMediaItemAt(it)) }
-        _state.update { it.copy(tracks = tracks, selected = emptySet()) }
+        val current = player ?: return
+        val count = current.mediaItemCount
+        if (count == mutableState.value.tracks.size) return
+        val tracks = (0 until count).map { MediaItems.toTrack(current.getMediaItemAt(it)) }
+        mutableState.update { it.copy(tracks = tracks, selected = emptySet()) }
     }
-
-    // ------------------------------------------------------------------ likes
 
     fun toggleLike(track: Track) {
         val liked = library.isLiked(track.id)
         scope.launch {
             try {
-                kotlinx.coroutines.withContext(Dispatchers.IO) { library.setLiked(track.id, !liked) }
-                say(if (liked) "Removed from Liked" else "Added to Liked")
-            } catch (e: Exception) {
-                say("Error: ${e.message}")
+                withContext(Dispatchers.IO) { library.setLiked(track.id, !liked) }
+                emit(QueueEvent.LikeChanged(liked = !liked))
+            } catch (failed: Exception) {
+                emit(QueueEvent.Failed(Stage.LIKE, describe(failed)))
             }
         }
     }
@@ -257,17 +256,29 @@ class QueueManager(private val library: Library, private val api: YandexApi) {
     fun dislikeAndSkip(track: Track) {
         scope.launch {
             try {
-                kotlinx.coroutines.withContext(Dispatchers.IO) { library.dislike(track.id) }
-                say("Disliked · skipping")
-            } catch (e: Exception) {
-                say("Error: ${e.message}")
+                withContext(Dispatchers.IO) { library.dislike(track.id) }
+                emit(QueueEvent.DislikedAndSkipped)
+            } catch (failed: Exception) {
+                emit(QueueEvent.Failed(Stage.LIKE, describe(failed)))
             }
         }
-        val p = player ?: return
-        if (p.hasNextMediaItem()) p.seekToNextMediaItem() else if (!_state.value.isWave) p.stop()
+        val current = player ?: return
+        if (current.hasNextMediaItem()) {
+            current.seekToNextMediaItem()
+        } else if (!mutableState.value.isWave) {
+            current.stop()
+        }
     }
 
-    // ------------------------------------------------------------------ internals
+    private fun emit(event: QueueEvent) {
+        mutableEvents.tryEmit(event)
+    }
+
+    private fun describe(failed: Exception): String = failed.message ?: failed.javaClass.simpleName
+
+    private fun newSourceRequest(): Long = ++sourceTicket
+
+    private fun isLatest(ticket: Long) = ticket == sourceTicket
 
     private fun reportPlay(track: Track) {
         val account = library.account.value
@@ -275,45 +286,48 @@ class QueueManager(private val library: Library, private val api: YandexApi) {
         scope.launch(Dispatchers.IO) {
             try {
                 api.reportPlayStarted(account, track, UUID.randomUUID().toString())
-            } catch (_: Exception) {
-                // Listen marks are best-effort, as in the desktop app.
+            } catch (ignored: Exception) {
+                // Listen marks are best-effort; the desktop app drops them the same way.
             }
         }
     }
 
-    private fun maybeLoadMore(p: Player) {
-        val s = _state.value
+    private fun maybeLoadMore(current: Player) {
+        val state = mutableState.value
         val session = waveSessionId ?: return
-        if (!s.isWave || s.loadingMore) return
-        val left = p.mediaItemCount - p.currentMediaItemIndex
+        if (!state.isWave || state.loadingMore) return
+        val left = current.mediaItemCount - current.currentMediaItemIndex
         if (left > LOAD_MORE_WHEN_LEFT) return
         val generation = queueGeneration
-        val wasEnded = p.playbackState == Player.STATE_ENDED
-        val oldCount = p.mediaItemCount
-        _state.update { it.copy(loadingMore = true) }
-        val queue = s.tracks.takeLast(5).map { it.id }
+        val wasEnded = current.playbackState == Player.STATE_ENDED
+        val oldCount = current.mediaItemCount
+        mutableState.update { it.copy(loadingMore = true) }
+        val recent = state.tracks.takeLast(WAVE_HISTORY).map { it.id }
         scope.launch {
-            val batch: WaveBatch? = try {
-                kotlinx.coroutines.withContext(Dispatchers.IO) { library.moreWave(session, queue) }
-            } catch (e: Exception) {
-                say("Wave: ${e.message}")
-                null
-            }
+            val batch: WaveBatch? =
+                try {
+                    withContext(Dispatchers.IO) { library.moreWave(session, recent) }
+                } catch (failed: Exception) {
+                    emit(QueueEvent.Failed(Stage.WAVE_MORE, describe(failed)))
+                    null
+                }
             if (generation != queueGeneration) return@launch
-            _state.update { it.copy(loadingMore = false) }
+            mutableState.update { it.copy(loadingMore = false) }
             if (batch == null || batch.tracks.isEmpty()) return@launch
             appendTracks(batch.tracks)
-            val pl = player ?: return@launch
-            if (wasEnded || pl.playbackState == Player.STATE_ENDED) {
-                pl.seekTo(oldCount, 0L)
-                pl.prepare()
-                pl.play()
+            val afterAppend = player ?: return@launch
+            if (wasEnded || afterAppend.playbackState == Player.STATE_ENDED) {
+                afterAppend.seekTo(oldCount, 0L)
+                afterAppend.prepare()
+                afterAppend.play()
             }
         }
     }
 
     companion object {
-        /** Ask the wave for more when this many tracks (or fewer) remain after the current one. */
+        const val MY_WAVE_SEED = "user:onyourwave"
         const val LOAD_MORE_WHEN_LEFT = 2
+        const val WAVE_HISTORY = 5
+        private const val EVENT_BUFFER = 8
     }
 }

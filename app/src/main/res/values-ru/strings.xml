@@ -99,4 +99,30 @@
     <string name="library_loading">ЗАГРУЗКА…</string>
     <string name="library_empty">ПУСТО</string>
     <string name="library_error">ОШИБКА: %1$s</string>
+    <string name="queue_search_title">Поиск: %1$s</string>
+    <string name="queue_searching">%1$s…</string>
+    <string name="queue_loading">%1$s: загрузка…</string>
+    <plurals name="queue_loaded">
+        <item quantity="one">%1$s: %2$d трек</item>
+        <item quantity="few">%1$s: %2$d трека</item>
+        <item quantity="many">%1$s: %2$d треков</item>
+        <item quantity="other">%1$s: %2$d трека</item>
+    </plurals>
+    <string name="queue_empty">%1$s: пусто</string>
+    <string name="queue_wave_started">%1$s: волна запущена</string>
+    <string name="queue_nothing_found">Ничего не найдено</string>
+    <string name="queue_player_not_ready">Плеер ещё запускается, попробуйте снова</string>
+    <string name="queue_liked">Добавлено в «Мне нравится»</string>
+    <string name="queue_unliked">Убрано из «Мне нравится»</string>
+    <string name="queue_disliked">Не нравится · пропускаю</string>
+    <string name="queue_wave_error">Ошибка волны: %1$s</string>
+    <string name="queue_wave_more_error">Волна: %1$s</string>
+    <string name="queue_search_error">Ошибка поиска: %1$s</string>
+    <string name="queue_playback_error">Ошибка воспроизведения: %1$s</string>
+    <string name="player_service_unavailable">Сервис плеера недоступен: %1$s</string>
+    <string name="error_generic">Ошибка: %1$s</string>
+
+    <string name="theme_green">Классический зелёный</string>
+    <string name="theme_amber">Янтарный</string>
+    <string name="theme_ice">Ледяной синий</string>
 </resources>

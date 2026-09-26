@@ -4,178 +4,186 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 
-/** Port of src/yandex/Library.cpp: the user's library on top of [YandexApi]. */
 class Library(val api: YandexApi) {
-    private val _account = MutableStateFlow(Account())
-    val account: StateFlow<Account> = _account.asStateFlow()
+    private val mutableAccount = MutableStateFlow(Account())
+    val account: StateFlow<Account> = mutableAccount.asStateFlow()
 
-    private val _likedIds = MutableStateFlow<Set<String>>(emptySet())
-    val likedIds: StateFlow<Set<String>> = _likedIds.asStateFlow()
+    private val mutableLikedIds = MutableStateFlow<Set<String>>(emptySet())
+    val likedIds: StateFlow<Set<String>> = mutableLikedIds.asStateFlow()
 
-    val isLoggedIn: Boolean get() = _account.value.isValid
-    fun isLiked(trackId: String) = trackId in _likedIds.value
+    val isLoggedIn: Boolean get() = mutableAccount.value.isValid
 
-    private fun userPath(rest: String) = "/users/${_account.value.uid}/$rest"
+    fun isLiked(trackId: String): Boolean = trackId in mutableLikedIds.value
 
     suspend fun connectAccount(): Account {
-        val acc = api.accountStatus()
-        _account.value = acc
-        return acc
+        val account = api.accountStatus()
+        mutableAccount.value = account
+        return account
     }
 
     fun logout() {
-        _account.value = Account()
-        _likedIds.value = emptySet()
+        mutableAccount.value = Account()
+        mutableLikedIds.value = emptySet()
         api.token = ""
     }
 
-    /** Fetches full track objects in chunks of 250, keeping the order. */
     suspend fun tracksByIds(ids: List<String>): List<Track> {
-        val out = ArrayList<Track>(ids.size)
-        for (chunk in ids.chunked(TRACKS_PER_REQUEST)) out += api.tracks(chunk)
-        return out
+        val tracks = ArrayList<Track>(ids.size)
+        for (chunk in ids.chunked(TRACKS_PER_REQUEST)) tracks += api.tracks(chunk)
+        return tracks
     }
 
     suspend fun likedTrackIds(): List<String> {
-        val r = api.getJson(userPath("likes/tracks"))
-        val ids = r.obj["library"].obj["tracks"].arr.mapNotNull { v -> idString(v.obj["id"]).ifEmpty { null } }
-        _likedIds.value = ids.toSet()
+        val result = api.getJson(userPath("likes/tracks"))
+        val ids =
+            result.objectOrEmpty["library"].objectOrEmpty["tracks"].arrayOrEmpty.mapNotNull { item ->
+                idString(item.objectOrEmpty["id"]).ifEmpty { null }
+            }
+        mutableLikedIds.value = ids.toSet()
         return ids
     }
 
     suspend fun likedTracks(): List<Track> = tracksByIds(likedTrackIds())
 
     suspend fun userPlaylists(): List<PlaylistRef> =
-        api.getJson(userPath("playlists/list")).arr.mapNotNull { v ->
-            val o = v.obj
-            var owner = idString(o["uid"])
-            if (owner.isEmpty()) owner = idString(o["owner"].obj["uid"])
-            val kind = idString(o["kind"])
+        api.getJson(userPath("playlists/list")).arrayOrEmpty.mapNotNull { element ->
+            val item = element.objectOrEmpty
+            val owner = idString(item["uid"]).ifEmpty { idString(item["owner"].objectOrEmpty["uid"]) }
+            val kind = idString(item["kind"])
             if (kind.isEmpty()) return@mapNotNull null
-            PlaylistRef(owner, kind, o.str("title"), (o["trackCount"] as? JsonPrimitive)?.content?.toDoubleOrNull()?.toInt() ?: 0)
+            PlaylistRef(owner, kind, item.string("title"), item.int("trackCount", 0))
         }
 
     suspend fun playlistTracks(playlist: PlaylistRef): List<Track> {
-        val r = api.getJson("/users/${playlist.ownerUid}/playlists/${playlist.kind}")
-        val items = r.obj["tracks"].arr
-        // Items usually embed full track objects; fall back to fetching by id.
-        val embedded = YandexApi.parseTrackArray(items)
+        val result = api.getJson("/users/${playlist.ownerUid}/playlists/${playlist.kind}")
+        val items = result.objectOrEmpty["tracks"].arrayOrEmpty
+        val embedded = TrackParsing.parseTrackArray(items)
         if (embedded.all { it.title.isNotEmpty() }) return embedded
-        return tracksByIds(items.map { idString(it.obj["id"]) })
+        return tracksByIds(items.map { idString(it.objectOrEmpty["id"]) })
     }
 
     suspend fun likedArtists(): List<NamedRef> =
-        api.getJson(userPath("likes/artists")).arr.mapNotNull { v ->
-            var o = v.obj
-            (o["artist"] as? JsonObject)?.let { o = it }
-            val id = idString(o["id"])
-            if (id.isEmpty()) null else NamedRef(id, o.str("name"))
+        api.getJson(userPath("likes/artists")).arrayOrEmpty.mapNotNull { element ->
+            val item = unwrap(element.objectOrEmpty, "artist")
+            val id = idString(item["id"])
+            if (id.isEmpty()) null else NamedRef(id, item.string("name"))
         }
 
     suspend fun artistTopTracks(artistId: String): List<Track> {
-        val r = api.getJson("/artists/$artistId/track-ids-by-rating")
-        val ids = r.obj["tracks"].arr.map { idString(it) }
+        val result = api.getJson("/artists/$artistId/track-ids-by-rating")
+        val ids = result.objectOrEmpty["tracks"].arrayOrEmpty.map { idString(it) }
         return tracksByIds(ids.take(ARTIST_TOP_LIMIT))
     }
 
     suspend fun likedAlbums(): List<NamedRef> {
-        val ids = api.getJson(userPath("likes/albums")).arr.mapNotNull { v ->
-            var o = v.obj
-            (o["album"] as? JsonObject)?.let { o = it }
-            idString(o["id"]).ifEmpty { null }
-        }
+        val ids =
+            api.getJson(userPath("likes/albums")).arrayOrEmpty.mapNotNull { element ->
+                idString(unwrap(element.objectOrEmpty, "album")["id"]).ifEmpty { null }
+            }
         if (ids.isEmpty()) return emptyList()
-        return api.postForm("/albums", listOf("album-ids" to ids.joinToString(","))).arr.mapNotNull { v ->
-            val o = v.obj
-            if (o.str("type") == "podcast") return@mapNotNull null
-            val artists = o["artists"] as? JsonArray
-            var name = o.str("title")
-            if (!artists.isNullOrEmpty()) name = artists.first().obj.str("name") + " - " + name
-            NamedRef(idString(o["id"]), name)
+        val albums = api.postForm("/albums", listOf("album-ids" to ids.joinToString(",")))
+        return albums.arrayOrEmpty.mapNotNull { element ->
+            val item = element.objectOrEmpty
+            if (item.string("type") == "podcast") return@mapNotNull null
+            val firstArtist = item["artists"].arrayOrEmpty.firstOrNull()?.objectOrEmpty?.string("name")
+            val title = item.string("title")
+            NamedRef(idString(item["id"]), if (firstArtist == null) title else "$firstArtist - $title")
         }
     }
 
     suspend fun albumTracks(albumId: String): List<Track> {
-        val r = api.getJson("/albums/$albumId/with-tracks")
-        return r.obj["volumes"].arr.flatMap { vol ->
-            YandexApi.parseTrackArray(vol).map { t -> if (t.albumId.isEmpty()) t.copy(albumId = albumId) else t }
+        val result = api.getJson("/albums/$albumId/with-tracks")
+        return result.objectOrEmpty["volumes"].arrayOrEmpty.flatMap { volume ->
+            TrackParsing.parseTrackArray(volume).map { track ->
+                if (track.albumId.isEmpty()) track.copy(albumId = albumId) else track
+            }
         }
     }
 
     suspend fun stations(): List<Station> =
-        api.getJson("/rotor/stations/list", mapOf("language" to "ru")).arr.mapNotNull { v ->
-            val st = v.obj["station"].obj
-            val id = st["id"].obj
-            val type = id.str("type")
-            if (type.isEmpty()) null else Station("$type:${id.str("tag")}", type, st.str("name"))
+        api.getJson("/rotor/stations/list", mapOf("language" to "ru")).arrayOrEmpty.mapNotNull { element ->
+            val station = element.objectOrEmpty["station"].objectOrEmpty
+            val id = station["id"].objectOrEmpty
+            val type = id.string("type")
+            if (type.isEmpty()) null else Station("$type:${id.string("tag")}", type, station.string("name"))
         }
 
     suspend fun startWave(seeds: List<String>): WaveBatch {
-        val body = buildJsonObject {
-            putJsonArray("seeds") { seeds.forEach { add(JsonPrimitive(it)) } }
-            put("includeTracksInResponse", true)
-            put("includeWaveModel", true)
-            put("interactive", true)
+        val body =
+            buildJsonObject {
+                putJsonArray("seeds") { seeds.forEach { add(JsonPrimitive(it)) } }
+                put("includeTracksInResponse", true)
+                put("includeWaveModel", true)
+                put("interactive", true)
+            }
+        val batch = parseWaveBatch(api.postJson("/rotor/session/new", body))
+        if (batch.sessionId.isEmpty()) {
+            throw MalformedResponseException("POST", "/rotor/session/new", "no radioSessionId in the result")
         }
-        val b = parseWaveBatch(api.postJson("/rotor/session/new", body))
-        if (b.sessionId.isEmpty()) throw ApiException("no radio session")
-        return b
+        return batch
     }
 
     suspend fun moreWave(sessionId: String, queue: List<String>): WaveBatch {
         val body = buildJsonObject { putJsonArray("queue") { queue.forEach { add(JsonPrimitive(it)) } } }
-        val b = parseWaveBatch(api.postJson("/rotor/session/$sessionId/tracks", body))
-        return if (b.sessionId.isEmpty()) b.copy(sessionId = sessionId) else b
+        val batch = parseWaveBatch(api.postJson("/rotor/session/$sessionId/tracks", body))
+        return if (batch.sessionId.isEmpty()) batch.copy(sessionId = sessionId) else batch
     }
 
     suspend fun search(text: String): SearchResult {
-        val o = api.getJson("/search", mapOf("text" to text, "type" to "all", "page" to "0")).obj
-        val best = o["best"].obj
-        val item = best["result"].obj
+        val query = mapOf("text" to text, "type" to "all", "page" to "0")
+        val result = api.getJson("/search", query).objectOrEmpty
+        val best = result["best"].objectOrEmpty
+        val bestItem = best["result"].objectOrEmpty
         return SearchResult(
-            bestType = best.str("type"),
-            bestId = idString(item["id"]),
-            bestName = if (item.containsKey("name")) item.str("name") else item.str("title"),
-            tracks = YandexApi.parseTrackArray(o["tracks"].obj["results"]),
+            bestType = best.string("type"),
+            bestId = idString(bestItem["id"]),
+            bestName = if (bestItem.containsKey(
+                    "name",
+                )
+            ) {
+                bestItem.string("name")
+            } else {
+                bestItem.string("title")
+            },
+            tracks = TrackParsing.parseTrackArray(result["tracks"].objectOrEmpty["results"]),
         )
     }
 
     suspend fun setLiked(trackId: String, liked: Boolean) {
-        api.postForm(userPath(if (liked) "likes/tracks/add-multiple" else "likes/tracks/remove"), listOf("track-ids" to trackId))
-        _likedIds.update { if (liked) it + trackId else it - trackId }
+        val path = userPath(if (liked) "likes/tracks/add-multiple" else "likes/tracks/remove")
+        api.postForm(path, listOf("track-ids" to trackId))
+        mutableLikedIds.update { if (liked) it + trackId else it - trackId }
     }
 
     suspend fun dislike(trackId: String) {
         api.postForm(userPath("dislikes/tracks/add-multiple"), listOf("track-ids" to trackId))
-        _likedIds.update { it - trackId }
+        mutableLikedIds.update { it - trackId }
     }
+
+    private fun userPath(rest: String) = "/users/${mutableAccount.value.uid}/$rest"
+
+    private fun unwrap(item: JsonObject, key: String): JsonObject = item[key] as? JsonObject ?: item
 
     companion object {
         const val TRACKS_PER_REQUEST = 250
         const val ARTIST_TOP_LIMIT = 100
 
-        fun parseWaveBatch(result: kotlinx.serialization.json.JsonElement): WaveBatch {
-            val r = result.obj
-            return WaveBatch(r.str("radioSessionId"), r.str("batchId"), YandexApi.parseTrackArray(r["sequence"]))
+        fun parseWaveBatch(result: JsonElement): WaveBatch {
+            val item = result.objectOrEmpty
+            return WaveBatch(
+                sessionId = item.string("radioSessionId"),
+                batchId = item.string("batchId"),
+                tracks = TrackParsing.parseTrackArray(item["sequence"]),
+            )
         }
 
-        /** Group label for the Stations screen (port of stationTypeTitle in LibraryMenu.cpp). */
-        fun stationGroupKey(type: String): String = when (type) {
-            "user", "personal" -> "personal"
-            "genre" -> "genre"
-            "mood" -> "mood"
-            "activity" -> "activity"
-            "epoch" -> "epoch"
-            "local" -> "local"
-            "author" -> "author"
-            else -> type
-        }
+        fun stationGroupKey(type: String): String = if (type == "user") "personal" else type
     }
 }
