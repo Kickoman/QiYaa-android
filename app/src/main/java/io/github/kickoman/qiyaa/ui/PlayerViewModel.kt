@@ -2,13 +2,16 @@ package io.github.kickoman.qiyaa.ui
 
 import android.app.Application
 import android.content.ComponentName
+import androidx.annotation.OptIn
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
+import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.appGraph
 import io.github.kickoman.qiyaa.audio.AudioBus
 import io.github.kickoman.qiyaa.audio.EqPresets
@@ -19,14 +22,16 @@ import io.github.kickoman.qiyaa.playback.PlaybackService
 import io.github.kickoman.qiyaa.yandex.Track
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-/** Snapshot of ExoPlayer state for the Player screen. */
 data class PlayerUi(
     val index: Int = -1,
     val count: Int = 0,
@@ -43,225 +48,187 @@ data class PlayerUi(
     val isBuffering: Boolean get() = playbackState == Player.STATE_BUFFERING && playWhenReady
 }
 
-/** Transport + audio settings; talks to the service through a MediaController. */
-class PlayerViewModel(app: Application) : AndroidViewModel(app) {
-    private val graph = app.appGraph
+class PlayerViewModel(application: Application) : AndroidViewModel(application) {
+    private val graph = application.appGraph
     val settings = graph.settings
     val audioBus = graph.audioBus
     val queue = graph.queue
     val library = graph.library
 
-    private val _ui = MutableStateFlow(PlayerUi())
-    val ui: StateFlow<PlayerUi> = _ui.asStateFlow()
+    private val mutableUi = MutableStateFlow(PlayerUi())
+    val ui: StateFlow<PlayerUi> = mutableUi.asStateFlow()
+
+    private val mutableNotices = MutableSharedFlow<String>(extraBufferCapacity = NOTICE_BUFFER)
+    val notices: SharedFlow<String> = mutableNotices.asSharedFlow()
+
+    val eqPreset: StateFlow<String> = settings.eqPreset
+
+    private val mutablePresetsOpen = MutableStateFlow(false)
+    val presetsOpen: StateFlow<Boolean> = mutablePresetsOpen.asStateFlow()
 
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var controller: MediaController? = null
     private var ticker: Job? = null
 
-    /** Name of the current EQ preset ("Custom" when bands were touched). */
-    val eqPreset: StateFlow<String> = settings.eqPreset
-    private val _presetsOpen = MutableStateFlow(false)
-    val presetsOpen: StateFlow<Boolean> = _presetsOpen.asStateFlow()
-
-    private val listener = object : Player.Listener {
-        override fun onEvents(player: Player, events: Player.Events) {
-            if (events.containsAny(Player.EVENT_TIMELINE_CHANGED, Player.EVENT_MEDIA_ITEM_TRANSITION)) queue.syncFromPlayer()
-            refresh(player)
+    private val listener =
+        object : Player.Listener {
+            override fun onEvents(player: Player, events: Player.Events) {
+                if (events.containsAny(Player.EVENT_TIMELINE_CHANGED, Player.EVENT_MEDIA_ITEM_TRANSITION)) {
+                    queue.syncFromPlayer()
+                }
+                refresh(player)
+            }
         }
-    }
 
     init {
         connect()
-        viewModelScope.launch {
-            settings.volume.collect { v -> controller?.volume = AudioBus.volumeGain(v) }
-        }
+        viewModelScope.launch { settings.volume.collect { controller?.volume = AudioBus.volumeGain(it) } }
         viewModelScope.launch { settings.balance.collect { audioBus.setBalance(it) } }
-        viewModelScope.launch { settings.eq.collect { audioBus.eq.publish(it) } }
+        viewModelScope.launch { settings.eq.collect { audioBus.equalizer.publish(it) } }
     }
-
-    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-    private fun connect() {
-        val app = getApplication<Application>()
-        val token = SessionToken(app, ComponentName(app, PlaybackService::class.java))
-        val future = MediaController.Builder(app, token).buildAsync()
-        controllerFuture = future
-        future.addListener({
-            val c = try {
-                future.get()
-            } catch (e: Exception) {
-                queue.say("Player service unavailable: ${e.message}")
-                return@addListener
-            }
-            controller = c
-            c.addListener(listener)
-            c.volume = AudioBus.volumeGain(settings.volume.value)
-            refresh(c)
-        }, ContextCompat.getMainExecutor(app))
-    }
-
-    private fun refresh(p: Player) {
-        val item = p.currentMediaItem
-        _ui.value = PlayerUi(
-            index = if (item == null) -1 else p.currentMediaItemIndex,
-            count = p.mediaItemCount,
-            isPlaying = p.isPlaying,
-            playWhenReady = p.playWhenReady,
-            playbackState = p.playbackState,
-            positionMs = p.currentPosition.coerceAtLeast(0),
-            durationMs = p.duration.takeIf { it > 0 } ?: (item?.let { MediaItems.toTrack(it).durationMs } ?: 0L),
-            shuffle = p.shuffleModeEnabled,
-            repeat = p.repeatMode != Player.REPEAT_MODE_OFF,
-            current = item?.let(MediaItems::toTrack),
-        )
-        if (p.isPlaying) startTicker() else ticker?.cancel()
-    }
-
-    private fun startTicker() {
-        if (ticker?.isActive == true) return
-        ticker = viewModelScope.launch {
-            while (isActive) {
-                delay(250)
-                val c = controller ?: break
-                _ui.update { it.copy(positionMs = c.currentPosition.coerceAtLeast(0), durationMs = c.duration.takeIf { d -> d > 0 } ?: it.durationMs) }
-            }
-        }
-    }
-
-    // ------------------------------------------------------------------ transport
 
     fun togglePlay() {
-        val c = controller ?: return
-        if (c.mediaItemCount == 0) {
-            queue.say(getApplication<Application>().getString(io.github.kickoman.qiyaa.R.string.player_nothing_to_play))
+        val current = controller ?: return
+        if (current.mediaItemCount == 0) {
+            notify(string(R.string.player_nothing_to_play))
             return
         }
-        if (c.isPlaying || (c.playWhenReady && c.playbackState == Player.STATE_BUFFERING)) {
-            c.pause()
+        if (current.isPlaying || (current.playWhenReady && current.playbackState == Player.STATE_BUFFERING)) {
+            current.pause()
         } else {
-            if (c.playbackState == Player.STATE_IDLE) c.prepare()
-            if (c.playbackState == Player.STATE_ENDED) c.seekTo(0, 0)
-            c.play()
+            if (current.playbackState == Player.STATE_IDLE) current.prepare()
+            if (current.playbackState == Player.STATE_ENDED) current.seekTo(0, 0)
+            current.play()
         }
     }
 
     fun stop() {
-        val c = controller ?: return
-        c.pause()
-        c.seekTo(0)
+        val current = controller ?: return
+        current.pause()
+        current.seekTo(0)
     }
 
-    /** Past the last track: a wave is still loading more, a finite queue stops (as in Winamp). */
     fun next() {
-        val c = controller ?: return
+        val current = controller ?: return
         when {
-            c.hasNextMediaItem() -> c.seekToNextMediaItem()
-            queue.state.value.isWave -> queue.say(str(io.github.kickoman.qiyaa.R.string.playlist_loading_more_toast))
+            current.hasNextMediaItem() -> current.seekToNextMediaItem()
+            queue.state.value.isWave -> notify(string(R.string.playlist_loading_more_toast))
             else -> stop()
         }
     }
 
-    /** Winamp-like: within the first 3 s go to the previous track, otherwise restart. */
-    fun prev() {
-        val c = controller ?: return
-        if (c.currentPosition > 3000) c.seekTo(0)
-        else if (c.hasPreviousMediaItem()) c.seekToPreviousMediaItem()
-        else c.seekTo(0)
+    fun previous() {
+        val current = controller ?: return
+        when {
+            current.currentPosition > RESTART_AFTER_MS -> current.seekTo(0)
+            current.hasPreviousMediaItem() -> current.seekToPreviousMediaItem()
+            else -> current.seekTo(0)
+        }
     }
 
-    fun playIndex(i: Int) {
-        val c = controller ?: return
-        if (i !in 0 until c.mediaItemCount) return
-        c.seekTo(i, 0)
-        if (c.playbackState == Player.STATE_IDLE) c.prepare()
-        c.play()
+    fun playIndex(index: Int) {
+        val current = controller ?: return
+        if (index !in 0 until current.mediaItemCount) return
+        current.seekTo(index, 0)
+        if (current.playbackState == Player.STATE_IDLE) current.prepare()
+        current.play()
     }
 
-    fun seekToFraction(f: Float) {
-        val c = controller ?: return
-        val d = _ui.value.durationMs
-        if (d <= 0) return
-        val pos = (d * f.coerceIn(0f, 1f)).toLong()
-        c.seekTo(pos)
-        _ui.update { it.copy(positionMs = pos) }
+    fun seekToFraction(fraction: Float) {
+        val current = controller ?: return
+        val durationMs = mutableUi.value.durationMs
+        if (durationMs <= 0) return
+        val positionMs = (durationMs * fraction.coerceIn(0f, 1f)).toLong()
+        current.seekTo(positionMs)
+        mutableUi.update { it.copy(positionMs = positionMs) }
     }
 
-    /** Live position preview while dragging the seek bar (no seek yet). */
-    fun previewPosition(f: Float) {
-        val d = _ui.value.durationMs
-        if (d > 0) _ui.update { it.copy(positionMs = (d * f.coerceIn(0f, 1f)).toLong()) }
+    fun previewPosition(fraction: Float) {
+        val durationMs = mutableUi.value.durationMs
+        if (durationMs >
+            0
+        ) {
+            mutableUi.update { it.copy(positionMs = (durationMs * fraction.coerceIn(0f, 1f)).toLong()) }
+        }
     }
 
     fun toggleShuffle() {
-        val c = controller ?: return
-        c.shuffleModeEnabled = !c.shuffleModeEnabled
-        queue.say(str(if (c.shuffleModeEnabled) io.github.kickoman.qiyaa.R.string.player_shuffle_on else io.github.kickoman.qiyaa.R.string.player_shuffle_off))
+        val current = controller ?: return
+        current.shuffleModeEnabled = !current.shuffleModeEnabled
+        notify(
+            string(
+                if (current.shuffleModeEnabled) R.string.player_shuffle_on else R.string.player_shuffle_off,
+            ),
+        )
     }
 
     fun toggleRepeat() {
-        val c = controller ?: return
-        val on = c.repeatMode == Player.REPEAT_MODE_OFF
-        c.repeatMode = if (on) Player.REPEAT_MODE_ALL else Player.REPEAT_MODE_OFF
-        queue.say(str(if (on) io.github.kickoman.qiyaa.R.string.player_repeat_on else io.github.kickoman.qiyaa.R.string.player_repeat_off))
+        val current = controller ?: return
+        val on = current.repeatMode == Player.REPEAT_MODE_OFF
+        current.repeatMode = if (on) Player.REPEAT_MODE_ALL else Player.REPEAT_MODE_OFF
+        notify(string(if (on) R.string.player_repeat_on else R.string.player_repeat_off))
     }
 
     fun toggleMiniPlay() {
-        val c = controller ?: return
-        if (c.isPlaying) c.pause() else togglePlay()
+        val current = controller ?: return
+        if (current.isPlaying) current.pause() else togglePlay()
     }
 
-    // ------------------------------------------------------------------ settings
+    fun setVolume(value: Int) = settings.setVolume(value)
 
-    fun setVolume(v: Int) = settings.setVolume(v)
-    fun setBalance(v: Int) = settings.setBalance(v)
-    fun cycleVis() = settings.setVisMode((settings.visMode.value + 1) % 3)
+    fun setBalance(value: Int) = settings.setBalance(value)
+
+    fun cycleVisualizer() = settings.setVisualizerMode(settings.visualizerMode.value.next())
+
     fun toggleRemaining() = settings.setTimeRemaining(!settings.timeRemaining.value)
 
     fun cycleTheme() {
         val next = settings.theme.value.next()
         settings.setTheme(next)
-        queue.say(str(io.github.kickoman.qiyaa.R.string.player_theme, next.label))
+        notify(string(R.string.player_theme, string(next.labelId())))
     }
 
     fun toggleLikeCurrent() {
-        _ui.value.current?.let(queue::toggleLike)
+        mutableUi.value.current?.let(queue::toggleLike)
     }
 
     fun dislikeCurrent() {
-        _ui.value.current?.let(queue::dislikeAndSkip)
+        mutableUi.value.current?.let(queue::dislikeAndSkip)
     }
 
-    // ------------------------------------------------------------------ equalizer
-
     fun setEqEnabled(on: Boolean) = settings.setEq(settings.eq.value.copy(enabled = on), eqPreset.value)
+
     fun setEqAuto(on: Boolean) = settings.setEqAuto(on)
 
-    fun setBand(i: Int, db: Double) {
-        val s = settings.eq.value
-        val bands = s.bandsDb.copyOf().also { it[i] = db.coerceIn(-EqSettings.MAX_DB, EqSettings.MAX_DB) }
-        settings.setEq(s.copy(bandsDb = bands), str(io.github.kickoman.qiyaa.R.string.eq_custom))
+    fun setBand(index: Int, db: Double) {
+        settings.setEq(settings.eq.value.withBand(index, db), string(R.string.eq_custom))
     }
 
     fun setPreamp(db: Double) {
-        settings.setEq(settings.eq.value.copy(preampDb = db.coerceIn(-EqSettings.MAX_DB, EqSettings.MAX_DB)), eqPreset.value)
+        val clamped = db.coerceIn(-EqSettings.MAX_DB, EqSettings.MAX_DB)
+        settings.setEq(settings.eq.value.copy(preampDb = clamped), eqPreset.value)
     }
 
     fun applyPreset(name: String) {
-        val p = EqPresets.byName(name) ?: return
-        settings.setEq(p.settings.copy(enabled = settings.eq.value.enabled), p.name)
-        _presetsOpen.value = false
-        queue.say(str(io.github.kickoman.qiyaa.R.string.eq_applied, p.name))
+        val preset = EqPresets.byName(name) ?: return
+        settings.setEq(preset.settings.copy(enabled = settings.eq.value.enabled), preset.name)
+        mutablePresetsOpen.value = false
+        notify(string(R.string.eq_applied, preset.name))
     }
 
     fun resetFlat() {
-        settings.setEq(EqSettings(enabled = settings.eq.value.enabled), str(io.github.kickoman.qiyaa.R.string.eq_flat))
-        _presetsOpen.value = false
-        queue.say(str(io.github.kickoman.qiyaa.R.string.eq_applied_flat))
+        settings.setEq(EqSettings(enabled = settings.eq.value.enabled), string(R.string.eq_flat))
+        mutablePresetsOpen.value = false
+        notify(string(R.string.eq_applied_flat))
     }
 
-    fun openPresets() { _presetsOpen.value = true }
-    fun closePresets() { _presetsOpen.value = false }
+    fun openPresets() {
+        mutablePresetsOpen.value = true
+    }
 
-    private fun str(id: Int, vararg args: Any): String = getApplication<Application>().getString(id, *args)
+    fun closePresets() {
+        mutablePresetsOpen.value = false
+    }
 
     override fun onCleared() {
         ticker?.cancel()
@@ -269,4 +236,86 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         controllerFuture?.let(MediaController::releaseFuture)
         controller = null
     }
+
+    @OptIn(UnstableApi::class)
+    private fun connect() {
+        val application = getApplication<Application>()
+        val token = SessionToken(application, ComponentName(application, PlaybackService::class.java))
+        val future = MediaController.Builder(application, token).buildAsync()
+        controllerFuture = future
+        future.addListener({
+            val connected =
+                try {
+                    future.get()
+                } catch (failed: Exception) {
+                    notify(
+                        string(
+                            R.string.player_service_unavailable,
+                            failed.message ?: failed.javaClass.simpleName,
+                        ),
+                    )
+                    return@addListener
+                }
+            controller = connected
+            connected.addListener(listener)
+            connected.volume = AudioBus.volumeGain(settings.volume.value)
+            refresh(connected)
+        }, ContextCompat.getMainExecutor(application))
+    }
+
+    private fun refresh(player: Player) {
+        val item = player.currentMediaItem
+        val knownDuration = item?.let { MediaItems.toTrack(it).durationMs } ?: 0L
+        mutableUi.value =
+            PlayerUi(
+                index = if (item == null) -1 else player.currentMediaItemIndex,
+                count = player.mediaItemCount,
+                isPlaying = player.isPlaying,
+                playWhenReady = player.playWhenReady,
+                playbackState = player.playbackState,
+                positionMs = player.currentPosition.coerceAtLeast(0),
+                durationMs = player.duration.takeIf { it > 0 } ?: knownDuration,
+                shuffle = player.shuffleModeEnabled,
+                repeat = player.repeatMode != Player.REPEAT_MODE_OFF,
+                current = item?.let(MediaItems::toTrack),
+            )
+        if (player.isPlaying) startTicker() else ticker?.cancel()
+    }
+
+    private fun startTicker() {
+        if (ticker?.isActive == true) return
+        ticker =
+            viewModelScope.launch {
+                while (isActive) {
+                    delay(TICK_MS)
+                    val current = controller ?: break
+                    mutableUi.update {
+                        it.copy(
+                            positionMs = current.currentPosition.coerceAtLeast(0),
+                            durationMs = current.duration.takeIf { duration ->
+                                duration > 0
+                            } ?: it.durationMs,
+                        )
+                    }
+                }
+            }
+    }
+
+    private fun notify(message: String) {
+        mutableNotices.tryEmit(message)
+    }
+
+    private fun string(id: Int, vararg args: Any): String = getApplication<Application>().getString(id, *args)
+
+    companion object {
+        const val TICK_MS = 250L
+        const val RESTART_AFTER_MS = 3_000L
+        private const val NOTICE_BUFFER = 8
+    }
+}
+
+fun AccentTheme.labelId(): Int = when (this) {
+    AccentTheme.CLASSIC_GREEN -> R.string.theme_green
+    AccentTheme.AMBER -> R.string.theme_amber
+    AccentTheme.ICE_BLUE -> R.string.theme_ice
 }

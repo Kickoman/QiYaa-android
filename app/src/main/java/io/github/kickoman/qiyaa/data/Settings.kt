@@ -2,83 +2,110 @@ package io.github.kickoman.qiyaa.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import io.github.kickoman.qiyaa.audio.AudioBus
 import io.github.kickoman.qiyaa.audio.EqSettings
+import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-enum class AccentTheme(val key: String, val label: String) {
-    CLASSIC_GREEN("green", "Classic green"),
-    AMBER("amber", "Amber"),
-    ICE_BLUE("ice", "Ice blue");
-
-    fun next(): AccentTheme = entries[(ordinal + 1) % entries.size]
-
-    companion object {
-        fun fromKey(key: String?) = entries.firstOrNull { it.key == key } ?: AMBER
-    }
-}
-
-/** Persisted user settings; the same keys and defaults as the desktop app where they apply. */
 class Settings(context: Context) {
-    private val prefs: SharedPreferences = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+    private val preferences: SharedPreferences = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
-    private val _volume = MutableStateFlow(prefs.getInt("volume", 75))
-    val volume: StateFlow<Int> = _volume.asStateFlow()
-    fun setVolume(v: Int) = set(_volume, v.coerceIn(0, 100)) { putInt("volume", it) }
+    private val mutableVolume = MutableStateFlow(preferences.getInt(KEY_VOLUME, DEFAULT_VOLUME))
+    val volume: StateFlow<Int> = mutableVolume.asStateFlow()
 
-    private val _balance = MutableStateFlow(prefs.getInt("balance", 0))
-    val balance: StateFlow<Int> = _balance.asStateFlow()
-    fun setBalance(v: Int) = set(_balance, v.coerceIn(-100, 100)) { putInt("balance", it) }
+    private val mutableBalance = MutableStateFlow(preferences.getInt(KEY_BALANCE, 0))
+    val balance: StateFlow<Int> = mutableBalance.asStateFlow()
 
-    /** 0 = spectrum, 1 = oscilloscope, 2 = off. */
-    private val _visMode = MutableStateFlow(prefs.getInt("vis/mode", 0).coerceIn(0, 2))
-    val visMode: StateFlow<Int> = _visMode.asStateFlow()
-    fun setVisMode(v: Int) = set(_visMode, v.coerceIn(0, 2)) { putInt("vis/mode", it) }
+    private val mutableVisualizerMode =
+        MutableStateFlow(VisualizerMode.fromStored(preferences.getInt(KEY_VISUALIZER_MODE, 0)))
+    val visualizerMode: StateFlow<VisualizerMode> = mutableVisualizerMode.asStateFlow()
 
-    private val _timeRemaining = MutableStateFlow(prefs.getBoolean("time/remaining", false))
-    val timeRemaining: StateFlow<Boolean> = _timeRemaining.asStateFlow()
-    fun setTimeRemaining(v: Boolean) = set(_timeRemaining, v) { putBoolean("time/remaining", it) }
+    private val mutableTimeRemaining = MutableStateFlow(preferences.getBoolean(KEY_TIME_REMAINING, false))
+    val timeRemaining: StateFlow<Boolean> = mutableTimeRemaining.asStateFlow()
 
-    private val _eqAuto = MutableStateFlow(prefs.getBoolean("equalizer/auto", false))
-    val eqAuto: StateFlow<Boolean> = _eqAuto.asStateFlow()
-    fun setEqAuto(v: Boolean) = set(_eqAuto, v) { putBoolean("equalizer/auto", it) }
+    private val mutableEqAuto = MutableStateFlow(preferences.getBoolean(KEY_EQ_AUTO, false))
+    val eqAuto: StateFlow<Boolean> = mutableEqAuto.asStateFlow()
 
-    private val _eqPreset = MutableStateFlow(prefs.getString("equalizer/preset", "Flat").orEmpty())
-    val eqPreset: StateFlow<String> = _eqPreset.asStateFlow()
+    private val mutableEqPreset =
+        MutableStateFlow(preferences.getString(KEY_EQ_PRESET, DEFAULT_EQ_PRESET).orEmpty())
+    val eqPreset: StateFlow<String> = mutableEqPreset.asStateFlow()
 
-    private val _eq = MutableStateFlow(loadEq())
-    val eq: StateFlow<EqSettings> = _eq.asStateFlow()
-    fun setEq(s: EqSettings, presetName: String) {
-        _eq.value = s
-        _eqPreset.value = presetName
-        prefs.edit()
-            .putBoolean("equalizer/enabled", s.enabled)
-            .putFloat("equalizer/preamp", s.preampDb.toFloat())
-            .putString("equalizer/bands", s.bandsDb.joinToString(",") { "%.1f".format(java.util.Locale.ROOT, it) })
-            .putString("equalizer/preset", presetName)
+    private val mutableEq = MutableStateFlow(loadEq())
+    val eq: StateFlow<EqSettings> = mutableEq.asStateFlow()
+
+    private val mutableTheme = MutableStateFlow(AccentTheme.fromKey(preferences.getString(KEY_THEME, null)))
+    val theme: StateFlow<AccentTheme> = mutableTheme.asStateFlow()
+
+    fun setVolume(value: Int) {
+        mutableVolume.value = value.coerceIn(0, AudioBus.MAX_VOLUME)
+        preferences.edit().putInt(KEY_VOLUME, mutableVolume.value).apply()
+    }
+
+    fun setBalance(value: Int) {
+        mutableBalance.value = value.coerceIn(-AudioBus.MAX_BALANCE, AudioBus.MAX_BALANCE)
+        preferences.edit().putInt(KEY_BALANCE, mutableBalance.value).apply()
+    }
+
+    fun setVisualizerMode(mode: VisualizerMode) {
+        mutableVisualizerMode.value = mode
+        preferences.edit().putInt(KEY_VISUALIZER_MODE, mode.storedValue).apply()
+    }
+
+    fun setTimeRemaining(value: Boolean) {
+        mutableTimeRemaining.value = value
+        preferences.edit().putBoolean(KEY_TIME_REMAINING, value).apply()
+    }
+
+    fun setEqAuto(value: Boolean) {
+        mutableEqAuto.value = value
+        preferences.edit().putBoolean(KEY_EQ_AUTO, value).apply()
+    }
+
+    fun setEq(settings: EqSettings, presetName: String) {
+        mutableEq.value = settings
+        mutableEqPreset.value = presetName
+        preferences.edit()
+            .putBoolean(KEY_EQ_ENABLED, settings.enabled)
+            .putFloat(KEY_EQ_PREAMP, settings.preampDb.toFloat())
+            .putString(KEY_EQ_BANDS, settings.bandsDb.joinToString(",") { "%.1f".format(Locale.ROOT, it) })
+            .putString(KEY_EQ_PRESET, presetName)
             .apply()
     }
 
-    private val _theme = MutableStateFlow(AccentTheme.fromKey(prefs.getString("theme", null)))
-    val theme: StateFlow<AccentTheme> = _theme.asStateFlow()
-    fun setTheme(t: AccentTheme) = set(_theme, t) { putString("theme", it.key) }
+    fun setTheme(theme: AccentTheme) {
+        mutableTheme.value = theme
+        preferences.edit().putString(KEY_THEME, theme.key).apply()
+    }
 
     private fun loadEq(): EqSettings {
-        val bands = prefs.getString("equalizer/bands", null)
-            ?.split(',')?.map { it.trim().toDoubleOrNull() ?: 0.0 }
-            ?.takeIf { it.size == EqSettings.BANDS }
-            ?.toDoubleArray() ?: DoubleArray(EqSettings.BANDS)
+        val bands =
+            preferences.getString(KEY_EQ_BANDS, null)
+                ?.split(',')
+                ?.map { it.trim().toDoubleOrNull() ?: 0.0 }
+                ?.takeIf { it.size == EqSettings.BAND_COUNT }
+                ?: List(EqSettings.BAND_COUNT) { 0.0 }
         return EqSettings(
-            enabled = prefs.getBoolean("equalizer/enabled", true),
-            preampDb = prefs.getFloat("equalizer/preamp", 0f).toDouble(),
+            enabled = preferences.getBoolean(KEY_EQ_ENABLED, true),
+            preampDb = preferences.getFloat(KEY_EQ_PREAMP, 0f).toDouble(),
             bandsDb = bands,
         )
     }
 
-    @android.annotation.SuppressLint("CommitPrefEdits")
-    private inline fun <T> set(flow: MutableStateFlow<T>, value: T, write: SharedPreferences.Editor.(T) -> SharedPreferences.Editor) {
-        flow.value = value
-        prefs.edit().write(value).apply()
+    companion object {
+        const val FILE = "settings"
+        const val KEY_VOLUME = "volume"
+        const val KEY_BALANCE = "balance"
+        const val KEY_VISUALIZER_MODE = "vis/mode"
+        const val KEY_TIME_REMAINING = "time/remaining"
+        const val KEY_EQ_AUTO = "equalizer/auto"
+        const val KEY_EQ_PRESET = "equalizer/preset"
+        const val KEY_EQ_ENABLED = "equalizer/enabled"
+        const val KEY_EQ_PREAMP = "equalizer/preamp"
+        const val KEY_EQ_BANDS = "equalizer/bands"
+        const val KEY_THEME = "theme"
+        const val DEFAULT_VOLUME = 75
+        const val DEFAULT_EQ_PRESET = "Flat"
     }
 }

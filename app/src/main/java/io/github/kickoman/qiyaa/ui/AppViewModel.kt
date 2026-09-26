@@ -5,12 +5,14 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.appGraph
-import io.github.kickoman.qiyaa.yandex.ApiException
-import io.github.kickoman.qiyaa.yandex.DeviceAuth
+import io.github.kickoman.qiyaa.playback.QueueManager
+import io.github.kickoman.qiyaa.yandex.AuthException
+import io.github.kickoman.qiyaa.yandex.HttpException
 import io.github.kickoman.qiyaa.yandex.NamedRef
 import io.github.kickoman.qiyaa.yandex.PlaylistRef
 import io.github.kickoman.qiyaa.yandex.Station
 import io.github.kickoman.qiyaa.yandex.TokenNormalizer
+import io.github.kickoman.qiyaa.yandex.YandexException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -22,12 +24,16 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 enum class Screen { LOGIN, PLAYER, PLAYLIST, EQ, LIBRARY }
-enum class LibrarySub { STATIONS, PLAYLISTS, ARTISTS, ALBUMS }
+
+enum class LibrarySection { STATIONS, PLAYLISTS, ARTISTS, ALBUMS }
 
 sealed interface LoginStatus {
     data object Requesting : LoginStatus
+
     data object Waiting : LoginStatus
+
     data object SigningIn : LoginStatus
+
     data class Failed(val message: String) : LoginStatus
 }
 
@@ -39,7 +45,6 @@ data class LoginUi(
     val tokenError: Boolean = false,
 )
 
-/** Lazily loaded library lists; `null` = not loaded yet. */
 data class LibraryUi(
     val playlists: List<PlaylistRef>? = null,
     val artists: List<NamedRef>? = null,
@@ -47,12 +52,14 @@ data class LibraryUi(
     val stations: List<Station>? = null,
     val loading: Boolean = false,
     val error: String? = null,
-    val search: String = "",
-)
+    val searchText: String = "",
+) {
+    val isComplete: Boolean
+        get() = playlists != null && artists != null && albums != null && stations != null
+}
 
-/** Navigation, sign-in and the library lists. Playback lives in [PlayerViewModel]. */
-class AppViewModel(app: Application) : AndroidViewModel(app) {
-    private val graph = app.appGraph
+class AppViewModel(application: Application) : AndroidViewModel(application) {
+    private val graph = application.appGraph
     private val library = graph.library
     private val api = graph.api
     private val tokenStore = graph.tokenStore
@@ -60,149 +67,106 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val queue = graph.queue
     val settings = graph.settings
 
-    private val _screen = MutableStateFlow(if (tokenStore.load().isEmpty()) Screen.LOGIN else Screen.PLAYER)
-    val screen: StateFlow<Screen> = _screen.asStateFlow()
+    private val mutableScreen =
+        MutableStateFlow(if (tokenStore.load().isEmpty()) Screen.LOGIN else Screen.PLAYER)
+    val screen: StateFlow<Screen> = mutableScreen.asStateFlow()
 
-    private val _sub = MutableStateFlow<LibrarySub?>(null)
-    val sub: StateFlow<LibrarySub?> = _sub.asStateFlow()
+    private val mutableSection = MutableStateFlow<LibrarySection?>(null)
+    val section: StateFlow<LibrarySection?> = mutableSection.asStateFlow()
 
-    private val _toast = MutableStateFlow<String?>(null)
-    val toast: StateFlow<String?> = _toast.asStateFlow()
+    private val mutableToast = MutableStateFlow<String?>(null)
+    val toast: StateFlow<String?> = mutableToast.asStateFlow()
     private var toastJob: Job? = null
 
-    private val _login = MutableStateFlow(LoginUi())
-    val login: StateFlow<LoginUi> = _login.asStateFlow()
+    private val mutableLogin = MutableStateFlow(LoginUi())
+    val login: StateFlow<LoginUi> = mutableLogin.asStateFlow()
     private var loginJob: Job? = null
 
-    private val _lib = MutableStateFlow(LibraryUi())
-    val lib: StateFlow<LibraryUi> = _lib.asStateFlow()
+    private val mutableLibraryUi = MutableStateFlow(LibraryUi())
+    val libraryUi: StateFlow<LibraryUi> = mutableLibraryUi.asStateFlow()
 
     val account = library.account
     val likedIds = library.likedIds
 
     init {
-        viewModelScope.launch { queue.messages.collect(::say) }
-        if (_screen.value == Screen.LOGIN) startDeviceLogin() else restoreSession()
+        viewModelScope.launch { queue.events.collect { say(it.render(getApplication())) } }
+        if (mutableScreen.value == Screen.LOGIN) startDeviceLogin() else restoreSession()
     }
 
-    fun say(msg: String) {
+    fun say(message: String) {
         toastJob?.cancel()
-        _toast.value = msg
-        toastJob = viewModelScope.launch {
-            delay(1800)
-            _toast.value = null
-        }
+        mutableToast.value = message
+        toastJob =
+            viewModelScope.launch {
+                delay(TOAST_MS)
+                mutableToast.value = null
+            }
     }
-
-    // ------------------------------------------------------------------ navigation
 
     fun go(screen: Screen) {
-        _screen.value = screen
-        _sub.value = null
+        mutableScreen.value = screen
+        mutableSection.value = null
     }
 
-    fun openSub(sub: LibrarySub) {
-        _sub.value = sub
+    fun openSection(section: LibrarySection) {
+        mutableSection.value = section
         loadLibraryLists()
     }
 
-    fun closeSub() {
-        _sub.value = null
-    }
-
-    // ------------------------------------------------------------------ sign-in
-
-    private fun restoreSession() {
-        viewModelScope.launch {
-            try {
-                withContext(Dispatchers.IO) { library.connectAccount() }
-                preloadLikes()
-            } catch (e: ApiException) {
-                val m = e.message.orEmpty()
-                if (m.startsWith("HTTP 401") || m.startsWith("HTTP 403") || m.contains("not authorized")) {
-                    signOut()
-                } else {
-                    say(m)
-                }
-            } catch (e: Exception) {
-                say("Error: ${e.message}")
-            }
-        }
+    fun closeSection() {
+        mutableSection.value = null
     }
 
     fun startDeviceLogin() {
         loginJob?.cancel()
-        _login.update { it.copy(userCode = "", status = LoginStatus.Requesting) }
-        loginJob = viewModelScope.launch {
-            try {
-                val code = auth.requestCode()
-                _login.update { it.copy(userCode = code.userCode, verificationUrl = code.verificationUrl, status = LoginStatus.Waiting) }
-                val token = auth.waitForToken(code)
-                _login.update { it.copy(status = LoginStatus.SigningIn) }
-                applyToken(token)
-            } catch (e: DeviceAuth.AuthException) {
-                _login.update { it.copy(status = LoginStatus.Failed(e.message ?: "error")) }
+        mutableLogin.update { it.copy(userCode = "", status = LoginStatus.Requesting) }
+        loginJob =
+            viewModelScope.launch {
+                try {
+                    val code = auth.requestCode()
+                    mutableLogin.update {
+                        it.copy(
+                            userCode = code.userCode,
+                            verificationUrl = code.verificationUrl,
+                            status = LoginStatus.Waiting,
+                        )
+                    }
+                    val token = auth.waitForToken(code)
+                    mutableLogin.update { it.copy(status = LoginStatus.SigningIn) }
+                    applyToken(token)
+                } catch (failed: AuthException) {
+                    mutableLogin.update { it.copy(status = LoginStatus.Failed(describe(failed))) }
+                }
             }
-        }
     }
 
-    fun setTokenInput(text: String) = _login.update { it.copy(tokenInput = text, tokenError = false) }
+    fun setTokenInput(text: String) = mutableLogin.update { it.copy(tokenInput = text, tokenError = false) }
 
     fun useToken() {
-        val token = TokenNormalizer.normalize(_login.value.tokenInput)
+        val token = TokenNormalizer.normalize(mutableLogin.value.tokenInput)
         if (token.isEmpty()) {
-            _login.update { it.copy(tokenError = true) }
+            mutableLogin.update { it.copy(tokenError = true) }
             return
         }
         loginJob?.cancel()
-        _login.update { it.copy(status = LoginStatus.SigningIn) }
+        mutableLogin.update { it.copy(status = LoginStatus.SigningIn) }
         viewModelScope.launch { applyToken(token) }
-    }
-
-    private suspend fun applyToken(token: String) {
-        api.token = token
-        try {
-            val acc = withContext(Dispatchers.IO) { library.connectAccount() }
-            tokenStore.save(token)
-            _login.value = LoginUi()
-            go(Screen.LIBRARY)
-            say(getApplication<Application>().getString(R.string.login_signed_in, acc.login.ifEmpty { acc.displayName }))
-            preloadLikes()
-            loadLibraryLists(force = true)
-        } catch (e: Exception) {
-            api.token = ""
-            _login.update { it.copy(status = LoginStatus.Failed(e.message ?: "error"), tokenError = false) }
-            say(getApplication<Application>().getString(R.string.login_error, e.message))
-        }
-    }
-
-    /** The desktop app loads "Liked" right after login so like/unlike state is known. */
-    private fun preloadLikes() {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                library.likedTrackIds()
-            } catch (_: Exception) {
-            }
-        }
     }
 
     fun signOut() {
         queue.clear()
         library.logout()
         tokenStore.clear()
-        _lib.value = LibraryUi()
+        mutableLibraryUi.value = LibraryUi()
         go(Screen.LOGIN)
         startDeviceLogin()
     }
 
-    // ------------------------------------------------------------------ library
-
     fun loadLibraryLists(force: Boolean = false) {
-        val cur = _lib.value
-        if (!library.isLoggedIn) return
-        if (cur.loading) return
-        if (!force && cur.playlists != null && cur.artists != null && cur.albums != null && cur.stations != null) return
-        _lib.update { it.copy(loading = true, error = null) }
+        val current = mutableLibraryUi.value
+        if (!library.isLoggedIn || current.loading) return
+        if (!force && current.isComplete) return
+        mutableLibraryUi.update { it.copy(loading = true, error = null) }
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {
@@ -210,53 +174,114 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     val artists = library.likedArtists()
                     val albums = library.likedAlbums()
                     val stations = library.stations()
-                    _lib.update { it.copy(playlists = playlists, artists = artists, albums = albums, stations = stations, loading = false) }
+                    mutableLibraryUi.update {
+                        it.copy(
+                            playlists = playlists,
+                            artists = artists,
+                            albums = albums,
+                            stations = stations,
+                            loading = false,
+                        )
+                    }
                 }
                 if (likedIds.value.isEmpty()) preloadLikes()
-            } catch (e: Exception) {
-                _lib.update { it.copy(loading = false, error = e.message) }
+            } catch (failed: Exception) {
+                mutableLibraryUi.update { it.copy(loading = false, error = describe(failed)) }
             }
         }
     }
 
-    fun setSearch(text: String) = _lib.update { it.copy(search = text) }
+    fun setSearchText(text: String) = mutableLibraryUi.update { it.copy(searchText = text) }
 
     fun submitSearch() {
-        val q = _lib.value.search.trim()
-        if (q.isEmpty()) return
-        _lib.update { it.copy(search = "") }
-        queue.search(q)
+        val query = mutableLibraryUi.value.searchText.trim()
+        if (query.isEmpty()) return
+        mutableLibraryUi.update { it.copy(searchText = "") }
+        queue.search(query, string(R.string.queue_search_title, query))
         go(Screen.PLAYER)
     }
 
     fun playMyWave() {
-        queue.playMyWave()
+        queue.playWave(listOf(QueueManager.MY_WAVE_SEED), string(R.string.library_my_wave))
         go(Screen.PLAYER)
     }
 
     fun playLiked() {
-        val title = getApplication<Application>().getString(R.string.library_liked)
-        queue.loadSource(title, sourceId = "liked") { library.likedTracks() }
+        queue.loadSource(string(R.string.library_liked), sourceId = "liked") { library.likedTracks() }
         go(Screen.PLAYER)
     }
 
-    fun playStation(s: Station) {
-        queue.playWave(listOf(s.id), s.name, sourceId = s.id)
+    fun playStation(station: Station) {
+        queue.playWave(listOf(station.id), station.name, sourceId = station.id)
         go(Screen.PLAYER)
     }
 
-    fun playPlaylist(p: PlaylistRef) {
-        queue.loadSource(p.title, sourceId = "playlist:${p.ownerUid}:${p.kind}") { library.playlistTracks(p) }
+    fun playPlaylist(playlist: PlaylistRef) {
+        queue.loadSource(playlist.title, sourceId = playlist.sourceId) { library.playlistTracks(playlist) }
         go(Screen.PLAYER)
     }
 
-    fun playArtist(a: NamedRef) {
-        queue.loadSource(a.name, sourceId = "artist:${a.id}") { library.artistTopTracks(a.id) }
+    fun playArtist(artist: NamedRef) {
+        queue.loadSource(artist.name, sourceId = "artist:${artist.id}") { library.artistTopTracks(artist.id) }
         go(Screen.PLAYER)
     }
 
-    fun playAlbum(a: NamedRef) {
-        queue.loadSource(a.name, sourceId = "album:${a.id}") { library.albumTracks(a.id) }
+    fun playAlbum(album: NamedRef) {
+        queue.loadSource(album.name, sourceId = "album:${album.id}") { library.albumTracks(album.id) }
         go(Screen.PLAYER)
+    }
+
+    private fun restoreSession() {
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) { library.connectAccount() }
+                preloadLikes()
+            } catch (failed: YandexException) {
+                if (failed is AuthException || (failed is HttpException && failed.isTokenRejected)) {
+                    signOut()
+                } else {
+                    say(describe(failed))
+                }
+            } catch (failed: Exception) {
+                say(string(R.string.error_generic, describe(failed)))
+            }
+        }
+    }
+
+    private suspend fun applyToken(token: String) {
+        api.token = token
+        try {
+            val account = withContext(Dispatchers.IO) { library.connectAccount() }
+            tokenStore.save(token)
+            mutableLogin.value = LoginUi()
+            go(Screen.LIBRARY)
+            say(string(R.string.login_signed_in, account.login.ifEmpty { account.displayName }))
+            preloadLikes()
+            loadLibraryLists(force = true)
+        } catch (failed: Exception) {
+            api.token = ""
+            mutableLogin.update { it.copy(status = LoginStatus.Failed(describe(failed)), tokenError = false) }
+            say(string(R.string.login_error, describe(failed)))
+        }
+    }
+
+    private fun preloadLikes() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                library.likedTrackIds()
+            } catch (ignored: Exception) {
+                // Likes are re-read on the next library load; the screen works without them.
+            }
+        }
+    }
+
+    private fun describe(failed: Exception): String = failed.message ?: failed.javaClass.simpleName
+
+    private fun string(id: Int, vararg args: Any): String = getApplication<Application>().getString(id, *args)
+
+    companion object {
+        const val TOAST_MS = 1_800L
     }
 }
+
+val PlaylistRef.sourceId: String get() = "playlist:$ownerUid:$kind"

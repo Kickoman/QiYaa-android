@@ -3,76 +3,89 @@ package io.github.kickoman.qiyaa.audio
 import kotlin.math.cos
 import kotlin.math.log10
 import kotlin.math.max
+import kotlin.math.sin
 import kotlin.math.sqrt
 
-/**
- * Port of the Analyzer in src/vis/Visualizers.cpp: Hann window + in-place radix-2 FFT,
- * output is N/2+1 magnitudes in dBFS (a full-scale sine reads 0 dBFS).
- */
-class Analyzer(val size: Int = 1024) {
+class Analyzer(val size: Int = DEFAULT_SIZE) {
     init {
-        require(size >= 8 && size and (size - 1) == 0) { "FFT size must be a power of two" }
+        require(size >= 8 && size and (size - 1) == 0) { "FFT size must be a power of two, got $size" }
     }
 
-    private val window = FloatArray(size) { i -> (0.5 - 0.5 * cos(2.0 * Math.PI * i / (size - 1))).toFloat() }
-    private val re = FloatArray(size)
-    private val im = FloatArray(size)
-    private val cosT = FloatArray(size / 2) { k -> cos(2.0 * Math.PI * k / size).toFloat() }
-    private val sinT = FloatArray(size / 2) { k -> kotlin.math.sin(2.0 * Math.PI * k / size).toFloat() }
+    val binCount: Int = size / 2 + 1
 
-    /** [mono] must hold at least [size] samples; [outDb] gets size/2+1 values. */
-    fun analyze(mono: FloatArray, outDb: FloatArray) {
+    private val window = FloatArray(size) { i -> (0.5 - 0.5 * cos(2.0 * Math.PI * i / (size - 1))).toFloat() }
+    private val real = FloatArray(size)
+    private val imaginary = FloatArray(size)
+    private val cosTable = FloatArray(size / 2) { k -> cos(2.0 * Math.PI * k / size).toFloat() }
+    private val sinTable = FloatArray(size / 2) { k -> sin(2.0 * Math.PI * k / size).toFloat() }
+
+    fun analyze(mono: FloatArray, spectrumDb: FloatArray) {
+        require(mono.size >= size) { "need $size samples, got ${mono.size}" }
+        require(spectrumDb.size >= binCount) { "need $binCount output bins, got ${spectrumDb.size}" }
         for (i in 0 until size) {
-            re[i] = mono[i] * window[i]
-            im[i] = 0f
+            real[i] = mono[i] * window[i]
+            imaginary[i] = 0f
         }
         fft()
-        val norm = 4f / size
-        for (k in 0..size / 2) {
-            val mag = sqrt(re[k] * re[k] + im[k] * im[k]) * norm
-            outDb[k] = 20f * log10(max(mag, 1e-9f))
+        val normalization = 4f / size
+        for (k in 0 until binCount) {
+            val magnitude = sqrt(real[k] * real[k] + imaginary[k] * imaginary[k]) * normalization
+            spectrumDb[k] = 20f * log10(max(magnitude, MIN_MAGNITUDE))
         }
     }
 
     private fun fft() {
-        val n = size
-        // Bit reversal.
-        var j = 0
-        for (i in 1 until n) {
-            var bit = n shr 1
-            while (j and bit != 0) {
-                j = j xor bit
+        bitReverse()
+        var length = 2
+        while (length <= size) {
+            val half = length / 2
+            val tableStep = size / length
+            var blockStart = 0
+            while (blockStart < size) {
+                var tableIndex = 0
+                for (offset in 0 until half) {
+                    val twiddleReal = cosTable[tableIndex]
+                    val twiddleImaginary = -sinTable[tableIndex]
+                    val even = blockStart + offset
+                    val odd = even + half
+                    val productReal = real[odd] * twiddleReal - imaginary[odd] * twiddleImaginary
+                    val productImaginary = real[odd] * twiddleImaginary + imaginary[odd] * twiddleReal
+                    real[odd] = real[even] - productReal
+                    imaginary[odd] = imaginary[even] - productImaginary
+                    real[even] += productReal
+                    imaginary[even] += productImaginary
+                    tableIndex += tableStep
+                }
+                blockStart += length
+            }
+            length = length shl 1
+        }
+    }
+
+    private fun bitReverse() {
+        var reversed = 0
+        for (i in 1 until size) {
+            var bit = size shr 1
+            while (reversed and bit != 0) {
+                reversed = reversed xor bit
                 bit = bit shr 1
             }
-            j = j or bit
-            if (i < j) {
-                val tr = re[i]; re[i] = re[j]; re[j] = tr
-                val ti = im[i]; im[i] = im[j]; im[j] = ti
+            reversed = reversed or bit
+            if (i < reversed) {
+                swap(real, i, reversed)
+                swap(imaginary, i, reversed)
             }
         }
-        var len = 2
-        while (len <= n) {
-            val half = len / 2
-            val step = n / len
-            var i = 0
-            while (i < n) {
-                var k = 0
-                for (m in 0 until half) {
-                    val wr = cosT[k]
-                    val wi = -sinT[k]
-                    val a = i + m
-                    val b = a + half
-                    val xr = re[b] * wr - im[b] * wi
-                    val xi = re[b] * wi + im[b] * wr
-                    re[b] = re[a] - xr
-                    im[b] = im[a] - xi
-                    re[a] += xr
-                    im[a] += xi
-                    k += step
-                }
-                i += len
-            }
-            len = len shl 1
-        }
+    }
+
+    private fun swap(values: FloatArray, a: Int, b: Int) {
+        val saved = values[a]
+        values[a] = values[b]
+        values[b] = saved
+    }
+
+    companion object {
+        const val DEFAULT_SIZE = 1024
+        private const val MIN_MAGNITUDE = 1e-9f
     }
 }

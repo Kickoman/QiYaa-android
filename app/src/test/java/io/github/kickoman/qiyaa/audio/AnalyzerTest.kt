@@ -1,54 +1,52 @@
 package io.github.kickoman.qiyaa.audio
 
+import kotlin.math.PI
+import kotlin.math.sin
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import kotlin.math.PI
-import kotlin.math.sin
 
 class AnalyzerTest {
+    private val size = 1024
+    private val sampleRate = 44100
+
     @Test
-    fun fullScaleSineReadsZeroDbfsAtItsBin() {
-        val n = 1024
-        val sr = 44100
-        val bin = 23 // ≈ 990 Hz
-        val f = bin * sr / n.toDouble()
-        val mono = FloatArray(n) { sin(2 * PI * f * it / sr).toFloat() }
-        val db = FloatArray(n / 2 + 1)
-        Analyzer(n).analyze(mono, db)
-        val peak = db.indices.maxByOrNull { db[it] }!!
+    fun `a full-scale sine reads 0 dBFS at its bin`() {
+        val bin = 23
+        val hz = bin * sampleRate / size.toDouble()
+        val mono = FloatArray(size) { sin(2 * PI * hz * it / sampleRate).toFloat() }
+        val analyzer = Analyzer(size)
+        val spectrumDb = FloatArray(analyzer.binCount)
+        analyzer.analyze(mono, spectrumDb)
+        val peak = spectrumDb.indices.maxByOrNull { spectrumDb[it] }!!
         assertEquals(bin, peak)
-        assertEquals(0f, db[bin], 0.5f)
-        assertTrue(db[200] < -60f)
+        assertEquals(0f, spectrumDb[bin], 0.5f)
+        assertTrue(spectrumDb[200] < -60f)
     }
 
     @Test
-    fun spectrumLightsTheMatchingBar() {
-        val n = 1024
-        val sr = 44100
-        val mono = FloatArray(n) { sin(2 * PI * 1000.0 * it / sr).toFloat() }
-        val db = FloatArray(n / 2 + 1)
-        Analyzer(n).analyze(mono, db)
-        val s = Spectrum(19)
-        s.update(db, n, sr)
-        val hot = s.levels.indices.maxByOrNull { s.levels[it] }!!
-        // 1 kHz sits about halfway between 60 Hz and 16 kHz on a log scale.
+    fun `Spectrum lights the bar that contains 1 kHz and lets it fall by 0_07 per frame`() {
+        val mono = FloatArray(size) { sin(2 * PI * 1000.0 * it / sampleRate).toFloat() }
+        val analyzer = Analyzer(size)
+        val spectrumDb = FloatArray(analyzer.binCount)
+        analyzer.analyze(mono, spectrumDb)
+        val spectrum = Spectrum(19)
+        spectrum.update(spectrumDb, size, sampleRate)
+        val hot = spectrum.levels.indices.maxByOrNull { spectrum.levels[it] }!!
         assertTrue("bar $hot", hot in 8..11)
-        assertEquals(1f, s.levels[hot], 0.05f)
-        // Silence lets the bar fall by 0.07 per frame and the peak hold behind it.
-        s.update(FloatArray(n / 2 + 1) { -100f }, n, sr)
-        assertEquals(0.93f, s.levels[hot], 0.05f)
-        assertTrue(s.peaks[hot] >= s.levels[hot])
+        assertEquals(1f, spectrum.levels[hot], 0.05f)
+        spectrum.update(FloatArray(analyzer.binCount) { -100f }, size, sampleRate)
+        assertEquals(1f - Spectrum.LEVEL_FALL_PER_FRAME, spectrum.levels[hot], 0.05f)
+        assertTrue(spectrum.peaks[hot] >= spectrum.levels[hot])
     }
 
     @Test
-    fun visTapReturnsLatestFramesOldestFirst() {
-        val tap = VisTap(8)
-        tap.write(FloatArray(20) { (it / 2).toFloat() }, 10, 2)
-        val l = FloatArray(4)
-        val r = FloatArray(4)
-        tap.read(l, r, 4)
-        assertEquals(listOf(6f, 7f, 8f, 9f), l.toList())
-        assertEquals(listOf(6f, 7f, 8f, 9f), r.toList())
+    fun `Analyzer rejects sizes that are not a power of two`() {
+        try {
+            Analyzer(1000)
+            throw AssertionError("expected IllegalArgumentException")
+        } catch (expected: IllegalArgumentException) {
+            assertTrue(expected.message!!.contains("1000"))
+        }
     }
 }

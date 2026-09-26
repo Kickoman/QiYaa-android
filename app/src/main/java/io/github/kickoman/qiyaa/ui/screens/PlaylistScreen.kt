@@ -30,21 +30,32 @@ import io.github.kickoman.qiyaa.ui.components.ActionButton
 import io.github.kickoman.qiyaa.ui.components.QiText
 import io.github.kickoman.qiyaa.ui.components.ScreenHeader
 import io.github.kickoman.qiyaa.ui.components.tap
-import io.github.kickoman.qiyaa.ui.fmtTime
+import io.github.kickoman.qiyaa.ui.formatTime
+import io.github.kickoman.qiyaa.ui.theme.HintStyle
 import io.github.kickoman.qiyaa.ui.theme.Qi
+import io.github.kickoman.qiyaa.ui.theme.ReadoutStyle
 import io.github.kickoman.qiyaa.ui.theme.mono
 import io.github.kickoman.qiyaa.ui.theme.sans
 
 @Composable
-fun PlaylistScreen(vm: PlayerViewModel, onAdd: () -> Unit) {
-    val c = Qi.colors
-    val ui by vm.ui.collectAsStateWithLifecycle()
-    val q by vm.queue.state.collectAsStateWithLifecycle()
-    val queueTitle = (q.title.ifEmpty { stringResource(R.string.player_no_queue) }).uppercase() + if (q.isWave) " ∞" else ""
+fun PlaylistScreen(viewModel: PlayerViewModel, onAdd: () -> Unit) {
+    val colors = Qi.colors
+    val ui by viewModel.ui.collectAsStateWithLifecycle()
+    val queue by viewModel.queue.state.collectAsStateWithLifecycle()
 
     Column(Modifier.fillMaxSize()) {
         ScreenHeader(stringResource(R.string.playlist_title)) {
-            QiText(stringResource(R.string.playlist_loaded, queueTitle, q.tracks.size), mono(11.sp, 500, 1.sp), color = c.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            QiText(
+                stringResource(
+                    R.string.playlist_loaded,
+                    queueTitle(queue.title, queue.isWave),
+                    queue.tracks.size,
+                ),
+                mono(11.sp, 500, 1.sp),
+                color = colors.muted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
 
         Box(
@@ -53,73 +64,126 @@ fun PlaylistScreen(vm: PlayerViewModel, onAdd: () -> Unit) {
                 .fillMaxWidth()
                 .weight(1f)
                 .clip(RoundedCornerShape(6.dp))
-                .background(c.deep)
-                .border(1.dp, c.insetBorder, RoundedCornerShape(6.dp)),
+                .background(colors.deep)
+                .border(1.dp, colors.insetBorder, RoundedCornerShape(6.dp)),
         ) {
             LazyColumn(Modifier.fillMaxSize().padding(vertical = 6.dp)) {
-                itemsIndexed(q.tracks, key = { i, t -> "$i:${t.id}" }) { i, t ->
-                    val selected = i in q.selected
-                    val current = i == ui.index
+                itemsIndexed(queue.tracks, key = { index, track -> "$index:${track.id}" }) { index, track ->
+                    val selected = index in queue.selected
+                    val current = index == ui.index
                     Row(
                         Modifier
                             .fillMaxWidth()
                             .height(52.dp)
-                            .background(if (selected) c.surface else c.deep)
-                            .tap { vm.playIndex(i) }
+                            .background(if (selected) colors.surface else colors.deep)
+                            .tap { viewModel.playIndex(index) }
                             .padding(horizontal = 14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Box(Modifier.width(32.dp).height(52.dp).tap { vm.queue.toggleSelected(i) }, contentAlignment = Alignment.CenterEnd) {
-                            QiText("${i + 1}", mono(12.sp, 400), color = if (selected) c.text else c.dim)
+                        Box(
+                            Modifier.width(32.dp).height(52.dp).tap { viewModel.queue.toggleSelected(index) },
+                            contentAlignment = Alignment.CenterEnd,
+                        ) {
+                            QiText(
+                                "${index + 1}",
+                                mono(12.sp, 400),
+                                color = if (selected) colors.text else colors.dim,
+                            )
                         }
                         Column(Modifier.weight(1f)) {
-                            QiText(t.title, sans(14.sp, 500), color = if (current) c.acc else c.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            QiText(t.artistLine, mono(11.sp, 400), Modifier.padding(top = 3.dp), color = c.dim, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            QiText(
+                                track.title,
+                                sans(14.sp, 500),
+                                color = if (current) colors.accent else colors.text,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            QiText(
+                                track.artistLine,
+                                mono(11.sp, 400),
+                                Modifier.padding(top = 3.dp),
+                                color = colors.dim,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         }
-                        QiText(fmtTime(t.durationMs), mono(12.sp, 400), color = c.dim)
+                        QiText(formatTime(track.durationMs), mono(12.sp, 400), color = colors.dim)
                     }
                 }
-                if (q.tracks.isEmpty()) {
+                if (queue.tracks.isEmpty()) {
                     item {
-                        QiText(stringResource(R.string.playlist_empty), mono(12.sp, 400, lineHeight = 19.sp), Modifier.padding(24.dp, 16.dp), color = c.dim)
+                        QiText(
+                            stringResource(R.string.playlist_empty),
+                            mono(12.sp, 400, lineHeight = 19.sp),
+                            Modifier.padding(24.dp, 16.dp),
+                            color = colors.dim,
+                        )
                     }
                 }
-                if (q.isWave) {
+                if (queue.isWave) {
                     item {
                         Box(Modifier.fillMaxWidth().height(52.dp), contentAlignment = Alignment.Center) {
-                            QiText(stringResource(R.string.playlist_loading_more), mono(11.sp, 400, 1.5.sp), color = c.dimmer)
+                            QiText(
+                                stringResource(R.string.playlist_loading_more),
+                                ReadoutStyle,
+                                color = colors.dimmer,
+                            )
                         }
                     }
                 }
             }
         }
 
-        val selTime = q.tracks.filterIndexed { i, _ -> i in q.selected }.sumOf { it.durationMs }
-        val total = q.tracks.sumOf { it.durationMs }
-        Row(Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            val s = mono(11.sp, 400, 1.sp)
+        val selectedMs = queue.tracks.filterIndexed { index, _ ->
+            index in queue.selected
+        }.sumOf { it.durationMs }
+        val totalMs = queue.tracks.sumOf { it.durationMs }
+        Row(
+            Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp).fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
             Row {
-                QiText(stringResource(R.string.playlist_selected) + " ", s, color = c.dim)
-                QiText("${q.selected.size}", s, color = c.text)
-                QiText(" · ", s, color = c.dim)
-                QiText(fmtTime(selTime), s, color = c.text)
-                QiText(" / ", s, color = c.dim)
-                QiText(fmtTime(total), s, color = c.text)
+                QiText(stringResource(R.string.playlist_selected) + " ", HintStyle, color = colors.dim)
+                QiText("${queue.selected.size}", HintStyle, color = colors.text)
+                QiText(" · ", HintStyle, color = colors.dim)
+                QiText(formatTime(selectedMs), HintStyle, color = colors.text)
+                QiText(" / ", HintStyle, color = colors.dim)
+                QiText(formatTime(totalMs), HintStyle, color = colors.text)
             }
-            QiText(stringResource(R.string.playlist_tap_hint), s, color = c.dim)
+            QiText(stringResource(R.string.playlist_tap_hint), HintStyle, color = colors.dim)
         }
 
-        Row(Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ActionButton(stringResource(R.string.playlist_add), Modifier.weight(1f), bg = c.acc, color = c.deep, onClick = onAdd)
-            ActionButton(stringResource(R.string.playlist_rem), Modifier.weight(1f), bg = c.surface2, color = if (q.selected.isEmpty()) c.dimmer else c.text) {
-                vm.queue.removeIndices(q.selected)
+        Row(
+            Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 12.dp).fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            ActionButton(
+                stringResource(R.string.playlist_add),
+                Modifier.weight(1f),
+                background = colors.accent,
+                color = colors.deep,
+                onClick = onAdd,
+            )
+            ActionButton(
+                stringResource(R.string.playlist_rem),
+                Modifier.weight(1f),
+                background = colors.surface2,
+                color = if (queue.selected.isEmpty()) colors.dimmer else colors.text,
+            ) { viewModel.queue.removeIndices(queue.selected) }
+            val allSelected = queue.tracks.isNotEmpty() && queue.selected.size == queue.tracks.size
+            ActionButton(
+                stringResource(if (allSelected) R.string.playlist_none else R.string.playlist_all),
+                Modifier.weight(1f),
+                background = colors.surface2,
+            ) { viewModel.queue.selectAllOrNone() }
+            ActionButton(
+                stringResource(R.string.playlist_clear),
+                Modifier.weight(1f),
+                background = colors.surface2,
+            ) {
+                viewModel.queue.clear()
             }
-            val allSelected = q.tracks.isNotEmpty() && q.selected.size == q.tracks.size
-            ActionButton(stringResource(if (allSelected) R.string.playlist_none else R.string.playlist_all), Modifier.weight(1f), bg = c.surface2) {
-                vm.queue.selectAllOrNone()
-            }
-            ActionButton(stringResource(R.string.playlist_clear), Modifier.weight(1f), bg = c.surface2) { vm.queue.clear() }
         }
     }
 }

@@ -115,4 +115,30 @@
     <string name="library_loading">LOADING…</string>
     <string name="library_empty">NOTHING HERE</string>
     <string name="library_error">ERROR: %1$s</string>
+    <!-- Queue events (playback module emits them typed; the UI renders them here) -->
+    <string name="queue_search_title">Search: %1$s</string>
+    <string name="queue_searching">%1$s…</string>
+    <string name="queue_loading">%1$s: loading…</string>
+    <plurals name="queue_loaded">
+        <item quantity="one">%1$s: %2$d track</item>
+        <item quantity="other">%1$s: %2$d tracks</item>
+    </plurals>
+    <string name="queue_empty">%1$s: empty</string>
+    <string name="queue_wave_started">%1$s: wave started</string>
+    <string name="queue_nothing_found">Nothing found</string>
+    <string name="queue_player_not_ready">Player is still starting, try again</string>
+    <string name="queue_liked">Added to Liked</string>
+    <string name="queue_unliked">Removed from Liked</string>
+    <string name="queue_disliked">Disliked · skipping</string>
+    <string name="queue_wave_error">Wave error: %1$s</string>
+    <string name="queue_wave_more_error">Wave: %1$s</string>
+    <string name="queue_search_error">Search error: %1$s</string>
+    <string name="queue_playback_error">Playback error: %1$s</string>
+    <string name="player_service_unavailable">Player service unavailable: %1$s</string>
+    <string name="error_generic">Error: %1$s</string>
+
+    <!-- Accent themes -->
+    <string name="theme_green">Classic green</string>
+    <string name="theme_amber">Amber</string>
+    <string name="theme_ice">Ice blue</string>
 </resources>

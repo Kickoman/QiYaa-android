@@ -2,11 +2,11 @@ package io.github.kickoman.qiyaa.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,8 +16,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,28 +41,32 @@ import io.github.kickoman.qiyaa.ui.components.QiText
 import io.github.kickoman.qiyaa.ui.components.tap
 import io.github.kickoman.qiyaa.ui.screens.EqScreen
 import io.github.kickoman.qiyaa.ui.screens.LibraryScreen
-import io.github.kickoman.qiyaa.ui.screens.LibrarySubScreen
+import io.github.kickoman.qiyaa.ui.screens.LibrarySectionScreen
 import io.github.kickoman.qiyaa.ui.screens.LoginScreen
 import io.github.kickoman.qiyaa.ui.screens.PlayerScreen
 import io.github.kickoman.qiyaa.ui.screens.PlaylistScreen
 import io.github.kickoman.qiyaa.ui.screens.PresetsSheet
+import io.github.kickoman.qiyaa.ui.screens.marqueeText
 import io.github.kickoman.qiyaa.ui.theme.Qi
 import io.github.kickoman.qiyaa.ui.theme.QiYaaTheme
 import io.github.kickoman.qiyaa.ui.theme.mono
-import io.github.kickoman.qiyaa.ui.fmtTime
+
+private val MiniPlayerStyle = mono(12.sp, 500, 0.5.sp)
+private val TabStyle = mono(10.sp, 500, 1.5.sp)
 
 @Composable
 fun AppRoot(app: AppViewModel = viewModel(), player: PlayerViewModel = viewModel()) {
     val theme by app.settings.theme.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { player.notices.collect(app::say) }
     QiYaaTheme(theme) {
-        val c = Qi.colors
+        val colors = Qi.colors
         val screen by app.screen.collectAsStateWithLifecycle()
-        val sub by app.sub.collectAsStateWithLifecycle()
+        val section by app.section.collectAsStateWithLifecycle()
         val toast by app.toast.collectAsStateWithLifecycle()
         val presetsOpen by player.presetsOpen.collectAsStateWithLifecycle()
-        val pui by player.ui.collectAsStateWithLifecycle()
+        val playerUi by player.ui.collectAsStateWithLifecycle()
 
-        Box(Modifier.fillMaxSize().background(c.bg)) {
+        Box(Modifier.fillMaxSize().background(colors.background)) {
             Column(
                 Modifier
                     .fillMaxSize()
@@ -73,14 +79,15 @@ fun AppRoot(app: AppViewModel = viewModel(), player: PlayerViewModel = viewModel
                         Screen.PLAYER -> PlayerScreen(player)
                         Screen.PLAYLIST -> PlaylistScreen(player, onAdd = { app.go(Screen.LIBRARY) })
                         Screen.EQ -> EqScreen(player)
-                        Screen.LIBRARY -> sub?.let { LibrarySubScreen(app, it) } ?: LibraryScreen(app, player)
+                        Screen.LIBRARY -> section?.let { LibrarySectionScreen(app, it) }
+                            ?: LibraryScreen(app, player)
                     }
                 }
-                val track = pui.current
+                val track = playerUi.current
                 if (screen != Screen.LOGIN && screen != Screen.PLAYER && track != null) {
                     MiniPlayer(
-                        text = "${pui.index + 1}. ${track.artistLine} — ${track.title} (${fmtTime(track.durationMs)})",
-                        playing = pui.isPlaying,
+                        text = marqueeText(playerUi.index, track),
+                        playing = playerUi.isPlaying,
                         onOpen = { app.go(Screen.PLAYER) },
                         onToggle = player::toggleMiniPlay,
                     )
@@ -90,7 +97,7 @@ fun AppRoot(app: AppViewModel = viewModel(), player: PlayerViewModel = viewModel
 
             if (presetsOpen) PresetsSheet(player)
 
-            toast?.let { msg ->
+            toast?.let { message ->
                 Box(
                     Modifier
                         .align(Alignment.BottomCenter)
@@ -98,11 +105,18 @@ fun AppRoot(app: AppViewModel = viewModel(), player: PlayerViewModel = viewModel
                         .padding(start = 16.dp, end = 16.dp, bottom = 84.dp)
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
-                        .background(c.deep)
+                        .background(colors.deep)
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    QiText(msg.uppercase(), mono(12.sp, 500, 0.5.sp), color = c.acc, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    QiText(
+                        message.uppercase(),
+                        MiniPlayerStyle,
+                        color = colors.accent,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
         }
@@ -111,54 +125,79 @@ fun AppRoot(app: AppViewModel = viewModel(), player: PlayerViewModel = viewModel
 
 @Composable
 private fun MiniPlayer(text: String, playing: Boolean, onOpen: () -> Unit, onToggle: () -> Unit) {
-    val c = Qi.colors
+    val colors = Qi.colors
     Row(
         Modifier
             .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
-            .background(c.surface)
+            .background(colors.surface)
             .tap(onClick = onOpen)
             .padding(start = 12.dp, top = 8.dp, end = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        LedDot(c.acc, Modifier.alpha(if (playing) 1f else 0.3f))
-        QiText(text.uppercase(), mono(12.sp, 500, 0.5.sp), Modifier.weight(1f), color = c.acc, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        LedDot(colors.accent, Modifier.alpha(if (playing) 1f else 0.3f))
+        QiText(
+            text.uppercase(),
+            MiniPlayerStyle,
+            Modifier.weight(1f),
+            color = colors.accent,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
         Box(
-            Modifier.size(40.dp).clip(RoundedCornerShape(6.dp)).background(c.border).tap(onClick = onToggle),
+            Modifier.size(
+                40.dp,
+            ).clip(RoundedCornerShape(6.dp)).background(colors.border).tap(onClick = onToggle),
             contentAlignment = Alignment.Center,
         ) {
-            PathIcon(if (playing) IconPaths.PAUSE else IconPaths.PLAY, 16.dp, c.text)
+            PathIcon(if (playing) IconPaths.PAUSE else IconPaths.PLAY, 16.dp, colors.text)
         }
     }
 }
 
 @Composable
 private fun TabBar(current: Screen, onSelect: (Screen) -> Unit) {
-    val c = Qi.colors
-    Column(Modifier.fillMaxWidth().background(c.tabBg)) {
-        Box(Modifier.fillMaxWidth().height(1.dp).background(c.surface2))
+    val colors = Qi.colors
+    Column(Modifier.fillMaxWidth().background(colors.tabBackground)) {
+        Box(Modifier.fillMaxWidth().height(1.dp).background(colors.surface2))
         Row(Modifier.fillMaxWidth().height(60.dp)) {
-            Tab(stringResource(R.string.tab_player), current == Screen.PLAYER, { onSelect(Screen.PLAYER) }) { color ->
+            Tab(stringResource(R.string.tab_player), current == Screen.PLAYER, {
+                onSelect(Screen.PLAYER)
+            }) { color ->
                 Box(Modifier.size(18.dp).border(2.dp, color, CircleShape))
             }
-            Tab(stringResource(R.string.tab_playlist), current == Screen.PLAYLIST, { onSelect(Screen.PLAYLIST) }) { color ->
-                Column(Modifier.size(18.dp).padding(vertical = 2.dp), verticalArrangement = Arrangement.SpaceBetween) {
+            Tab(stringResource(R.string.tab_playlist), current == Screen.PLAYLIST, {
+                onSelect(Screen.PLAYLIST)
+            }) { color ->
+                Column(
+                    Modifier.size(18.dp).padding(vertical = 2.dp),
+                    verticalArrangement = Arrangement.SpaceBetween,
+                ) {
                     repeat(3) { Box(Modifier.fillMaxWidth().height(2.dp).background(color)) }
                 }
             }
             Tab(stringResource(R.string.tab_eq), current == Screen.EQ, { onSelect(Screen.EQ) }) { color ->
-                Row(Modifier.size(18.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.Bottom) {
+                Row(
+                    Modifier.size(18.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment = Alignment.Bottom,
+                ) {
                     Box(Modifier.weight(1f).height(11.dp).background(color))
                     Box(Modifier.weight(1f).height(18.dp).background(color))
                     Box(Modifier.weight(1f).height(7.dp).background(color))
                 }
             }
-            Tab(stringResource(R.string.tab_library), current == Screen.LIBRARY, { onSelect(Screen.LIBRARY) }) { color ->
+            Tab(stringResource(R.string.tab_library), current == Screen.LIBRARY, {
+                onSelect(Screen.LIBRARY)
+            }) { color ->
                 Column(Modifier.size(18.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     repeat(2) {
-                        Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Row(
+                            Modifier.weight(1f).fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
                             Box(Modifier.weight(1f).fillMaxSize().background(color))
                             Box(Modifier.weight(1f).fillMaxSize().background(color))
                         }
@@ -170,15 +209,20 @@ private fun TabBar(current: Screen, onSelect: (Screen) -> Unit) {
 }
 
 @Composable
-private fun androidx.compose.foundation.layout.RowScope.Tab(label: String, active: Boolean, onClick: () -> Unit, icon: @Composable (Color) -> Unit) {
-    val c = Qi.colors
-    val color = if (active) c.acc else c.dim
+private fun RowScope.Tab(
+    label: String,
+    active: Boolean,
+    onClick: () -> Unit,
+    icon: @Composable (Color) -> Unit,
+) {
+    val colors = Qi.colors
+    val color = if (active) colors.accent else colors.dim
     Column(
         Modifier.weight(1f).height(60.dp).tap(onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         icon(color)
-        QiText(label, mono(10.sp, 500, 1.5.sp), Modifier.padding(top = 6.dp), color = color)
+        QiText(label, TabStyle, Modifier.padding(top = 6.dp), color = color)
     }
 }
