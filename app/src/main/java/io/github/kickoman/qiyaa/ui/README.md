@@ -39,7 +39,7 @@ ui/
 
 ## View models
 
-`AppViewModel` — навигация (`screen`, `section`), вход (`login`), списки библиотеки (`libraryUi`), тост (`toast`, 1.8 с). При старте: есть токен → `Screen.PLAYER` и `restoreSession()`, иначе `Screen.LOGIN` и `startDeviceLogin()`. `restoreSession` выходит из аккаунта при `AuthException` или `HttpException.isTokenRejected`, остальные ошибки показывает. Собирает `queue.events` и рендерит их через `QueueEvent.render`. Заголовки источников (`library_liked`, `library_my_wave`, `queue_search_title`) берёт из ресурсов и передаёт в очередь как данные.
+`AppViewModel` — навигация (`screen`, `section`), вход (`login`), списки библиотеки (`libraryUi`), тост (`toast`, 1.8 с). При старте: есть токен → `Screen.PLAYER`, иначе `Screen.LOGIN` и `startDeviceLogin()`. Подключением управляет `yandex/Session` (`AppGraph.session`), view model только слушает `sessionState`: `Online` → `loadLibraryLists()`, `Expired` → очистить очередь, `TokenStore` и списки, открыть вход с `LoginUi.notice = login_expired` и запросить новый код. Вход (`applyToken`) идёт через `session.signIn(token)`; токен сохраняется только после успеха. «Выйти» делает то же, что `Expired`, без сообщения. Собирает `queue.events` и рендерит их через `QueueEvent.render`. Заголовки источников (`library_liked`, `library_my_wave`, `queue_search_title`) берёт из ресурсов и передаёт в очередь как данные.
 
 `PlayerViewModel` — `MediaController` к `PlaybackService`, снимок `PlayerUi` (позиция тикает каждые 250 мс, пока играет), транспорт, громкость/баланс/визуализатор/тема, EQ. Свои сообщения (shuffle, повтор, тема, EQ) публикует в `notices`, которые `AppRoot` перекладывает в `AppViewModel.say`. Подписан на `Settings.volume/balance/eq` и применяет их к контроллеру и `AudioBus`.
 
@@ -49,6 +49,9 @@ ui/
 - Обе view model — `AndroidViewModel` с областью Activity; `PlayerViewModel.onCleared` освобождает контроллер.
 - `PlayerUi.durationMs` берёт длительность из `MediaItem.extras`, пока ExoPlayer её не знает.
 - Ошибки в `LoginStatus.Failed(message)` показываются заглавными.
+- `sessionState` меняется с `Dispatchers.Default` (`AppGraph.applicationScope`); коллектор во view model работает на главном потоке, поэтому `queue.clear()` там безопасен.
+
+`AppRoot` при `SessionState.Offline` показывает над экраном строку `session_offline` («НЕТ СЕТИ · ПОВТОРЮ САМ») с красным `LedDot`; на экране входа строки нет. Повторы идут сами, кнопки «повторить» нет.
 
 ## Тема
 

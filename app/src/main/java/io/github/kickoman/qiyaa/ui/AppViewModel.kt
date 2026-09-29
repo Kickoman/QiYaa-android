@@ -7,12 +7,11 @@ import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.appGraph
 import io.github.kickoman.qiyaa.playback.QueueManager
 import io.github.kickoman.qiyaa.yandex.AuthException
-import io.github.kickoman.qiyaa.yandex.HttpException
 import io.github.kickoman.qiyaa.yandex.NamedRef
 import io.github.kickoman.qiyaa.yandex.PlaylistRef
+import io.github.kickoman.qiyaa.yandex.SessionState
 import io.github.kickoman.qiyaa.yandex.Station
 import io.github.kickoman.qiyaa.yandex.TokenNormalizer
-import io.github.kickoman.qiyaa.yandex.YandexException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -43,6 +42,7 @@ data class LoginUi(
     val status: LoginStatus = LoginStatus.Requesting,
     val tokenInput: String = "",
     val tokenError: Boolean = false,
+    val notice: String? = null,
 )
 
 data class LibraryUi(
@@ -61,7 +61,7 @@ data class LibraryUi(
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val graph = application.appGraph
     private val library = graph.library
-    private val api = graph.api
+    private val session = graph.session
     private val tokenStore = graph.tokenStore
     private val auth = graph.deviceAuth
     val queue = graph.queue
@@ -85,12 +85,22 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val mutableLibraryUi = MutableStateFlow(LibraryUi())
     val libraryUi: StateFlow<LibraryUi> = mutableLibraryUi.asStateFlow()
 
+    val sessionState: StateFlow<SessionState> = session.state
     val account = library.account
     val likedIds = library.likedIds
 
     init {
         viewModelScope.launch { queue.events.collect { say(it.render(getApplication())) } }
-        if (mutableScreen.value == Screen.LOGIN) startDeviceLogin() else restoreSession()
+        viewModelScope.launch {
+            session.state.collect { state ->
+                when (state) {
+                    is SessionState.Online -> loadLibraryLists()
+                    SessionState.Expired -> handleExpired()
+                    SessionState.LoggedOut, SessionState.Connecting, SessionState.Offline -> {}
+                }
+            }
+        }
+        if (mutableScreen.value == Screen.LOGIN) startDeviceLogin()
     }
 
     fun say(message: String) {
@@ -154,12 +164,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun signOut() {
-        queue.clear()
-        library.logout()
-        tokenStore.clear()
-        mutableLibraryUi.value = LibraryUi()
-        go(Screen.LOGIN)
-        startDeviceLogin()
+        leaveSession(notice = null)
     }
 
     fun loadLibraryLists(force: Boolean = false) {
@@ -231,35 +236,28 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         go(Screen.PLAYER)
     }
 
-    private fun restoreSession() {
-        viewModelScope.launch {
-            try {
-                withContext(Dispatchers.IO) { library.connectAccount() }
-                preloadLikes()
-            } catch (failed: YandexException) {
-                if (failed is AuthException || (failed is HttpException && failed.isTokenRejected)) {
-                    signOut()
-                } else {
-                    say(describe(failed))
-                }
-            } catch (failed: Exception) {
-                say(string(R.string.error_generic, describe(failed)))
-            }
-        }
+    private fun handleExpired() {
+        leaveSession(notice = string(R.string.login_expired))
+    }
+
+    private fun leaveSession(notice: String?) {
+        queue.clear()
+        session.signOut()
+        tokenStore.clear()
+        mutableLibraryUi.value = LibraryUi()
+        mutableLogin.value = LoginUi(notice = notice)
+        go(Screen.LOGIN)
+        startDeviceLogin()
     }
 
     private suspend fun applyToken(token: String) {
-        api.token = token
         try {
-            val account = withContext(Dispatchers.IO) { library.connectAccount() }
+            val account = session.signIn(token)
             tokenStore.save(token)
             mutableLogin.value = LoginUi()
             go(Screen.LIBRARY)
             say(string(R.string.login_signed_in, account.login.ifEmpty { account.displayName }))
-            preloadLikes()
-            loadLibraryLists(force = true)
         } catch (failed: Exception) {
-            api.token = ""
             mutableLogin.update { it.copy(status = LoginStatus.Failed(describe(failed)), tokenError = false) }
             say(string(R.string.login_error, describe(failed)))
         }

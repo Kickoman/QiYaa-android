@@ -5,6 +5,9 @@ import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -22,6 +25,9 @@ import okhttp3.RequestBody.Companion.toRequestBody
 class YandexApi(private val client: OkHttpClient, val baseUrl: String = "https://api.music.yandex.net") {
     @Volatile
     var token: String = ""
+
+    private val mutableTokenRejections = MutableSharedFlow<HttpException>(extraBufferCapacity = 1)
+    val tokenRejections: SharedFlow<HttpException> = mutableTokenRejections.asSharedFlow()
 
     suspend fun getJson(path: String, query: Map<String, String> = emptyMap()): JsonElement =
         execute("GET", path, request(url(path, query)).get().build())
@@ -143,7 +149,13 @@ class YandexApi(private val client: OkHttpClient, val baseUrl: String = "https:/
                     throw NetworkException(method, path, failed)
                 }
             val json = parseJsonObjectOrNull(body)
-            if (status >= 400) throw HttpException(status, method, path, errorMessage(json, reason))
+            if (status >= 400) {
+                val failed = HttpException(status, method, path, errorMessage(json, reason))
+                if (failed.isTokenRejected && request.header("Authorization") != null) {
+                    mutableTokenRejections.tryEmit(failed)
+                }
+                throw failed
+            }
             json?.get("result")
                 ?: throw MalformedResponseException(method, path, "no \"result\" in the response")
         }

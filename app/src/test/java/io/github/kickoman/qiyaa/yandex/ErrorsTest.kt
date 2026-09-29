@@ -16,6 +16,7 @@ class ErrorsTest {
                 NetworkException("GET", "/x", IOException("reset")),
                 MalformedResponseException("GET", "/x", "no result"),
                 AuthException("expired"),
+                NotSignedInException("/users//likes/tracks"),
             )
         for (error in errors) assertTrue(error is IOException)
     }
@@ -34,5 +35,10 @@ class ErrorsTest {
         val error = NetworkException("POST", "/tracks/", cause)
         assertSame(cause, error.cause)
         assertEquals("POST /tracks/ failed: connection reset", error.message)
+    }
+
+    @Test
+    fun `NotSignedInException names the path that needed an account`() {
+        assertTrue(NotSignedInException("likes/tracks").message!!.contains("likes/tracks"))
     }
 }

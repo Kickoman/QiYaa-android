@@ -49,7 +49,9 @@ import io.github.kickoman.qiyaa.ui.screens.PresetsSheet
 import io.github.kickoman.qiyaa.ui.screens.marqueeText
 import io.github.kickoman.qiyaa.ui.theme.Qi
 import io.github.kickoman.qiyaa.ui.theme.QiYaaTheme
+import io.github.kickoman.qiyaa.ui.theme.ReadoutStyle
 import io.github.kickoman.qiyaa.ui.theme.mono
+import io.github.kickoman.qiyaa.yandex.SessionState
 
 private val MiniPlayerStyle = mono(12.sp, 500, 0.5.sp)
 private val TabStyle = mono(10.sp, 500, 1.5.sp)
@@ -65,6 +67,7 @@ fun AppRoot(app: AppViewModel = viewModel(), player: PlayerViewModel = viewModel
         val toast by app.toast.collectAsStateWithLifecycle()
         val presetsOpen by player.presetsOpen.collectAsStateWithLifecycle()
         val playerUi by player.ui.collectAsStateWithLifecycle()
+        val sessionState by app.sessionState.collectAsStateWithLifecycle()
 
         Box(Modifier.fillMaxSize().background(colors.background)) {
             Column(
@@ -73,6 +76,7 @@ fun AppRoot(app: AppViewModel = viewModel(), player: PlayerViewModel = viewModel
                     .windowInsetsPadding(WindowInsets.systemBars)
                     .imePadding(),
             ) {
+                if (screen != Screen.LOGIN && sessionState == SessionState.Offline) OfflineStrip()
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     when (screen) {
                         Screen.LOGIN -> LoginScreen(app)
@@ -120,6 +124,22 @@ fun AppRoot(app: AppViewModel = viewModel(), player: PlayerViewModel = viewModel
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun OfflineStrip() {
+    val colors = Qi.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(colors.deep)
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        LedDot(colors.error)
+        QiText(stringResource(R.string.session_offline), ReadoutStyle, color = colors.error, maxLines = 1)
     }
 }
 

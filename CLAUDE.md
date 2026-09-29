@@ -96,7 +96,7 @@ Writing rules for READMEs:
   | `data` | Persistence: settings and token | `audio` |
   | `playback` | ExoPlayer, MediaSession, queue, audio processors | `yandex`, `audio`, `data` |
   | `ui` | Compose screens, view models, theme | everything above |
-  | root | `AppGraph`, `QiYaaApp` (composition root) | everything |
+  | root | `AppGraph`, `QiYaaApp` (composition root), `NetworkMonitor` (platform signals) | everything |
 
   Dependencies point down the table only. `yandex` and `audio` are pure JVM
   and must not import `android.*` or `androidx.*`; that keeps them testable on
@@ -225,8 +225,8 @@ descriptive name (`mutableState` behind `state`), never the decoration.
 - Long string concatenations wrap with `+` at the end of the line (ktlint's
   choice); long boolean expressions wrap before the operator.
 - Use digit separators in large literals: `44_100`, `2_000L`.
-- Imports are lexicographic in one block, no wildcards, `java.*`/`kotlin.*`
-  after the rest.
+- Imports are lexicographic in one block, no wildcards (`java.*` sorts among
+  the rest; `ktlintFormat` orders them).
 
 **Types and APIs**
 - Data is a `data class` with default values; configs, UI state and results

@@ -49,7 +49,7 @@ CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) выполняет �
 | `data/` | Настройки и токен в SharedPreferences | [data/README.md](app/src/main/java/io/github/kickoman/qiyaa/data/README.md) |
 | `playback/` | ExoPlayer + MediaSession, очередь и волна, разрешение ссылок, аудиопроцессоры | [playback/README.md](app/src/main/java/io/github/kickoman/qiyaa/playback/README.md) |
 | `ui/` | Compose: экраны, view model, тема | [ui/README.md](app/src/main/java/io/github/kickoman/qiyaa/ui/README.md) |
-| корень | `AppGraph` (ручной граф зависимостей, один на процесс), `QiYaaApp` | — |
+| корень | `AppGraph` (ручной граф зависимостей, один на процесс), `QiYaaApp`, `NetworkMonitor` (есть ли сеть; питает `yandex/Session`) | — |
 | `app/src/test/` | JVM-тесты | [test/README.md](app/src/test/README.md) |
 
 Как трек доходит до динамика: `Library` → `QueueManager` → `MediaItem` с виртуальным `qiyaa://track/{id}` → ExoPlayer → `TrackResolver` подписывает ссылку при открытии → `OkHttpDataSource` → `EqualizerProcessor` → `VisualizerTapProcessor` → `AudioTrack`. Подробности — в `playback/README.md`.
