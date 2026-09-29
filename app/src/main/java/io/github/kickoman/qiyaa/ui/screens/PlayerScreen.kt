@@ -274,13 +274,18 @@ fun PlayerScreen(viewModel: PlayerViewModel) {
             }
             RoundButton(
                 52.dp,
-                if (ui.repeat) colors.accentBackground else colors.surface,
+                if (ui.repeat && !queue.isWave) colors.accentBackground else colors.surface,
                 onClick = viewModel::toggleRepeat,
             ) {
                 QiText(
                     stringResource(R.string.player_repeat),
                     TransportLabelStyle,
-                    color = if (ui.repeat) colors.accent else colors.muted,
+                    color =
+                    when {
+                        queue.isWave -> colors.dimmer
+                        ui.repeat -> colors.accent
+                        else -> colors.muted
+                    },
                 )
             }
         }

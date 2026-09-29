@@ -7,6 +7,7 @@ interface PlayerEngine {
     val currentIndex: Int
     val isEnded: Boolean
     var shuffleEnabled: Boolean
+    var repeatEnabled: Boolean
 
     fun hasNext(): Boolean
 

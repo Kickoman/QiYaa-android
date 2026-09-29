@@ -135,4 +135,5 @@
         <item quantity="other">%d трека подряд не играют · стоп</item>
     </plurals>
     <string name="player_shuffle_wave">В волне порядок задаёт Яндекс · shuffle не действует</string>
+    <string name="player_repeat_wave">В волне повтор не действует · волна продолжается сама</string>
 </resources>

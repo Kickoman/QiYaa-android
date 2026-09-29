@@ -43,7 +43,7 @@ ui/
 
 `PlayerViewModel` — `MediaController` к `PlaybackService`, снимок `PlayerUi` (позиция тикает каждые 250 мс, пока играет), транспорт, громкость/баланс/визуализатор/тема, EQ. Свои сообщения (shuffle, повтор, тема, EQ) публикует в `notices`, которые `AppRoot` перекладывает в `AppViewModel.say`. Подписан на `Settings.volume/balance/eq` и применяет их к контроллеру и `AudioBus`.
 
-`toggleShuffle()` во время волны плеер не трогает и показывает `player_shuffle_wave`; кнопка SHF на экране плеера при волне приглушена (`dimmer`). Правило живёт в `playback/ShuffleRule`.
+`toggleShuffle()` и `toggleRepeat()` во время волны плеер не трогают и показывают `player_shuffle_wave` / `player_repeat_wave`; кнопки SHF и RPT на экране плеера при волне приглушены (`dimmer`). Правило живёт в `queue/WaveModeRule`.
 
 `previous()`: после 3 с (`RESTART_AFTER_MS`) — в начало трека, иначе — предыдущий, как в Winamp. `next()` в волне без следующего трека показывает «Loading more…» и ждёт догрузку.
 

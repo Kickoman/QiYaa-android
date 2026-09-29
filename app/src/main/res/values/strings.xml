@@ -150,4 +150,5 @@
         <item quantity="other">%d tracks in a row would not play · stopped</item>
     </plurals>
     <string name="player_shuffle_wave">Shuffle does not apply to waves · Yandex sets the order</string>
+    <string name="player_repeat_wave">Repeat does not apply to waves · the wave keeps going</string>
 </resources>

@@ -168,6 +168,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun toggleRepeat() {
         val current = controller ?: return
+        if (queue.state.value.isWave) {
+            notify(string(R.string.player_repeat_wave))
+            return
+        }
         val on = current.repeatMode == Player.REPEAT_MODE_OFF
         current.repeatMode = if (on) Player.REPEAT_MODE_ALL else Player.REPEAT_MODE_OFF
         notify(string(if (on) R.string.player_repeat_on else R.string.player_repeat_off))
