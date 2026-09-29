@@ -190,8 +190,11 @@ the body is a few lines.
 - Kotlin 2.0, JVM target 17, `minSdk 26`. The build is clean under
   `allWarningsAsErrors`, ktlint (`.editorconfig`, `android_studio` style, max
   line 110) and Android lint with `warningsAsErrors`. Fix warnings, do not
-  silence them. The two lint checks that are disabled (`GradleDependency`,
-  `AndroidGradlePluginVersion`) report freshness, not defects.
+  silence them. The three lint checks that are disabled (`GradleDependency`,
+  `AndroidGradlePluginVersion`, `OldTargetApi`) report freshness, not
+  defects, and their verdict depends on what the machine has installed: the
+  CI runner has newer SDK platforms than a local setup. Raising `targetSdk`
+  is a separate change that needs testing on a device.
 - `lint.xml`/`@Suppress` need a reason in the same line or in the README.
 
 **Naming**

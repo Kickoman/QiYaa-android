@@ -24,7 +24,7 @@ printf 'sdk.dir=%s\n' "$HOME/android-sdk" > local.properties   # или export A
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) выполняет ту же проверку на каждый push и pull request и собирает release-APK. Сборка обязана быть чистой: предупреждения Kotlin — ошибки (`allWarningsAsErrors`), ktlint по `.editorconfig` (стиль `android_studio`, строка ≤ 110), Android lint с `warningsAsErrors` (отключены только проверки свежести зависимостей). Правила кода — в `CLAUDE.md`.
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) выполняет ту же проверку на каждый push и pull request и собирает release-APK. Сборка обязана быть чистой: предупреждения Kotlin — ошибки (`allWarningsAsErrors`), ktlint по `.editorconfig` (стиль `android_studio`, строка ≤ 110), Android lint с `warningsAsErrors` (отключены только проверки свежести зависимостей и `targetSdk`: их результат зависит от того, что установлено на машине). Правила кода — в `CLAUDE.md`.
 
 ## Релизы
 

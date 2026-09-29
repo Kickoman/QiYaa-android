@@ -75,8 +75,8 @@ android {
     lint {
         abortOnError = true
         warningsAsErrors = true
-        // Dependency freshness is a maintenance decision, not a code defect.
-        disable += setOf("GradleDependency", "AndroidGradlePluginVersion")
+        // Freshness checks: the verdict depends on what the machine has installed, not on the code.
+        disable += setOf("GradleDependency", "AndroidGradlePluginVersion", "OldTargetApi")
     }
 }
 
