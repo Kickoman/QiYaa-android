@@ -5,7 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.appGraph
-import io.github.kickoman.qiyaa.playback.QueueManager
+import io.github.kickoman.qiyaa.queue.QueueController
 import io.github.kickoman.qiyaa.yandex.AuthException
 import io.github.kickoman.qiyaa.yandex.NamedRef
 import io.github.kickoman.qiyaa.yandex.PlaylistRef
@@ -207,7 +207,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun playMyWave() {
-        queue.playWave(listOf(QueueManager.MY_WAVE_SEED), string(R.string.library_my_wave))
+        queue.playWave(listOf(QueueController.MY_WAVE_SEED), string(R.string.library_my_wave))
         go(Screen.PLAYER)
     }
 

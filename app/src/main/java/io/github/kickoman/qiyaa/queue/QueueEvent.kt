@@ -1,4 +1,4 @@
-package io.github.kickoman.qiyaa.playback
+package io.github.kickoman.qiyaa.queue
 
 sealed interface QueueEvent {
     data class SourceLoading(val title: String) : QueueEvent

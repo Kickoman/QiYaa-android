@@ -10,6 +10,9 @@ JUnit 4 без эмулятора: `./gradlew testDebugUnitTest`. Сетевые
 |---|---|
 | `support/SpecFixtures.kt` | `Spec.fixture(endpoint, case)` — тело и HTTP-статус из имени случая (`401-…` → 401), `Spec.expected(…)`, `Spec.cases(endpoint)`; `Fixture.response()` для `MockWebServer` |
 | `support/SpecJson.kt` | Android-модели → нейтральный JSON спеки. `Track` не хранит `albumTitle`, `year`, `genre`: они убираются с ожидаемой стороны, а `coverUri` сравнивается как URL, построенный `TrackParsing.coverUrl` |
+| `support/FakeEngine.kt` | `queue.PlayerEngine` для тестов: плейлист, курсор, конец очереди, порядок shuffle, синхронные колбэки в `QueueController`, как у ExoPlayer; повтор не моделируется. Журнал команд `commands` |
+| `support/FakeMusicSource.kt` | `queue.MusicSource` с ответами-лямбдами (в том числе отложенными через `CompletableDeferred`), журнал вызовов и отметок `/play-audio` |
+| `support/QueueHarness.kt` | контроллер + фейки на виртуальном времени `runTest`, собранные события `events`, `track()`/`tracks()` |
 
 Путь к `spec/` передаёт Gradle: системное свойство `qiyaa.spec.dir` в `app/build.gradle.kts`, а файлы спеки объявлены входами задачи тестов, так что правка спеки перезапускает тесты. Без `git submodule update --init` тесты падают с подсказкой.
 
@@ -31,9 +34,13 @@ JUnit 4 без эмулятора: `./gradlew testDebugUnitTest`. Сетевые
 | `yandex/ErrorsTest.kt` | дерево исключений: `IOException`, `isTokenRejected`, причина, `NotSignedInException` |
 | `yandex/SessionTest.kt` | состояния сессии на фейковом `AccountGateway` и виртуальном времени: офлайн-старт, backoff 2…60 с, сброс по возврату сети, 401 и `AuthException` → `Expired`, `tokenRejections`, `signIn`/`signOut` |
 | `playback/PlaybackFailuresTest.kt` | вид ошибки воспроизведения: коды 2001/2002, `NetworkException` (в том числе обёрнутый), `UnknownHost`, 401 → сессия, 2004/404/нет вариантов/декодер → трек |
-| `playback/ErrorPolicyTest.kt` | `decide` по всем веткам (лимит 3 подряд, последний трек); `awaitRetry`: возврат в момент появления сети, паузы 2…60 с при живой сети |
-| `playback/PlayOrderTest.kt` | остаток после текущего трека по порядку воспроизведения, в том числе перемешанному |
-| `playback/ShuffleRuleTest.kt` | shuffle выключен в волне, выбор пользователя запоминается и возвращается для обычных очередей |
+| `queue/ErrorPolicyTest.kt` | `decide` по всем веткам (лимит 3 подряд, последний трек); `awaitRetry`: возврат в момент появления сети, паузы 2…60 с при живой сети |
+| `queue/PlayOrderTest.kt` | остаток после текущего трека по порядку воспроизведения, в том числе перемешанному |
+| `queue/ShuffleRuleTest.kt` | shuffle выключен в волне, выбор пользователя запоминается и возвращается для обычных очередей |
+| `queue/QueueSourcesTest.kt` | SRC-01…12: побеждает последний источник, недоступные треки, пустой источник, маршруты поиска; SRC-08 — как есть (гэп A3) |
+| `queue/QueueWaveTest.kt` | WAVE-01…08, 10, 11: старт, догрузка с последними 5 id, один запрос за раз, поколения, продолжение после конца, shuffle в волне; WAVE-03, WAVE-07 (ошибка) и TRK-01/02 — как есть (гэпы A3, A4, A2) |
+| `queue/QueueErrorsTest.kt` | ERR-01…07: пауза без сети и возврат, повторы 2/4/8 с, пропуск битого трека и стоп на третьем, сброс счётчика; ERR-07 в волне — как есть (гэп A4) |
+| `queue/QueueEditingTest.kt` | удаление выбранных, выбрать всё, очистка, `syncFromPlayer`, лайк, дизлайк (TR-07) |
 | `audio/DspVectorsTest.kt` | эталоны `spec/dsp`: АЧХ EQ (50 случаев × 41 частота, 1e-4 дБ), центры полос и Q, 17 пресетов, `levelToDb` для уровней 0…65, границы 19 полос и один кадр спектра для 24 синусов (1e-3). Из `eqf.json` не проверяются байты файла и `dbToLevel`: `.eqf` на Android n/a |
 | `audio/EqualizerTest.kt` | пресеты Winamp, тождество плоского EQ, АЧХ в центре полосы, усиление синуса на 6 дБ |
 | `audio/AnalyzerTest.kt` | 0 dBFS для синуса полной шкалы, полоса спектра для 1 кГц, спад 0.07/кадр |
@@ -42,4 +49,4 @@ JUnit 4 без эмулятора: `./gradlew testDebugUnitTest`. Сетевые
 | `data/VisualizerModeTest.kt` | сохранённые значения `VisualizerMode` и `AccentTheme` |
 | `ui/FormatTest.kt` | `formatTime`, `balanceLabel`, `formatReadout`, `formatDb` |
 
-Не тестируются на JVM: `AppViewModel`, `PlayerViewModel`, `PlaybackService`, `QueueManager` (зависят от Android/Media3). Их поведение описано в `playback/README.md` и `ui/README.md`; изменения там проверяются вручную по чек-листу из корневого `README.md`.
+Не тестируются на JVM: `AppViewModel`, `PlayerViewModel`, `PlaybackService`, `Media3Engine` (зависят от Android/Media3; `Media3Engine` только переводит вызовы, логика — в `QueueController`, который тестируется с `support/FakeEngine`). Их поведение описано в `playback/README.md` и `ui/README.md`; изменения там проверяются вручную по чек-листу из корневого `README.md`.

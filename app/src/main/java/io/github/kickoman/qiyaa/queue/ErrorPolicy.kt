@@ -1,4 +1,4 @@
-package io.github.kickoman.qiyaa.playback
+package io.github.kickoman.qiyaa.queue
 
 import io.github.kickoman.qiyaa.yandex.Session
 import kotlinx.coroutines.delay

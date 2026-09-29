@@ -1,4 +1,4 @@
-package io.github.kickoman.qiyaa.playback
+package io.github.kickoman.qiyaa.queue
 
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

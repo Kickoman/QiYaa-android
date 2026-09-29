@@ -1,4 +1,4 @@
-package io.github.kickoman.qiyaa.playback
+package io.github.kickoman.qiyaa.queue
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async

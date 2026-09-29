@@ -48,13 +48,14 @@ CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) выполняет �
 | `yandex/` | API Яндекс Музыки, OAuth по коду устройства, подпись mp3-ссылки, источники библиотеки. Чистая JVM | [yandex/README.md](app/src/main/java/io/github/kickoman/qiyaa/yandex/README.md) |
 | `audio/` | Эквалайзер, FFT, спектр, кольцо визуализатора, PCM16. Чистая JVM | [audio/README.md](app/src/main/java/io/github/kickoman/qiyaa/audio/README.md) |
 | `data/` | Настройки и токен в SharedPreferences | [data/README.md](app/src/main/java/io/github/kickoman/qiyaa/data/README.md) |
-| `playback/` | ExoPlayer + MediaSession, очередь и волна, разрешение ссылок, аудиопроцессоры | [playback/README.md](app/src/main/java/io/github/kickoman/qiyaa/playback/README.md) |
+| `queue/` | Очередь: источники, волна и догрузка, политика ошибок, shuffle. Чистая JVM, плеер виден через интерфейс | [queue/README.md](app/src/main/java/io/github/kickoman/qiyaa/queue/README.md) |
+| `playback/` | ExoPlayer + MediaSession, адаптер Media3 для очереди, разрешение ссылок, аудиопроцессоры | [playback/README.md](app/src/main/java/io/github/kickoman/qiyaa/playback/README.md) |
 | `ui/` | Compose: экраны, view model, тема | [ui/README.md](app/src/main/java/io/github/kickoman/qiyaa/ui/README.md) |
 | корень | `AppGraph` (ручной граф зависимостей, один на процесс), `QiYaaApp`, `NetworkMonitor` (есть ли сеть; питает `yandex/Session`) | — |
 | `app/src/test/` | JVM-тесты | [test/README.md](app/src/test/README.md) |
 | `spec/` | Подмодуль [Kickoman/QiYaa-spec](https://github.com/Kickoman/QiYaa-spec): сценарии плеера, фикстуры API, эталоны DSP и таблица паритета, общие с десктопом. Меняется сначала там, потом здесь (`CLAUDE.md`) | [spec/README.md](spec/README.md) |
 
-Как трек доходит до динамика: `Library` → `QueueManager` → `MediaItem` с виртуальным `qiyaa://track/{id}` → ExoPlayer → `TrackResolver` подписывает ссылку при открытии → `OkHttpDataSource` → `EqualizerProcessor` → `VisualizerTapProcessor` → `AudioTrack`. Подробности — в `playback/README.md`.
+Как трек доходит до динамика: `Library` → `QueueController` → `Media3Engine` → `MediaItem` с виртуальным `qiyaa://track/{id}` → ExoPlayer → `TrackResolver` подписывает ссылку при открытии → `OkHttpDataSource` → `EqualizerProcessor` → `VisualizerTapProcessor` → `AudioTrack`. Подробности — в `playback/README.md`.
 
 ## Лицензия
 

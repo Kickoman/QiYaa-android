@@ -94,7 +94,8 @@ Writing rules for READMEs:
   | `yandex` | Yandex Music HTTP API, OAuth, link signing | — (pure JVM) |
   | `audio` | DSP: equalizer, FFT, spectrum, visualizer ring, PCM | — (pure JVM) |
   | `data` | Persistence: settings and token | `audio` |
-  | `playback` | ExoPlayer, MediaSession, queue, audio processors | `yandex`, `audio`, `data` |
+  | `queue` | What plays next: sources, waves, error policy, shuffle rule | `yandex` (pure JVM) |
+  | `playback` | ExoPlayer, MediaSession, the Media3 adapter for `queue`, audio processors | `queue`, `yandex`, `audio`, `data` |
   | `ui` | Compose screens, view models, theme | everything above |
   | root | `AppGraph`, `QiYaaApp` (composition root), `NetworkMonitor` (platform signals) | everything |
 
@@ -103,13 +104,13 @@ Writing rules for READMEs:
   the JVM without Robolectric:
 
   ```bash
-  grep -rlnE '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiyaa/{yandex,audio}/   # must print nothing
-  grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/{yandex,audio,data,playback}/      # must print nothing
+  grep -rlnE '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiyaa/{yandex,audio,queue}/   # must print nothing
+  grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/{yandex,audio,data,queue,playback}/      # must print nothing
   ```
 
   Android entry points (`MainActivity`, `PlaybackService`) reach the graph
   through `Context.appGraph`; that is the only upward reference allowed.
-- **Core logic has no UI.** `yandex`, `audio`, `data` and `playback` never
+- **Core logic has no UI.** `yandex`, `audio`, `data`, `queue` and `playback` never
   produce user-facing text. Anything a user should see is a typed event or a
   status value (`QueueEvent`, `LoginStatus`) that the `ui` package renders
   through string resources. Titles that come from the user or the server
@@ -117,7 +118,9 @@ Writing rules for READMEs:
 - **Pure functions apart from I/O.** Parsing is separate from transport
   (`TrackParsing`, `TrackUrl` take `JsonElement`, `YandexApi` does the HTTP).
   DSP classes take arrays and return arrays; only the Media3 processors in
-  `playback` touch `ByteBuffer`s and the player.
+  `playback` touch `ByteBuffer`s and the player. The queue sees the player
+  through the `PlayerEngine` interface and the library through `MusicSource`,
+  so every queue rule runs in a JVM test with fakes.
 - **Entry points only wire and dispatch.** `QiYaaApp.onCreate` builds the
   graph, `MainActivity.onCreate` sets the content, `PlaybackService.onCreate`
   assembles the player. Behaviour lives in view models and in the modules.
@@ -208,7 +211,7 @@ the body is a few lines.
 | Constants (`const val`, immutable top-level tables) | `UPPER_SNAKE_CASE` | `TRACKS_PER_REQUEST`, `KEY_VOLUME`, `BAND_LABELS` |
 | Mutable backing flow of a public `StateFlow` | `mutableX` behind `x` | `mutableAccount` behind `account` |
 | Packages | one lowercase word per segment | `yandex`, `ui.visualizer` |
-| Files | `PascalCase`; named after the main type, or after the content when there is none | `QueueManager.kt`, `Format.kt`, `Errors.kt` |
+| Files | `PascalCase`; named after the main type, or after the content when there is none | `QueueController.kt`, `Format.kt`, `Errors.kt` |
 | Tests | `<Unit>Test.kt`, backtick sentence names | `` `HTTP errors carry the status, the request and the server message` `` |
 
 If a stored field and its accessor would clash, the field gets the
