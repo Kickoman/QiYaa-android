@@ -152,6 +152,9 @@ fun LibraryScreen(viewModel: AppViewModel, player: PlayerViewModel) {
                 .background(colors.surface),
         ) {
             SourceRow(stringResource(R.string.library_liked), "${liked.size}") { viewModel.playLiked() }
+            SourceRow(stringResource(R.string.library_for_you), countOrPending(libraryUi.forYou)) {
+                viewModel.openSection(LibrarySection.FOR_YOU)
+            }
             SourceRow(stringResource(R.string.library_playlists), countOrPending(libraryUi.playlists)) {
                 viewModel.openSection(LibrarySection.PLAYLISTS)
             }

@@ -71,13 +71,25 @@ class Library(val api: YandexApi) : AccountGateway {
     suspend fun likedTracks(): List<Track> = tracksByIds(likedTrackIds())
 
     suspend fun userPlaylists(): List<PlaylistRef> =
-        api.getJson(userPath("playlists/list")).arrayOrEmpty.mapNotNull { element ->
-            val item = element.objectOrEmpty
-            val owner = idString(item["uid"]).ifEmpty { idString(item["owner"].objectOrEmpty["uid"]) }
-            val kind = idString(item["kind"])
-            if (kind.isEmpty()) return@mapNotNull null
-            PlaylistRef(owner, kind, item.string("title"), item.int("trackCount", 0))
+        api.getJson(userPath("playlists/list")).arrayOrEmpty.mapNotNull {
+            playlistRef(it.objectOrEmpty, needOwner = false)
         }
+
+    suspend fun personalPlaylists(): List<PlaylistRef> =
+        api.getJson("/landing3", mapOf("blocks" to LANDING_PERSONAL_PLAYLISTS))
+            .objectOrEmpty["blocks"].arrayOrEmpty
+            .flatMap { it.objectOrEmpty["entities"].arrayOrEmpty }
+            .mapNotNull { entity ->
+                val data = entity.objectOrEmpty["data"].objectOrEmpty
+                playlistRef(data["data"]?.objectOrEmpty ?: data, needOwner = true)
+            }
+
+    private fun playlistRef(item: JsonObject, needOwner: Boolean): PlaylistRef? {
+        val owner = idString(item["uid"]).ifEmpty { idString(item["owner"].objectOrEmpty["uid"]) }
+        val kind = idString(item["kind"])
+        if (kind.isEmpty() || (needOwner && owner.isEmpty())) return null
+        return PlaylistRef(owner, kind, item.string("title"), item.int("trackCount", 0))
+    }
 
     suspend fun playlistTracks(playlist: PlaylistRef): List<Track> {
         val result = api.getJson("/users/${playlist.ownerUid}/playlists/${playlist.kind}")
@@ -246,6 +258,7 @@ class Library(val api: YandexApi) : AccountGateway {
         const val TRACKS_PER_REQUEST = 250
         const val ARTIST_TOP_LIMIT = 100
         const val RADIO_FROM = "web-main-rup-radio-main"
+        const val LANDING_PERSONAL_PLAYLISTS = "personalplaylists"
         private val CLIENT_ERRORS = 400..499
 
         fun parseWaveBatch(result: JsonElement): WaveBatch {

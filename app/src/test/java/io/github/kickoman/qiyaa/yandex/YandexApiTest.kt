@@ -101,6 +101,20 @@ class YandexApiTest {
     }
 
     @Test
+    fun `personal playlists come from landing3, match the spec and skip entries without an owner or kind`() =
+        runBlocking {
+            route("GET", "/landing3", Spec.fixture("landing3", "personal-playlists"))
+            assertEquals(
+                Spec.expected("landing3", "personal-playlists"),
+                SpecJson.playlists(library.personalPlaylists()),
+            )
+            assertEquals(
+                "personalplaylists",
+                requests["/landing3"]!!.single().requestUrl!!.queryParameter("blocks"),
+            )
+        }
+
+    @Test
     fun `a playlist with embedded tracks parses them directly`() = runBlocking {
         route("GET", "/users/42/playlists/1003", Spec.fixture("users-playlists", "embedded-tracks"))
         val tracks = library.playlistTracks(PlaylistRef("42", "1003", "Дорога", 2))

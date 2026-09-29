@@ -31,7 +31,7 @@ ui/
 | `screens/PlaylistScreen.kt` | `PlaylistScreen` |
 | `screens/EqScreen.kt` | `EqScreen`, `PresetsSheet` |
 | `screens/LibraryScreen.kt` | `LibraryScreen` |
-| `screens/LibrarySectionScreen.kt` | `LibrarySectionScreen` — станции / плейлисты / исполнители / альбомы чипами |
+| `screens/LibrarySectionScreen.kt` | `LibrarySectionScreen` — «для вас» / станции / плейлисты / исполнители / альбомы чипами |
 | `theme/Color.kt` | `QiColors`, `accentColors`, `LocalQiColors` |
 | `theme/Theme.kt` | `Qi.colors`, `QiYaaTheme` |
 | `theme/Type.kt` | `PlexMono`, `PlexSans`, `mono()`, `sans()`, `CaptionStyle`, `LabelStyle`, `ButtonStyle`, `ReadoutStyle`, `HintStyle` |
@@ -75,7 +75,7 @@ ui/
 
 `EqScreen`: подписи полос `BAND_LABELS` живут здесь, а не в `audio`. График соединяет значения полос в координатах макета (x = 10 + i·344/9 из 364, y = 44 ∓ 36 из 88). `PresetsSheet` рисуется поверх всего приложения из `AppRoot`.
 
-`LibrarySectionScreen` группирует станции по `Library.stationGroupKey` в порядке `STATION_GROUP_ORDER` (неизвестные группы в конце, в порядке ответа сервера), плейлисты делит на «мои» и «сохранённые» по `ownerUid`. Активный чип — `QueueState.activeSourceId`; id источников: `liked`, `playlist:{owner}:{kind}`, `artist:{id}`, `album:{id}`, id станции.
+`LibrarySectionScreen` группирует станции по `Library.stationGroupKey` в порядке `STATION_GROUP_ORDER` (неизвестные группы в конце, в порядке ответа сервера), плейлисты делит на «мои» и «сохранённые» по `ownerUid`; «Для вас» (`LibraryUi.forYou`, `Library.personalPlaylists`) — одна группа в порядке ответа, чип играет плейлист, как обычный. Активный чип — `QueueState.activeSourceId`; id источников: `liked`, `playlist:{owner}:{kind}`, `artist:{id}`, `album:{id}`, id станции.
 
 `VisualizerStrip`: 1024 последних кадра из `VisualizerTap`, кадр каждые 33 мс, только пока играет; спектр — 19 полос с пиками, осциллограф — последние 576 кадров (окно Winamp в 75 px). В режиме `OFF` цикл не запускается.
 
