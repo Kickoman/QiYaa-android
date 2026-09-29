@@ -53,16 +53,31 @@ class QueueWaveTest {
         assertEquals("genre:rock", harness.controller.state.value.activeSourceId)
     }
 
-    // Gap A3 (Kickoman/QiYaa-android#28): the spec keeps the queue and reports the wave as empty.
     @Test
-    fun `WAVE-03 gap A3 - an empty first batch currently clears the queue`() = runTest {
+    fun `WAVE-03 an empty first batch leaves the queue and is reported empty`() = runTest {
         val harness = QueueHarness(this)
-        harness.controller.loadSource("Old") { tracks("o1") }
+        harness.controller.loadSource("Old") { tracks("o1", "o2", "o3") }
         runCurrent()
-        harness.source.onStartWave = { WaveBatch("S1", "B1", listOf(track("x", available = false))) }
-        harness.controller.playWave(listOf("user:onyourwave"), "My Wave")
+        harness.engine.commands.clear()
+        for (batch in listOf(emptyList(), listOf(track("x", available = false)))) {
+            harness.source.onStartWave = { WaveBatch("S1", "B1", batch) }
+            harness.controller.playWave(listOf("user:onyourwave"), "My Wave")
+            runCurrent()
+            assertEquals(listOf("o1", "o2", "o3"), harness.engine.ids())
+            assertEquals(emptyList<String>(), harness.engine.commands)
+            assertEquals(false, harness.controller.state.value.isWave)
+            assertEquals(QueueEvent.SourceEmpty("My Wave"), harness.events.last())
+        }
+        harness.engine.finishTrack()
+        harness.engine.finishTrack()
         runCurrent()
-        assertEquals(emptyList<String>(), harness.engine.ids())
+        assertEquals(
+            "no load-more for a wave that never started",
+            emptyList<String>(),
+            harness.source.calls.filter {
+                it.startsWith("moreWave")
+            },
+        )
     }
 
     @Test

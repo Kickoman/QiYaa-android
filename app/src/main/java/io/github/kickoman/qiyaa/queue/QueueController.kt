@@ -123,7 +123,7 @@ class QueueController(
                         return@launch
                     }
                 if (!isLatest(ticket)) return@launch
-                if (tracks.isEmpty()) {
+                if (tracks.none { it.available }) {
                     emit(QueueEvent.SourceEmpty(title))
                     return@launch
                 }
@@ -146,6 +146,10 @@ class QueueController(
                         return@launch
                     }
                 if (!isLatest(ticket)) return@launch
+                if (batch.tracks.none { it.available }) {
+                    emit(QueueEvent.SourceEmpty(title))
+                    return@launch
+                }
                 waveSessionId = batch.sessionId
                 setQueue(batch.tracks, title, isWave = true, autoplay = true, sourceId = sourceId)
                 emit(QueueEvent.WaveStarted(title))
@@ -172,7 +176,7 @@ class QueueController(
                             }
                         }
                     if (!isLatest(ticket)) return@launch
-                    if (tracks.isEmpty()) {
+                    if (tracks.none { it.available }) {
                         emit(QueueEvent.NothingFound)
                         return@launch
                     }

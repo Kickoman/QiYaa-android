@@ -109,16 +109,32 @@ class QueueSourcesTest {
         assertEquals(QueueEvent.SourceEmpty("Empty"), harness.events.last())
     }
 
-    // Gap A3 (Kickoman/QiYaa-android#28): the spec keeps the queue and reports the source as empty.
     @Test
-    fun `SRC-08 gap A3 - a source of only unavailable tracks currently clears the queue`() = runTest {
+    fun `SRC-08 a source of only unavailable tracks leaves the queue and is reported empty`() = runTest {
         val harness = QueueHarness(this)
         harness.controller.loadSource("Old") { tracks("o1") }
         runCurrent()
+        harness.engine.commands.clear()
         harness.controller.loadSource("Gone") { listOf(track("x", available = false)) }
         runCurrent()
-        assertEquals(emptyList<String>(), harness.engine.ids())
-        assertEquals(QueueEvent.SourceLoaded("Gone", 0), harness.events.last())
+        assertEquals(listOf("o1"), harness.engine.ids())
+        assertEquals(emptyList<String>(), harness.engine.commands)
+        assertEquals("Old", harness.controller.state.value.title)
+        assertEquals(QueueEvent.SourceEmpty("Gone"), harness.events.last())
+    }
+
+    @Test
+    fun `SRC-08 SRC-12 a search whose tracks are all unavailable finds nothing`() = runTest {
+        val harness = QueueHarness(this)
+        harness.controller.loadSource("Old") { tracks("o1") }
+        runCurrent()
+        harness.source.onSearch = {
+            SearchResult(tracks = listOf(track("x", available = false)))
+        }
+        harness.controller.search("кино", "Search: кино")
+        runCurrent()
+        assertEquals(listOf("o1"), harness.engine.ids())
+        assertEquals(QueueEvent.NothingFound, harness.events.last())
     }
 
     @Test
