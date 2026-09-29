@@ -16,12 +16,12 @@ class EqualizerTest {
     @Test
     fun `the 17 presets match Winamp's builtin table`() {
         assertEquals(17, EqPresets.builtin.size)
-        assertEquals(-12.0, EqPresets.eqfToDb(1), 1e-9)
-        assertEquals(12.0, EqPresets.eqfToDb(64), 1e-9)
+        assertEquals(-12.0, EqPresets.levelToDb(1), 1e-9)
+        assertEquals(12.0, EqPresets.levelToDb(64), 1e-9)
         assertEquals("Classical", EqPresets.builtin.first().name)
         assertEquals("Techno", EqPresets.builtin.last().name)
         val rock = EqPresets.byName("Rock")!!
-        assertEquals(EqPresets.eqfToDb(45), rock.settings.bandsDb[0], 1e-9)
+        assertEquals(EqPresets.levelToDb(45), rock.settings.bandsDb[0], 1e-9)
         assertEquals(0.0, rock.settings.preampDb, 0.0)
     }
 

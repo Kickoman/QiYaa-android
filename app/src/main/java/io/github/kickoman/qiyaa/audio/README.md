@@ -48,7 +48,7 @@ class EqualizerDsp(sampleRate: Int = 44_100) {
 
 ## `EqPresets`
 
-Таблица `WINAMP_EQF` — значения из `presets/builtin.json` webamp (MIT, см. `THIRD_PARTY.md`) в шкале `.eqf` 1…64: `eqfToDb(1) = −12`, `eqfToDb(64) = +12`, и отдельно `33 ≡ 0 dB` (в формуле это +0.19 дБ; Winamp считает 33 «плоским»). Преамп всех пресетов — 0 дБ. `byName` возвращает `null` для неизвестного имени.
+Таблица `WINAMP_EQF` — значения из `presets/builtin.json` webamp (MIT, см. `THIRD_PARTY.md`) в шкале `.eqf` 1…64. `levelToDb(level)` зажимает уровень в 1…64 и даёт `(level − 1)/63·24 − 12` дБ, а 33 — ровно 0 дБ (по формуле было бы +0.19; Winamp считает 33 «плоским»). Правило то же, что в `spec/dsp/eqf.json`. Преамп всех пресетов — 0 дБ. `byName` возвращает `null` для неизвестного имени.
 
 ## `Analyzer`, `Spectrum`
 
@@ -61,11 +61,15 @@ class Analyzer(val size: Int = 1024) {          // степень двойки �
 class Spectrum(val barCount: Int = 19) {
     val levels: FloatArray; val peaks: FloatArray   // 0..1
     fun reset()
-    fun update(spectrumDb: FloatArray, fftSize: Int, sampleRate: Int)
+    fun update(spectrumDb: FloatArray, fftSize: Int, sampleRate: Int)   // spectrumDb.size == fftSize/2 + 1
+    data class Band(lowHz, highHz, firstBin, endBin)
+    companion object { fun bands(fftSize: Int, sampleRate: Int, barCount: Int = 19): List<Band> }
 }
 ```
 
-Полосы спектра логарифмические от 60 Гц до min(16 кГц, sampleRate/2); уровень — максимум dBFS в полосе, отображённый из [−72, −6] дБ в [0, 1]. Уровень падает на 0.07 за кадр, пик падает по квадрату возраста с коэффициентом 0.0004 (`Spectrum.PEAK_GRAVITY`). Кадр — один вызов `update`; `ui/visualizer` вызывает его каждые 33 мс.
+Полосы спектра (`bands`) логарифмические от 60 Гц до min(16 кГц, sampleRate/2); бины полосы — `[floor(lowHz/binHz), ceil(highHz/binHz))`, зажатые в 1…N/2 и не пустые; уровень — максимум dBFS в полосе, отображённый из [−72, −6] дБ в [0, 1]. Уровень падает на 0.07 за кадр, пик падает по квадрату возраста с коэффициентом 0.0004 (`Spectrum.PEAK_GRAVITY`). Кадр — один вызов `update`; `ui/visualizer` вызывает его каждые 33 мс.
+
+Всё это сверяется с эталонами десктопа из `spec/dsp` (`app/src/test/.../audio/DspVectorsTest.kt`): АЧХ EQ до 1e-4 дБ в 50 случаях на 44 100 и 48 000 Гц, пресеты и уровни `.eqf` до 1e-9 дБ, границы полос и один кадр спектра для 24 синусов до 1e-3. Изменение DSP, которое сдвигает эти числа, — изменение поведения: сначала в QiYaa-spec.
 
 `analyze` и `VisualizerTap.read` пишут в массивы вызывающего: это единственные out-параметры в проекте, чтобы не аллоцировать на каждый кадр.
 
