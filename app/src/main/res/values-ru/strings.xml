@@ -138,4 +138,7 @@
     <string name="notification_like">Нравится</string>
     <string name="notification_unlike">Убрать из избранного</string>
     <string name="notification_dislike">Не нравится, дальше</string>
+    <string name="library_for_you">Для вас</string>
+    <string name="library_sub_for_you">ДЛЯ ВАС</string>
+    <string name="library_group_for_you">СОБРАНО ДЛЯ ВАС</string>
 </resources>

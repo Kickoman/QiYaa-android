@@ -24,7 +24,7 @@ import kotlinx.coroutines.withContext
 
 enum class Screen { LOGIN, PLAYER, PLAYLIST, EQ, LIBRARY }
 
-enum class LibrarySection { STATIONS, PLAYLISTS, ARTISTS, ALBUMS }
+enum class LibrarySection { FOR_YOU, STATIONS, PLAYLISTS, ARTISTS, ALBUMS }
 
 sealed interface LoginStatus {
     data object Requesting : LoginStatus
@@ -46,6 +46,7 @@ data class LoginUi(
 )
 
 data class LibraryUi(
+    val forYou: List<PlaylistRef>? = null,
     val playlists: List<PlaylistRef>? = null,
     val artists: List<NamedRef>? = null,
     val albums: List<NamedRef>? = null,
@@ -55,7 +56,7 @@ data class LibraryUi(
     val searchText: String = "",
 ) {
     val isComplete: Boolean
-        get() = playlists != null && artists != null && albums != null && stations != null
+        get() = forYou != null && playlists != null && artists != null && albums != null && stations != null
 }
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
@@ -175,12 +176,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {
+                    val forYou = library.personalPlaylists()
                     val playlists = library.userPlaylists()
                     val artists = library.likedArtists()
                     val albums = library.likedAlbums()
                     val stations = library.stations()
                     mutableLibraryUi.update {
                         it.copy(
+                            forYou = forYou,
                             playlists = playlists,
                             artists = artists,
                             albums = albums,

@@ -153,4 +153,7 @@
     <string name="notification_like">Like</string>
     <string name="notification_unlike">Remove like</string>
     <string name="notification_dislike">Dislike and skip</string>
+    <string name="library_for_you">For you</string>
+    <string name="library_sub_for_you">FOR YOU</string>
+    <string name="library_group_for_you">MADE FOR YOU</string>
 </resources>

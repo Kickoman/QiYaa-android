@@ -56,6 +56,7 @@ fun LibrarySectionScreen(viewModel: AppViewModel, section: LibrarySection) {
     val sectionTitle =
         stringResource(
             when (section) {
+                LibrarySection.FOR_YOU -> R.string.library_sub_for_you
                 LibrarySection.STATIONS -> R.string.library_sub_stations
                 LibrarySection.PLAYLISTS -> R.string.library_sub_playlists
                 LibrarySection.ARTISTS -> R.string.library_sub_artists
@@ -101,6 +102,12 @@ fun LibrarySectionScreen(viewModel: AppViewModel, section: LibrarySection) {
                             },
                         )
                     }
+            }
+            LibrarySection.FOR_YOU -> {
+                val forYou = libraryUi.forYou
+                loaded = forYou != null
+                val items = forYou.orEmpty().map { playlistChip(it, viewModel) }
+                listOf(ChipGroup(stringResource(R.string.library_group_for_you), items))
             }
             LibrarySection.PLAYLISTS -> {
                 val playlists = libraryUi.playlists
