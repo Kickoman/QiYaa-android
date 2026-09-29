@@ -52,7 +52,8 @@ class QueueController(
     private var consecutiveTrackFailures = 0
     private var networkRetryAttempt = 0
     private var retryJob: Job? = null
-    private val shuffleRule = ShuffleRule()
+    private val shuffleRule = WaveModeRule()
+    private val repeatRule = WaveModeRule()
 
     fun attach(engine: PlayerEngine) {
         this.engine = engine
@@ -80,6 +81,12 @@ class QueueController(
         val current = engine ?: return
         val target = shuffleRule.onPlayerChanged(enabled, mutableState.value.isWave)
         if (target != enabled) current.shuffleEnabled = target
+    }
+
+    fun onRepeatChanged(enabled: Boolean) {
+        val current = engine ?: return
+        val target = repeatRule.onPlayerChanged(enabled, mutableState.value.isWave)
+        if (target != enabled) current.repeatEnabled = target
     }
 
     fun onPlayingChanged(isPlaying: Boolean) {
@@ -202,6 +209,7 @@ class QueueController(
             QueueState(tracks = playable, title = title, isWave = isWave, activeSourceId = sourceId)
         reportedItemId = null
         current.shuffleEnabled = shuffleRule.playerModeFor(isWave)
+        current.repeatEnabled = repeatRule.playerModeFor(isWave)
         current.setTracks(playable, playWhenReady = autoplay)
     }
 

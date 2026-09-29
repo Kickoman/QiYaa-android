@@ -23,6 +23,10 @@ class Media3Engine(private val player: Player, private val controller: QueueCont
                 controller.onShuffleChanged(shuffleModeEnabled)
             }
 
+            override fun onRepeatModeChanged(repeatMode: Int) {
+                controller.onRepeatChanged(repeatMode != Player.REPEAT_MODE_OFF)
+            }
+
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 controller.onPlayingChanged(isPlaying)
             }
@@ -41,6 +45,12 @@ class Media3Engine(private val player: Player, private val controller: QueueCont
         get() = player.shuffleModeEnabled
         set(value) {
             player.shuffleModeEnabled = value
+        }
+
+    override var repeatEnabled: Boolean
+        get() = player.repeatMode != Player.REPEAT_MODE_OFF
+        set(value) {
+            player.repeatMode = if (value) Player.REPEAT_MODE_ALL else Player.REPEAT_MODE_OFF
         }
 
     fun attach() {

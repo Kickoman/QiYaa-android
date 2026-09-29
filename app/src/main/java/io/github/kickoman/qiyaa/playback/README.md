@@ -44,6 +44,7 @@ class Media3Engine(player: Player, controller: QueueController) : PlayerEngine {
 | `onMediaItemTransition(item)` | `onItemChanged(MediaItems.toTrack(item))` |
 | `onPlaybackStateChanged(STATE_ENDED)` | `onEnded()` |
 | `onShuffleModeEnabledChanged(on)` | `onShuffleChanged(on)` |
+| `onRepeatModeChanged(mode)` | `onRepeatChanged(mode != REPEAT_MODE_OFF)`; `repeatEnabled = true` — это `REPEAT_MODE_ALL` (повтора одного трека нет, TR-06) |
 | `onIsPlayingChanged(playing)` | `onPlayingChanged(playing)` |
 | `onPlayerError(error)` | `onFailure(PlaybackFailures.classify(error.errorCode, error.cause), error.cause?.message ?: error.errorCodeName)` |
 

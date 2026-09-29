@@ -209,6 +209,42 @@ class QueueWaveTest {
         assertTrue(harness.engine.shuffleEnabled)
     }
 
+    @Test
+    fun `WAVE-12 repeat does not apply in a wave, so its last track does not wrap to the first`() = runTest {
+        val harness = QueueHarness(this)
+        harness.controller.loadSource("Liked") { tracks("l1", "l2") }
+        runCurrent()
+        harness.engine.repeatEnabled = true
+        harness.source.onStartWave = { WaveBatch("S1", "B1", tracks("w1", "w2", "w3")) }
+        harness.source.onMoreWave = { _, _ -> CompletableDeferred<WaveBatch>().await() }
+        harness.controller.playWave(listOf("user:onyourwave"), "My Wave")
+        runCurrent()
+        assertFalse(harness.engine.repeatEnabled)
+        harness.engine.repeatEnabled = true
+        assertFalse("turning repeat on during a wave is reverted", harness.engine.repeatEnabled)
+        repeat(3) { harness.engine.finishTrack() }
+        runCurrent()
+        assertTrue("the wave waits at its end instead of wrapping", harness.engine.isEnded)
+        assertEquals(2, harness.engine.currentIndex)
+    }
+
+    @Test
+    fun `WAVE-12 an ordinary queue after a wave gets the user's repeat back`() = runTest {
+        val harness = QueueHarness(this)
+        harness.controller.loadSource("Liked") { tracks("l1", "l2") }
+        runCurrent()
+        harness.engine.repeatEnabled = true
+        harness.source.onStartWave = { WaveBatch("S1", "B1", tracks("w1", "w2", "w3")) }
+        harness.controller.playWave(listOf("user:onyourwave"), "My Wave")
+        runCurrent()
+        harness.controller.loadSource("Liked") { tracks("l1", "l2") }
+        runCurrent()
+        assertTrue(harness.engine.repeatEnabled)
+        harness.engine.finishTrack()
+        harness.engine.finishTrack()
+        assertEquals("repeat wraps an ordinary queue (TR-05)", 0, harness.engine.currentIndex)
+    }
+
     // Gap A2 (Kickoman/QiYaa-android#27): /play-audio goes out when the item changes, even
     // without autoplay, and is not repeated for the same track.
     @Test

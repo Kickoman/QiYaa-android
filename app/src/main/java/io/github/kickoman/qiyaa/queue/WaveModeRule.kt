@@ -1,6 +1,6 @@
 package io.github.kickoman.qiyaa.queue
 
-class ShuffleRule {
+class WaveModeRule {
     var wanted: Boolean = false
         private set
 

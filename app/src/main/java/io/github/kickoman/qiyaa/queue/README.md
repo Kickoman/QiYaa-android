@@ -20,7 +20,7 @@ grep -rln 'qiyaa\.\(playback\|ui\|data\)\.' app/src/main/java/io/github/kickoman
 | `QueueEvent.kt` | `QueueEvent` — что очередь сообщает наружу |
 | `ErrorPolicy.kt` | `ErrorAction`, `ErrorPolicy` — что делать с ошибкой; ожидание сети перед повтором |
 | `FailureKind.kt` | `FailureKind` — `NETWORK`, `SESSION`, `TRACK` (определяет `playback/PlaybackFailures`) |
-| `ShuffleRule.kt` | `ShuffleRule` — shuffle не действует в волне |
+| `WaveModeRule.kt` | `WaveModeRule` — режим пользователя (shuffle, повтор), который в волне выключен и потом возвращается |
 | `PlayOrder.kt` | `PlayOrder.remainingAfter` — сколько треков после текущего в порядке воспроизведения |
 
 ## `QueueController`
@@ -39,7 +39,7 @@ class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: C
     fun removeIndices(indices: Set<Int>);  fun toggleSelected(index: Int);  fun selectAllOrNone();  fun syncFromPlayer()
     fun toggleLike(track: Track);  fun dislikeAndSkip(track: Track)
     // события движка
-    fun onItemChanged(track: Track?);  fun onEnded();  fun onShuffleChanged(enabled: Boolean)
+    fun onItemChanged(track: Track?);  fun onEnded();  fun onShuffleChanged(enabled: Boolean);  fun onRepeatChanged(enabled: Boolean)
     fun onPlayingChanged(isPlaying: Boolean);  fun onFailure(kind: FailureKind, message: String)
     companion object { MY_WAVE_SEED = "user:onyourwave"; LOAD_MORE_WHEN_LEFT = 2; WAVE_HISTORY = 5 }
 }
@@ -51,7 +51,7 @@ class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: C
 - **Побеждает последний источник** (SRC-01…03). Каждый `loadSource`/`playWave`/`search` берёт билет; ответ или ошибка устаревшего билета отбрасываются молча. Поиск с лучшим артистом или альбомом — один источник, как бы много запросов он ни делал.
 - **Недоступные треки** (`available == false`) не попадают в очередь (SRC-05). Источник, в котором нет ни одного доступного трека, оставляет очередь и воспроизведение как есть и сообщает `SourceEmpty` (SRC-07, SRC-08); поиск — `NothingFound` (SRC-12); первая порция волны — `SourceEmpty` без сессии и догрузки (WAVE-03). Проверка на пустоту идёт после фильтра доступности.
 - **Волна** стартует с `SourceLoading` сразу и `WaveStarted` после ответа (WAVE-01). Догружается, когда текущий трек — один из двух последних в порядке воспроизведения (`LOAD_MORE_WHEN_LEFT = 2` считает текущий вместе с оставшимися), с последними 5 id очереди, не больше одного запроса за раз (WAVE-05, WAVE-06). Поколение очереди не даёт дописать ответ к уже заменённой очереди (WAVE-07). Если плеер дошёл до конца во время догрузки, продолжает с первого нового трека (WAVE-08).
-- **Shuffle в волне не действует** (WAVE-10, WAVE-11): `setQueue` ставит движку `ShuffleRule.playerModeFor(isWave)`, `onShuffleChanged` возвращает выключенный режим, если shuffle включили во время волны с любого контроллера.
+- **Shuffle и повтор в волне не действуют** (WAVE-10…12). Два экземпляра `WaveModeRule`: `setQueue` ставит движку `playerModeFor(isWave)` для каждого режима, а `onShuffleChanged`/`onRepeatChanged` возвращают выключенный режим, если его включили во время волны с любого контроллера. Выбор пользователя запоминается только вне волны и возвращается для обычных очередей. Так последний трек волны не переходит к первому, а ждёт догрузку (WAVE-08).
 - **Ошибки воспроизведения** (ERR-01…07) — по `ErrorPolicy`, см. ниже.
 - **Дизлайк** = запрос `dislike` + переход к следующему; в конечной очереди без следующего — стоп, в волне — ничего, ждём догрузку (TR-07).
 - **Отметка `/play-audio`** уходит на смену id текущего трека, best-effort, ошибки игнорируются.
@@ -66,7 +66,6 @@ class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: C
 |---|---|---|---|
 | A2 | `/play-audio` уходит на смену элемента, в том числе без автозапуска, и не повторяется для того же трека | TRK-01, TRK-02 | #27 |
 | A4 | ошибка догрузки для заменённой очереди всё равно показывается; битый последний трек волны — стоп | WAVE-07, ERR-07 | #29 |
-| A5 | повтор в конце волны переходит к её первому треку — это поведение ExoPlayer, тестом очереди не закреплено | WAVE-12 | #30 |
 
 Транспорт «назад»/«вперёд» (TR-01…05, WAVE-09) пока живёт в `ui/PlayerViewModel` поверх `MediaController`; переедет в очередь с Kickoman/QiYaa-android#6.
 
@@ -98,5 +97,5 @@ object ErrorPolicy {
 - `title` — данные из UI или сервера (имя плейлиста, `getString(R.string.library_my_wave)`), не константа этого пакета.
 - `syncFromPlayer` сверяет `state.tracks` с плеером только по числу элементов.
 - `removeIndices` удаляет по убыванию индексов, иначе сдвиг сломает выборку.
-- `DefaultShuffleOrder` ExoPlayer вставляет дописанные треки в случайные места перемешанного порядка, поэтому в волне shuffle запрещён, а не «исправлен». Выбор shuffle хранится только в памяти `ShuffleRule`.
+- `DefaultShuffleOrder` ExoPlayer вставляет дописанные треки в случайные места перемешанного порядка, поэтому в волне shuffle запрещён, а не «исправлен». Выбор shuffle и повтора хранится только в памяти `WaveModeRule`.
 - `QueueController` не должен импортировать `yandex/Library` напрямую: только `MusicSource`, иначе тесты потеряют фейк, а `yandex` — место внизу графа.

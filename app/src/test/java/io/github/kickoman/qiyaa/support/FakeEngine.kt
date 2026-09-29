@@ -7,7 +7,8 @@ import io.github.kickoman.qiyaa.queue.QueueController
 import io.github.kickoman.qiyaa.yandex.Track
 
 // Mirrors the parts of ExoPlayer the queue relies on: a playlist with a cursor, the end state,
-// a shuffle order, and listener callbacks fired synchronously after each change. Repeat is off.
+// a shuffle order, repeat of the whole queue, and listener callbacks fired synchronously after
+// each change.
 class FakeEngine(private val controller: QueueController) : PlayerEngine {
     val tracks = ArrayList<Track>()
     val commands = ArrayList<String>()
@@ -30,7 +31,16 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
             controller.onShuffleChanged(value)
         }
 
-    override fun hasNext(): Boolean = PlayOrder.remainingAfter(playOrder(), currentIndex) > 0
+    override var repeatEnabled = false
+        set(value) {
+            if (field == value) return
+            field = value
+            commands += "repeat $value"
+            controller.onRepeatChanged(value)
+        }
+
+    override fun hasNext(): Boolean =
+        PlayOrder.remainingAfter(playOrder(), currentIndex) > 0 || (repeatEnabled && tracks.isNotEmpty())
 
     override fun playOrder(): List<Int> =
         if (shuffleEnabled) shuffleOrder ?: tracks.indices.toList() else tracks.indices.toList()
@@ -73,10 +83,8 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
 
     override fun skipToNext() {
         commands += "next"
-        val order = playOrder()
-        val position = order.indexOf(currentIndex)
-        if (position in 0 until order.size - 1) {
-            currentIndex = order[position + 1]
+        nextInOrder()?.let { next ->
+            currentIndex = next
             controller.onItemChanged(tracks[currentIndex])
         }
     }
@@ -95,14 +103,23 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
     }
 
     fun finishTrack() {
-        val order = playOrder()
-        val position = order.indexOf(currentIndex)
-        if (position in 0 until order.size - 1) {
-            currentIndex = order[position + 1]
+        val next = nextInOrder()
+        if (next != null) {
+            currentIndex = next
             controller.onItemChanged(tracks[currentIndex])
         } else {
             isEnded = true
             controller.onEnded()
+        }
+    }
+
+    private fun nextInOrder(): Int? {
+        val order = playOrder()
+        val position = order.indexOf(currentIndex)
+        return when {
+            position in 0 until order.size - 1 -> order[position + 1]
+            repeatEnabled && order.isNotEmpty() -> order.first()
+            else -> null
         }
     }
 
