@@ -3,8 +3,11 @@ package io.github.kickoman.qiyaa.playback
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.os.Bundle
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
@@ -16,17 +19,29 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionError
+import androidx.media3.session.SessionResult
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.appGraph
 import io.github.kickoman.qiyaa.audio.AudioBus
 import io.github.kickoman.qiyaa.queue.QueueController
+import io.github.kickoman.qiyaa.yandex.Library
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
 @UnstableApi
 class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
     private var engine: Media3Engine? = null
+    private val serviceScope = MainScope()
+    private val currentTrackId = MutableStateFlow<String?>(null)
 
     override fun onCreate() {
         super.onCreate()
@@ -66,9 +81,25 @@ class PlaybackService : MediaSessionService() {
 
         val builder =
             MediaSession.Builder(this, QueueForwardingPlayer(player, graph.queue))
-                .setCallback(ResumptionCallback(graph.queue))
+                .setCallback(SessionCallback(this, graph.queue, graph.library))
         openAppIntent()?.let(builder::setSessionActivity)
-        session = builder.build()
+        val built = builder.build()
+        session = built
+        player.addListener(
+            object : Player.Listener {
+                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    currentTrackId.value = mediaItem?.mediaId
+                }
+            },
+        )
+        currentTrackId.value = player.currentMediaItem?.mediaId
+        serviceScope.launch {
+            combine(currentTrackId, graph.library.likedIds) { id, liked -> id != null && id in liked }
+                .distinctUntilChanged()
+                .collect { liked ->
+                    built.setCustomLayout(NotificationButtons.layout(this@PlaybackService, liked))
+                }
+        }
         setMediaNotificationProvider(
             DefaultMediaNotificationProvider.Builder(this).build().apply {
                 setSmallIcon(R.drawable.ic_notification)
@@ -90,6 +121,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        serviceScope.cancel()
         session?.let {
             engine?.detach()
             it.player.release()
@@ -100,11 +132,45 @@ class PlaybackService : MediaSessionService() {
         super.onDestroy()
     }
 
-    /**
-     * "Play" from a headset or the system's resumption card when the player is empty: hand back the
-     * saved queue, paused where it stopped (`QueueController` restored it from `data/QueueFile`).
-     */
-    private class ResumptionCallback(private val queue: QueueController) : MediaSession.Callback {
+    private class SessionCallback(
+        private val context: Context,
+        private val queue: QueueController,
+        private val library: Library,
+    ) : MediaSession.Callback {
+        override fun onConnect(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+        ): MediaSession.ConnectionResult {
+            val current = session.player.currentMediaItem?.mediaId
+            return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                .setAvailableSessionCommands(
+                    NotificationButtons.withCustomCommands(
+                        MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS,
+                    ),
+                )
+                .setCustomLayout(
+                    NotificationButtons.layout(
+                        context,
+                        current != null && library.isLiked(current),
+                    ),
+                )
+                .build()
+        }
+
+        override fun onCustomCommand(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            customCommand: SessionCommand,
+            args: Bundle,
+        ): ListenableFuture<SessionResult> {
+            when (customCommand.customAction) {
+                NotificationButtons.ACTION_LIKE -> queue.likeCurrent()
+                NotificationButtons.ACTION_DISLIKE -> queue.dislikeCurrent()
+                else -> return Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
+            }
+            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+        }
+
         override fun onPlaybackResumption(
             mediaSession: MediaSession,
             controller: MediaSession.ControllerInfo,

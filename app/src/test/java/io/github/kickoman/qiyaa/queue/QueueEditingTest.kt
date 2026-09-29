@@ -90,4 +90,31 @@ class QueueEditingTest {
         assertEquals(listOf("dislike w1", "moreWave S1 [w1]"), harness.source.calls.sorted())
         assertEquals(0, harness.engine.currentIndex)
     }
+
+    @Test
+    fun `a like from the notification goes to the current track`() = runTest {
+        val harness = QueueHarness(this)
+        harness.controller.loadSource("Liked") { tracks("a", "b") }
+        runCurrent()
+        harness.engine.seekTo(1)
+        harness.controller.likeCurrent()
+        runCurrent()
+        assertEquals(listOf("setLiked b true"), harness.source.calls)
+        assertEquals(QueueEvent.LikeChanged(liked = true), harness.events.last())
+    }
+
+    @Test
+    fun `a like or a dislike from the notification does nothing with an empty queue or without a player`() =
+        runTest {
+            val empty = QueueHarness(this)
+            empty.controller.likeCurrent()
+            empty.controller.dislikeCurrent()
+            val detached = QueueHarness(this, attached = false)
+            detached.controller.loadSource("Liked") { tracks("a") }
+            runCurrent()
+            detached.controller.likeCurrent()
+            detached.controller.dislikeCurrent()
+            runCurrent()
+            assertEquals(emptyList<String>(), empty.source.calls + detached.source.calls)
+        }
 }
