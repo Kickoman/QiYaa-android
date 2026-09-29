@@ -13,7 +13,7 @@ fun QueueEvent.render(context: Context): String = when (this) {
     is QueueEvent.SourceEmpty -> context.getString(R.string.queue_empty, title)
     is QueueEvent.WaveStarted -> context.getString(R.string.queue_wave_started, title)
     QueueEvent.NothingFound -> context.getString(R.string.queue_nothing_found)
-    QueueEvent.PlayerNotReady -> context.getString(R.string.queue_player_not_ready)
+    QueueEvent.LoadingMore -> context.getString(R.string.playlist_loading_more_toast)
     is QueueEvent.LikeChanged -> context.getString(
         if (liked) R.string.queue_liked else R.string.queue_unliked,
     )

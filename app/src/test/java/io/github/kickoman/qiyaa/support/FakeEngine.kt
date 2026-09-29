@@ -22,6 +22,7 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
         private set
 
     override val itemCount: Int get() = tracks.size
+    override var positionMs = 0L
 
     override var shuffleEnabled = false
         set(value) {
@@ -45,16 +46,26 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
     override fun playOrder(): List<Int> =
         if (shuffleEnabled) shuffleOrder ?: tracks.indices.toList() else tracks.indices.toList()
 
-    override fun trackAt(index: Int): Track = tracks[index]
+    override fun hasPrevious(): Boolean {
+        val order = playOrder()
+        return order.indexOf(currentIndex) > 0 || (repeatEnabled && tracks.isNotEmpty())
+    }
 
-    override fun setTracks(tracks: List<Track>, playWhenReady: Boolean) {
-        commands += "set ${tracks.map { it.id }} play=$playWhenReady"
+    override fun setTracks(
+        tracks: List<Track>,
+        playWhenReady: Boolean,
+        startIndex: Int,
+        startPositionMs: Long,
+    ) {
+        val start = if (startIndex == 0 && startPositionMs == 0L) "" else " at $startIndex:$startPositionMs"
+        commands += "set ${tracks.map { it.id }} play=$playWhenReady$start"
         this.tracks.clear()
         this.tracks += tracks
-        currentIndex = 0
+        currentIndex = startIndex
+        positionMs = startPositionMs
         isEnded = false
         this.playWhenReady = playWhenReady
-        controller.onItemChanged(tracks.firstOrNull())
+        controller.onItemChanged(tracks.getOrNull(startIndex))
     }
 
     override fun appendTracks(tracks: List<Track>) {
@@ -77,6 +88,7 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
     override fun seekTo(index: Int) {
         commands += "seek $index"
         currentIndex = index
+        positionMs = 0
         isEnded = false
         controller.onItemChanged(tracks[index])
     }
@@ -87,6 +99,37 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
             currentIndex = next
             controller.onItemChanged(tracks[currentIndex])
         }
+    }
+
+    override fun skipToPrevious() {
+        commands += "previous"
+        val order = playOrder()
+        val position = order.indexOf(currentIndex)
+        val previous = if (position >
+            0
+        ) {
+            order[position - 1]
+        } else if (repeatEnabled && order.isNotEmpty()) {
+            order.last()
+        } else {
+            null
+        }
+        if (previous != null) {
+            currentIndex = previous
+            positionMs = 0
+            controller.onItemChanged(tracks[currentIndex])
+        }
+    }
+
+    override fun seekToPosition(positionMs: Long) {
+        commands += "seek to $positionMs"
+        this.positionMs = positionMs
+        isEnded = false
+    }
+
+    override fun pause() {
+        commands += "pause"
+        playWhenReady = false
     }
 
     override fun prepare() {

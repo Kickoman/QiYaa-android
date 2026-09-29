@@ -73,9 +73,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private val listener =
         object : Player.Listener {
             override fun onEvents(player: Player, events: Player.Events) {
-                if (events.containsAny(Player.EVENT_TIMELINE_CHANGED, Player.EVENT_MEDIA_ITEM_TRANSITION)) {
-                    queue.syncFromPlayer()
-                }
                 refresh(player)
             }
         }
@@ -109,24 +106,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun next() {
-        val current = controller ?: return
-        when {
-            current.hasNextMediaItem() -> current.seekToNextMediaItem()
-            queue.state.value.isWave -> {
-                queue.requestMore()
-                notify(string(R.string.playlist_loading_more_toast))
-            }
-            else -> stop()
-        }
+        controller?.seekToNext()
     }
 
     fun previous() {
-        val current = controller ?: return
-        when {
-            current.currentPosition > RESTART_AFTER_MS -> current.seekTo(0)
-            current.hasPreviousMediaItem() -> current.seekToPreviousMediaItem()
-            else -> current.seekTo(0)
-        }
+        controller?.seekToPrevious()
     }
 
     fun playIndex(index: Int) {
@@ -320,7 +304,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     companion object {
         const val TICK_MS = 250L
-        const val RESTART_AFTER_MS = 3_000L
         private const val NOTICE_BUFFER = 8
     }
 }

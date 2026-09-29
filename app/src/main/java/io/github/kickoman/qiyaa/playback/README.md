@@ -10,6 +10,7 @@ grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   #
 |---|---|
 | `PlaybackService.kt` | `PlaybackService` — сборка ExoPlayer и `MediaSession`, уведомление, подключение `Media3Engine` |
 | `Media3Engine.kt` | `Media3Engine` — `queue.PlayerEngine` поверх `Player`; пересылает события листенера в `QueueController` |
+| `QueueForwardingPlayer.kt` | `QueueForwardingPlayer` — плеер, которого видит `MediaSession`: «вперёд» и «назад» уходят в `QueueController` |
 | `PlaybackFailures.kt` | `PlaybackFailures.classify` — `queue.FailureKind` по коду `PlaybackException` и причине |
 | `MediaItems.kt` | `MediaItems` — `Track` ↔ `MediaItem` |
 | `TrackResolver.kt` | `TrackResolver` — `qiyaa://track/{id}` → подписанная ссылка |
@@ -26,7 +27,30 @@ grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   #
 
 Собирает `ExoPlayer` с `DefaultRenderersFactory`, у которого `buildAudioSink` подменён на `DefaultAudioSink` с двумя процессорами и `enableFloatOutput = false` (процессоры принимают только `ENCODING_PCM_16BIT`). Атрибуты `USAGE_MEDIA`/`AUDIO_CONTENT_TYPE_MUSIC` с `handleAudioFocus = true`, `handleAudioBecomingNoisy`, `WAKE_MODE_NETWORK`, User-Agent `QiYaa/Android`. Стартовая громкость — из `Settings.volume` через `AudioBus.volumeGain`. Тап по уведомлению открывает launcher-intent пакета (сервис не знает про `ui/`). Иконка уведомления — `R.drawable.ic_notification`.
 
-Сервис объявлен `exported="true"` с `tools:ignore="ExportedService"`: так требует Media3, чтобы система и гарнитуры могли привязаться к `MediaSessionService`. `onCreate` создаёт `Media3Engine(player, appGraph.queue)` и подключает его; `onTaskRemoved` останавливает сервис, если ничего не играет; `onDestroy` отключает движок, освобождает плеер и сессию.
+Сервис объявлен `exported="true"` с `tools:ignore="ExportedService"`: так требует Media3, чтобы система и гарнитуры могли привязаться к `MediaSessionService`. `onCreate` создаёт `Media3Engine(player, appGraph.queue)`, подключает его и отдаёт сессии `QueueForwardingPlayer(player, appGraph.queue)`; `onTaskRemoved` останавливает сервис, если ничего не играет; `onDestroy` отключает движок (контроллер запоминает, где остановились), освобождает плеер и сессию.
+
+## Один хозяин плеера
+
+У плеера один хозяин — `QueueController` из `AppGraph` (вариант «синглтон» из Kickoman/QiYaa-android#6; приложение однопроцессное, поэтому очередь не сериализуется в команды и `sessionExtras` сессии). Все пути к плееру сходятся в нём:
+
+| Откуда | Путь |
+|---|---|
+| Кнопки приложения | `ui/PlayerViewModel` → `MediaController` → `MediaSession` → `QueueForwardingPlayer` → `QueueController.next()`/`previous()` |
+| Уведомление, экран блокировки, гарнитура, Bluetooth | `MediaSession` → `QueueForwardingPlayer` → `QueueController` |
+| Выбор источника, правка очереди, лайки | `ui/AppViewModel` → `QueueController` напрямую |
+| События ExoPlayer | `Media3Engine` (листенер) → `QueueController` |
+
+Сервис может пересоздаваться при живом процессе (смахнули из недавних → `onTaskRemoved` → `stopSelf`, потом приложение открыли снова). `onDestroy` отключает движок, и контроллер запоминает трек и позицию; новый `Media3Engine` получает ту же очередь на паузе в том же месте. Источник, выбранный, пока сервис ещё не поднялся, применяется, как только движок подключится. Очередь не переживает выгрузку процесса — это Kickoman/QiYaa-android#8.
+
+## `QueueForwardingPlayer`
+
+`ForwardingPlayer` над ExoPlayer: `seekToNext`/`seekToNextMediaItem` → `QueueController.next()`, `seekToPrevious`/`seekToPreviousMediaItem` → `previous()`. Всё остальное (play, pause, seek по позиции, громкость) уходит в ExoPlayer как есть.
+
+`getAvailableCommands` добавляет `COMMAND_SEEK_TO_NEXT(_MEDIA_ITEM)` и `COMMAND_SEEK_TO_PREVIOUS(_MEDIA_ITEM)`, когда в очереди есть треки: сам ExoPlayer убирает «вперёд» на последнем треке, и тогда сессия отбросила бы команду, а в конце волны она значит «догрузить» (WAVE-09), а в конце конечной очереди — «стоп» (TR-04).
+
+**Traps:**
+- `MediaSession` берёт набор команд и из `getAvailableCommands`, и из события `onAvailableCommandsChanged`; поэтому листенеры оборачиваются (`TransportCommandsListener`), и событие несёт тот же расширенный набор.
+- `Media3Engine` управляет самим ExoPlayer, а не `QueueForwardingPlayer`: иначе `QueueController.next()` → `skipToNext()` вернулся бы в `next()`.
 
 ## `Media3Engine`
 
@@ -37,7 +61,7 @@ class Media3Engine(player: Player, controller: QueueController) : PlayerEngine {
 }
 ```
 
-Тонкий: ни одного решения, только перевод. Команды `PlayerEngine` → вызовы `Player` (`setTracks` = `setMediaItems(…, 0, 0)` + `prepare()` + `playWhenReady`; `clear` = `clearMediaItems`; `seekTo(i)` = `seekTo(i, 0)`). События `Player.Listener` → методы контроллера:
+Тонкий: ни одного решения, только перевод. Команды `PlayerEngine` → вызовы `Player` (`setTracks` = `setMediaItems(…, startIndex, startPositionMs)` + `prepare()` + `playWhenReady`; `clear` = `clearMediaItems`; `seekTo(i)` = `seekTo(i, 0)`; `seekToPosition` = `seekTo(ms)`; `skipToNext`/`skipToPrevious` = `seekToNext/PreviousMediaItem`). События `Player.Listener` → методы контроллера:
 
 | Событие ExoPlayer | Вызов |
 |---|---|
@@ -80,4 +104,4 @@ URI трека виртуальный: `qiyaa://track/{id}` (`MediaItems.SCHEME`
 
 ## Not here
 
-- Что играть дальше, источники, волна, политика ошибок, shuffle — `queue/`. Тексты тостов — `ui/QueueEventText.kt` и `res/values*/strings.xml`. Подпись ссылки — `yandex/TrackUrl`. `MediaController` со стороны UI — `ui/PlayerViewModel`.
+- Что играть дальше, «вперёд»/«назад», источники, волна, политика ошибок, shuffle и повтор — `queue/`. Тексты тостов — `ui/QueueEventText.kt` и `res/values*/strings.xml`. Подпись ссылки — `yandex/TrackUrl`. `MediaController` со стороны UI — `ui/PlayerViewModel`.
