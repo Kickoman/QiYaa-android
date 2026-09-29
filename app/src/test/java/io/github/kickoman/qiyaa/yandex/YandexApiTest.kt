@@ -370,29 +370,56 @@ class YandexApiTest {
 
     @Test
     fun `resolveTrackUrl takes two hops, picks the spec's variant and signs the link`() = runBlocking {
-        val storage = server.url("/storage").toString()
-        val variants = Spec.fixture("tracks-download-info", "variants")
-        route(
-            "GET",
-            "/tracks/1/download-info",
-            variants.copy(body = variants.body.replace("https://storage.mds.yandex.net", storage)),
-        )
-        val expectedBest = Spec.expected(
-            "tracks-download-info",
-            "variants",
-        ).getValue("best").jsonPrimitive.content
-        val bestPath =
-            "/storage" + expectedBest.removePrefix("https://storage.mds.yandex.net").substringBefore('?')
-        route("GET", bestPath, Spec.fixture("storage-download-info", "ok"))
+        val storage = MockWebServer()
+        storage.start()
+        try {
+            val variants = Spec.fixture("tracks-download-info", "variants")
+            val storageBase = storage.url("/").toString().removeSuffix("/")
+            route(
+                "GET",
+                "/tracks/1/download-info",
+                variants.copy(
+                    body = variants.body.replace("https://storage.mds.yandex.net", storageBase),
+                ),
+            )
+            storage.enqueue(Spec.fixture("storage-download-info", "ok").response())
 
-        val resolved = api.resolveTrackUrl("1:99")
+            val resolved = api.resolveTrackUrl("1:99")
 
-        assertEquals(
-            Spec.expected("storage-download-info", "ok").getValue("trackUrl").jsonPrimitive.content,
-            resolved.url,
-        )
-        assertEquals(320, resolved.bitrateKbps)
-        assertEquals("json", last(bestPath).requestUrl!!.queryParameter("format"))
+            val expectedUrl = Spec.expected(
+                "storage-download-info",
+                "ok",
+            ).getValue("trackUrl").jsonPrimitive.content
+            assertEquals(expectedUrl, resolved.url)
+            assertEquals(320, resolved.bitrateKbps)
+            val expectedBest = Spec.expected(
+                "tracks-download-info",
+                "variants",
+            ).getValue("best").jsonPrimitive.content
+            val storageRequest = storage.takeRequest()
+            assertEquals(
+                expectedBest.removePrefix("https://storage.mds.yandex.net").substringBefore('?'),
+                storageRequest.requestUrl!!.encodedPath,
+            )
+            assertEquals("json", storageRequest.requestUrl!!.queryParameter("format"))
+            assertEquals("OAuth test-token", last("/tracks/1/download-info").getHeader("Authorization"))
+            assertEquals(null, storageRequest.getHeader("Authorization"))
+        } finally {
+            storage.shutdown()
+        }
+    }
+
+    @Test
+    fun `the token goes only to the API origin, not to another host or port`() = runBlocking {
+        val other = MockWebServer()
+        other.start()
+        try {
+            other.enqueue(Spec.fixture("storage-download-info", "ok").response())
+            api.getText(other.url("/file-download-info/1").toString())
+            assertEquals(null, other.takeRequest().getHeader("Authorization"))
+        } finally {
+            other.shutdown()
+        }
     }
 
     @Test

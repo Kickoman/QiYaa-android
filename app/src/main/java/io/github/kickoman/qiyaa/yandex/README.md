@@ -57,7 +57,7 @@ class YandexApi(client: OkHttpClient, val baseUrl: String = "https://api.music.y
 }
 ```
 
-Каждый запрос уходит с `Accept-Language: ru` и, при непустом токене, `Authorization: OAuth <token>`. Все вызовы выполняются на `Dispatchers.IO`.
+Каждый запрос уходит с `Accept-Language: ru`. `Authorization: OAuth <token>` добавляется, только если токен не пуст и адрес запроса совпадает с `baseUrl` по схеме, хосту и порту (`api.music.yandex.net`, в тестах — mock-сервер). На другие хосты токен не уходит никогда: в первую очередь это `downloadInfoUrl`, чей хост приходит из ответа сервера. Все вызовы выполняются на `Dispatchers.IO`.
 
 Конверт: тело ответа — объект с полем `result`; оно и возвращается. При статусе ≥ 400 сообщение берётся из `error.message`, затем из строкового `error`, затем из HTTP reason phrase. Ответ 2xx без `result` — `MalformedResponseException`.
 
@@ -68,6 +68,8 @@ class YandexApi(client: OkHttpClient, val baseUrl: String = "https://api.music.y
 `reportPlayStarted` отправляет форму `POST /play-audio` с полями `track-id`, `album-id`, `from=web-own_tracks-track-track-main`, `play-id`, `uid`, `timestamp` и `client-now` (одно и то же значение, `yyyy-MM-dd'T'HH:mm:ss.SSS'Z'` в UTC), `track-length-seconds` (формат `QString::number`: `180`, `201.5`), `total-played-seconds=0`, `end-position-seconds=0`.
 
 **Traps:**
+- Второй прыжок `resolveTrackUrl` (`getText` по `downloadInfoUrl` на `storage.mds.yandex.net`) идёт без токена: ссылка подписана параметром `sign`. Если хранилище начнёт отвечать 401/403 без токена, разрешить его явно (отдельный список хостов), а не возвращать токен на любой адрес. Десктоп пока шлёт токен и туда.
+- OkHttp сам убирает `Authorization` при редиректе на другой хост, так что редирект с API наружу токен тоже не уносит.
 - `token` читается в момент сборки запроса; смена токена не влияет на уже отправленные вызовы.
 - `getText` не распаковывает конверт и не парсит JSON — только для второго прыжка `download-info`.
 - `formatSeconds` эмулирует Qt: целые секунды без `.0`. Так делает десктопный QiYaa, и сервер это принимает.
