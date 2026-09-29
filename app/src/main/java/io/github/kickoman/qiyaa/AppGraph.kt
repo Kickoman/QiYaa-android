@@ -3,10 +3,12 @@ package io.github.kickoman.qiyaa
 import android.content.Context
 import android.os.Build
 import io.github.kickoman.qiyaa.audio.AudioBus
+import io.github.kickoman.qiyaa.data.QueueFile
 import io.github.kickoman.qiyaa.data.Settings
 import io.github.kickoman.qiyaa.data.TokenStore
 import io.github.kickoman.qiyaa.queue.LibraryMusicSource
 import io.github.kickoman.qiyaa.queue.QueueController
+import io.github.kickoman.qiyaa.queue.QueueStore
 import io.github.kickoman.qiyaa.yandex.DeviceAuth
 import io.github.kickoman.qiyaa.yandex.Library
 import io.github.kickoman.qiyaa.yandex.Session
@@ -45,9 +47,16 @@ class AppGraph(val context: Context) {
             connectivity = networkMonitor.available,
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
             io = Dispatchers.IO,
+            store = QueueFile(context).asQueueStore(),
         )
 
     companion object {
         const val HTTP_TIMEOUT_SECONDS = 20L
+
+        private fun QueueFile.asQueueStore(): QueueStore = object : QueueStore {
+            override fun read(): String? = this@asQueueStore.read()
+
+            override fun write(text: String) = this@asQueueStore.write(text)
+        }
     }
 }

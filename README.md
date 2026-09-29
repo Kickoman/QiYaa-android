@@ -47,7 +47,7 @@ CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) выполняет �
 |---|---|---|
 | `yandex/` | API Яндекс Музыки, OAuth по коду устройства, подпись mp3-ссылки, источники библиотеки. Чистая JVM | [yandex/README.md](app/src/main/java/io/github/kickoman/qiyaa/yandex/README.md) |
 | `audio/` | Эквалайзер, FFT, спектр, кольцо визуализатора, PCM16. Чистая JVM | [audio/README.md](app/src/main/java/io/github/kickoman/qiyaa/audio/README.md) |
-| `data/` | Настройки и токен в SharedPreferences | [data/README.md](app/src/main/java/io/github/kickoman/qiyaa/data/README.md) |
+| `data/` | Настройки и токен в SharedPreferences, сохранённая очередь в файле | [data/README.md](app/src/main/java/io/github/kickoman/qiyaa/data/README.md) |
 | `queue/` | Очередь: источники, волна и догрузка, политика ошибок, shuffle. Чистая JVM, плеер виден через интерфейс | [queue/README.md](app/src/main/java/io/github/kickoman/qiyaa/queue/README.md) |
 | `playback/` | ExoPlayer + MediaSession, адаптер Media3 для очереди, разрешение ссылок, аудиопроцессоры | [playback/README.md](app/src/main/java/io/github/kickoman/qiyaa/playback/README.md) |
 | `ui/` | Compose: экраны, view model, тема | [ui/README.md](app/src/main/java/io/github/kickoman/qiyaa/ui/README.md) |

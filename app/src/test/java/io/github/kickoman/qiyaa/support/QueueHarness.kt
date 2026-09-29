@@ -11,7 +11,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class QueueHarness(scope: TestScope, attached: Boolean = true) {
+class QueueHarness(scope: TestScope, attached: Boolean = true, val store: FakeQueueStore = FakeQueueStore()) {
     private var playIds = 0
     val source = FakeMusicSource()
     val network = MutableStateFlow(true)
@@ -23,6 +23,7 @@ class QueueHarness(scope: TestScope, attached: Boolean = true) {
             io = StandardTestDispatcher(scope.testScheduler),
             newPlayId = { "play-${++playIds}" },
             clock = { scope.testScheduler.currentTime },
+            store = store,
         )
     val engine = FakeEngine(controller).also { if (attached) controller.attach(it) }
     val events = ArrayList<QueueEvent>()

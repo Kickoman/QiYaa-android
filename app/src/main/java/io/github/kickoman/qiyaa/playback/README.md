@@ -27,7 +27,7 @@ grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   #
 
 Собирает `ExoPlayer` с `DefaultRenderersFactory`, у которого `buildAudioSink` подменён на `DefaultAudioSink` с двумя процессорами и `enableFloatOutput = false` (процессоры принимают только `ENCODING_PCM_16BIT`). Атрибуты `USAGE_MEDIA`/`AUDIO_CONTENT_TYPE_MUSIC` с `handleAudioFocus = true`, `handleAudioBecomingNoisy`, `WAKE_MODE_NETWORK`, User-Agent `QiYaa/Android`. Стартовая громкость — из `Settings.volume` через `AudioBus.volumeGain`. Тап по уведомлению открывает launcher-intent пакета (сервис не знает про `ui/`). Иконка уведомления — `R.drawable.ic_notification`.
 
-Сервис объявлен `exported="true"` с `tools:ignore="ExportedService"`: так требует Media3, чтобы система и гарнитуры могли привязаться к `MediaSessionService`. `onCreate` создаёт `Media3Engine(player, appGraph.queue)`, подключает его и отдаёт сессии `QueueForwardingPlayer(player, appGraph.queue)`; `onTaskRemoved` останавливает сервис, если ничего не играет; `onDestroy` отключает движок (контроллер запоминает, где остановились), освобождает плеер и сессию.
+Сервис объявлен `exported="true"` с `tools:ignore="ExportedService"`: так требует Media3, чтобы система и гарнитуры могли привязаться к `MediaSessionService`. `onCreate` создаёт `Media3Engine(player, appGraph.queue)`, подключает его и отдаёт сессии `QueueForwardingPlayer(player, appGraph.queue)`; сессия получает `ResumptionCallback`; `onTaskRemoved` останавливает сервис, если ничего не играет; `onDestroy` отключает движок (контроллер запоминает, где остановились), освобождает плеер и сессию.
 
 ## Один хозяин плеера
 
@@ -40,7 +40,11 @@ grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   #
 | Выбор источника, правка очереди, лайки | `ui/AppViewModel` → `QueueController` напрямую |
 | События ExoPlayer | `Media3Engine` (листенер) → `QueueController` |
 
-Сервис может пересоздаваться при живом процессе (смахнули из недавних → `onTaskRemoved` → `stopSelf`, потом приложение открыли снова). `onDestroy` отключает движок, и контроллер запоминает трек и позицию; новый `Media3Engine` получает ту же очередь на паузе в том же месте. Источник, выбранный, пока сервис ещё не поднялся, применяется, как только движок подключится. Очередь не переживает выгрузку процесса — это Kickoman/QiYaa-android#8.
+Сервис может пересоздаваться при живом процессе (смахнули из недавних → `onTaskRemoved` → `stopSelf`, потом приложение открыли снова). `onDestroy` отключает движок, и контроллер запоминает трек и позицию; новый `Media3Engine` получает ту же очередь на паузе в том же месте. Источник, выбранный, пока сервис ещё не поднялся, применяется, как только движок подключится. После выгрузки процесса очередь восстанавливает сам `QueueController` из `data/QueueFile` (см. `queue/README.md`), и новый сервис при `attach` получает её на паузе в том же месте.
+
+## «Играть» после выгрузки процесса
+
+Кнопка гарнитуры или карточка возобновления в системе доходят до приложения через `androidx.media3.session.MediaButtonReceiver` в манифесте (`exported`, `android.intent.action.MEDIA_BUTTON`). Он поднимает `PlaybackService`, `onCreate` подключает движок, и очередь уже стоит в плеере. Если плеер всё же пуст, Media3 вызывает `MediaSession.Callback.onPlaybackResumption`: `ResumptionCallback` отдаёт треки, индекс и позицию из `QueueController.resumePoint()`, а при пустой очереди — неудачный `Future`, и команда ничего не делает.
 
 ## `QueueForwardingPlayer`
 
