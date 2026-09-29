@@ -26,6 +26,12 @@ import kotlinx.coroutines.launch
 
 enum class Screen { LOGIN, PLAYER, PLAYLIST, EQ, LIBRARY }
 
+val Screen.backTarget: Screen?
+    get() = when (this) {
+        Screen.LOGIN, Screen.PLAYER -> null
+        Screen.PLAYLIST, Screen.EQ, Screen.LIBRARY -> Screen.PLAYER
+    }
+
 enum class LibrarySection { FOR_YOU, WHEEL, STATIONS, PLAYLISTS, ARTISTS, ALBUMS }
 
 sealed interface LoginStatus {

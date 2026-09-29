@@ -121,7 +121,7 @@ fun PlaylistScreen(viewModel: PlayerViewModel, onAdd: () -> Unit) {
                         )
                     }
                 }
-                if (queue.isWave) {
+                if (queue.loadingMore) {
                     item {
                         Box(Modifier.fillMaxWidth().height(52.dp), contentAlignment = Alignment.Center) {
                             QiText(
