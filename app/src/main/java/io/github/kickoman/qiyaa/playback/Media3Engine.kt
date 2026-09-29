@@ -128,8 +128,4 @@ class Media3Engine(private val player: Player, private val controller: QueueCont
     override fun play() = player.play()
 
     override fun stop() = player.stop()
-
-    private companion object {
-        const val LOG_TAG = "QiYaa"
-    }
 }
