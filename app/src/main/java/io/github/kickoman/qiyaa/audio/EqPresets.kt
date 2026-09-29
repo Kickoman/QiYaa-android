@@ -7,10 +7,12 @@ object EqPresets {
     const val EQF_MAX = 64
     const val EQF_FLAT = 33
 
-    fun eqfToDb(level: Int): Double =
-        (level - EQF_MIN).toDouble() / (EQF_MAX - EQF_MIN) * 2 * EqSettings.MAX_DB - EqSettings.MAX_DB
-
-    private fun levelToDb(level: Int) = if (level == EQF_FLAT) 0.0 else eqfToDb(level)
+    fun levelToDb(level: Int): Double {
+        val clamped = level.coerceIn(EQF_MIN, EQF_MAX)
+        if (clamped == EQF_FLAT) return 0.0
+        return (clamped - EQF_MIN).toDouble() / (EQF_MAX - EQF_MIN) * 2 * EqSettings.MAX_DB -
+            EqSettings.MAX_DB
+    }
 
     private val WINAMP_EQF: List<Pair<String, List<Int>>> =
         listOf(

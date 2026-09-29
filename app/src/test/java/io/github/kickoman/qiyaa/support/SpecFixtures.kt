@@ -43,6 +43,12 @@ object Spec {
         return Json.parseToJsonElement(file.readText()).jsonObject
     }
 
+    fun dsp(name: String): JsonObject {
+        val file = File(root, "dsp/$name.json")
+        check(file.isFile) { "No DSP vectors $file" }
+        return Json.parseToJsonElement(file.readText()).jsonObject
+    }
+
     fun cases(endpoint: String): List<String> =
         File(root, "fixtures/yandex/$endpoint").listFiles { file -> file.extension == "json" }
             .orEmpty()
