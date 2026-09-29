@@ -26,6 +26,8 @@ class YandexApi(private val client: OkHttpClient, val baseUrl: String = "https:/
     @Volatile
     var token: String = ""
 
+    private val apiOrigin: HttpUrl = baseUrl.toHttpUrl()
+
     private val mutableTokenRejections = MutableSharedFlow<HttpException>(extraBufferCapacity = 1)
     val tokenRejections: SharedFlow<HttpException> = mutableTokenRejections.asSharedFlow()
 
@@ -128,9 +130,14 @@ class YandexApi(private val client: OkHttpClient, val baseUrl: String = "https:/
     private fun request(url: HttpUrl): Request.Builder {
         val builder = Request.Builder().url(url).header("Accept-Language", "ru")
         val currentToken = token
-        if (currentToken.isNotEmpty()) builder.header("Authorization", "OAuth $currentToken")
+        if (currentToken.isNotEmpty() && isApiOrigin(url)) {
+            builder.header("Authorization", "OAuth $currentToken")
+        }
         return builder
     }
+
+    private fun isApiOrigin(url: HttpUrl): Boolean =
+        url.scheme == apiOrigin.scheme && url.host == apiOrigin.host && url.port == apiOrigin.port
 
     private fun url(path: String, query: Map<String, String> = emptyMap()): HttpUrl {
         val builder = (baseUrl + path).toHttpUrl().newBuilder()
