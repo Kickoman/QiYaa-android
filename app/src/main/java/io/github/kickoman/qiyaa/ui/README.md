@@ -85,4 +85,4 @@ ui/
 
 ## Not here
 
-- Логика очереди (что играть дальше, догрузка волны) — `playback/QueueManager`. Ключи настроек — `data/README.md`.
+- Логика очереди (что играть дальше, догрузка волны) — `queue/QueueController`. Ключи настроек — `data/README.md`.

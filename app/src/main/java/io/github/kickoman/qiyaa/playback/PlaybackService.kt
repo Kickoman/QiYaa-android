@@ -23,6 +23,7 @@ import io.github.kickoman.qiyaa.audio.AudioBus
 @UnstableApi
 class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
+    private var engine: Media3Engine? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -58,7 +59,7 @@ class PlaybackService : MediaSessionService() {
                 .setWakeMode(C.WAKE_MODE_NETWORK)
                 .build()
         player.volume = AudioBus.volumeGain(graph.settings.volume.value)
-        graph.queue.attach(player)
+        engine = Media3Engine(player, graph.queue).also { it.attach() }
 
         val builder = MediaSession.Builder(this, player)
         openAppIntent()?.let(builder::setSessionActivity)
@@ -85,11 +86,12 @@ class PlaybackService : MediaSessionService() {
 
     override fun onDestroy() {
         session?.let {
-            appGraph.queue.detach(it.player)
+            engine?.detach()
             it.player.release()
             it.release()
         }
         session = null
+        engine = null
         super.onDestroy()
     }
 

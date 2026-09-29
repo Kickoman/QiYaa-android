@@ -209,4 +209,4 @@ class DeviceAuth(client: OkHttpClient, baseUrl = "https://oauth.yandex.ru", devi
 
 ## Not here
 
-- Хранение токена — `data/TokenStore`. Очередь и отметки прослушивания по событиям плеера — `playback/QueueManager`. Тексты для пользователя — `ui/`.
+- Хранение токена — `data/TokenStore`. Очередь и отметки прослушивания по событиям плеера — `queue/QueueController`. Тексты для пользователя — `ui/`.

@@ -5,7 +5,8 @@ import android.os.Build
 import io.github.kickoman.qiyaa.audio.AudioBus
 import io.github.kickoman.qiyaa.data.Settings
 import io.github.kickoman.qiyaa.data.TokenStore
-import io.github.kickoman.qiyaa.playback.QueueManager
+import io.github.kickoman.qiyaa.queue.LibraryMusicSource
+import io.github.kickoman.qiyaa.queue.QueueController
 import io.github.kickoman.qiyaa.yandex.DeviceAuth
 import io.github.kickoman.qiyaa.yandex.Library
 import io.github.kickoman.qiyaa.yandex.Session
@@ -38,7 +39,13 @@ class AppGraph(val context: Context) {
             it.equalizer.publish(settings.eq.value)
             it.setBalance(settings.balance.value)
         }
-    val queue = QueueManager(library, api, networkMonitor.available)
+    val queue =
+        QueueController(
+            source = LibraryMusicSource(library),
+            connectivity = networkMonitor.available,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+            io = Dispatchers.IO,
+        )
 
     companion object {
         const val HTTP_TIMEOUT_SECONDS = 20L

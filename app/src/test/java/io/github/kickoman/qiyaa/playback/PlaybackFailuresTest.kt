@@ -1,6 +1,7 @@
 package io.github.kickoman.qiyaa.playback
 
 import androidx.media3.common.PlaybackException
+import io.github.kickoman.qiyaa.queue.FailureKind
 import io.github.kickoman.qiyaa.yandex.HttpException
 import io.github.kickoman.qiyaa.yandex.MalformedResponseException
 import io.github.kickoman.qiyaa.yandex.NetworkException

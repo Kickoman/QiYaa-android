@@ -1,14 +1,13 @@
 package io.github.kickoman.qiyaa.playback
 
 import androidx.media3.common.PlaybackException
+import io.github.kickoman.qiyaa.queue.FailureKind
 import io.github.kickoman.qiyaa.yandex.HttpException
 import io.github.kickoman.qiyaa.yandex.NetworkException
 import java.net.ConnectException
 import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
-
-enum class FailureKind { NETWORK, SESSION, TRACK }
 
 object PlaybackFailures {
     private val NETWORK_CODES =

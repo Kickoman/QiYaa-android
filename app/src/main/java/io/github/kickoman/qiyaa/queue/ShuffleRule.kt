@@ -1,4 +1,4 @@
-package io.github.kickoman.qiyaa.playback
+package io.github.kickoman.qiyaa.queue
 
 class ShuffleRule {
     var wanted: Boolean = false

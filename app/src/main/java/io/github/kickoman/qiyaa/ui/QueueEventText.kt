@@ -2,8 +2,8 @@ package io.github.kickoman.qiyaa.ui
 
 import android.content.Context
 import io.github.kickoman.qiyaa.R
-import io.github.kickoman.qiyaa.playback.QueueEvent
-import io.github.kickoman.qiyaa.playback.QueueEvent.Stage
+import io.github.kickoman.qiyaa.queue.QueueEvent
+import io.github.kickoman.qiyaa.queue.QueueEvent.Stage
 
 fun QueueEvent.render(context: Context): String = when (this) {
     is QueueEvent.SourceLoading -> context.getString(R.string.queue_loading, title)
