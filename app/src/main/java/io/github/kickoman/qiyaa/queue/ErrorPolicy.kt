@@ -12,23 +12,30 @@ sealed interface ErrorAction {
 
     data object SkipToNext : ErrorAction
 
+    data object WaitForMore : ErrorAction
+
     data object Stop : ErrorAction
 }
 
 object ErrorPolicy {
     const val MAX_CONSECUTIVE_TRACK_FAILURES = 3
 
-    fun decide(kind: FailureKind, consecutiveTrackFailures: Int, hasNext: Boolean): ErrorAction =
-        when (kind) {
-            FailureKind.NETWORK -> ErrorAction.WaitForNetwork
-            FailureKind.SESSION -> ErrorAction.Hold
-            FailureKind.TRACK ->
-                if (!hasNext || consecutiveTrackFailures + 1 >= MAX_CONSECUTIVE_TRACK_FAILURES) {
-                    ErrorAction.Stop
-                } else {
-                    ErrorAction.SkipToNext
-                }
-        }
+    fun decide(
+        kind: FailureKind,
+        consecutiveTrackFailures: Int,
+        hasNext: Boolean,
+        isWave: Boolean = false,
+    ): ErrorAction = when (kind) {
+        FailureKind.NETWORK -> ErrorAction.WaitForNetwork
+        FailureKind.SESSION -> ErrorAction.Hold
+        FailureKind.TRACK ->
+            when {
+                consecutiveTrackFailures + 1 >= MAX_CONSECUTIVE_TRACK_FAILURES -> ErrorAction.Stop
+                hasNext -> ErrorAction.SkipToNext
+                isWave -> ErrorAction.WaitForMore
+                else -> ErrorAction.Stop
+            }
+    }
 
     suspend fun awaitRetry(connectivity: Flow<Boolean>, attempt: Int) {
         if (!connectivity.first()) {

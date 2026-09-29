@@ -4,6 +4,7 @@ import io.github.kickoman.qiyaa.queue.QueueEvent.Stage
 import io.github.kickoman.qiyaa.support.QueueHarness
 import io.github.kickoman.qiyaa.support.QueueHarness.Companion.tracks
 import io.github.kickoman.qiyaa.yandex.WaveBatch
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -97,17 +98,41 @@ class QueueErrorsTest {
         assertEquals(QueueEvent.StoppedAfterFailures(1), harness.events.last())
     }
 
-    // Gap A4 (Kickoman/QiYaa-android#29): in a wave the spec waits for more instead of stopping.
     @Test
-    fun `ERR-07 gap A4 - a broken last track of a wave currently stops`() = runTest {
+    fun `ERR-07 a broken last track of a wave waits for more and continues with the first new track`() =
+        runTest {
+            val harness = QueueHarness(this)
+            val reply = CompletableDeferred<WaveBatch>()
+            var requests = 0
+            harness.source.onStartWave = { WaveBatch("S1", "B1", tracks("w1", "w2", "w3")) }
+            harness.source.onMoreWave =
+                { _, _ -> if (++requests == 1) reply.await() else CompletableDeferred<WaveBatch>().await() }
+            harness.controller.playWave(listOf("user:onyourwave"), "My Wave")
+            runCurrent()
+            harness.engine.finishTrack()
+            harness.engine.finishTrack()
+            runCurrent()
+            harness.events.clear()
+            harness.engine.commands.clear()
+            harness.engine.fail(FailureKind.TRACK)
+            runCurrent()
+            assertEquals(listOf(QueueEvent.Failed(Stage.PLAYBACK, "boom")), harness.events)
+            assertEquals(emptyList<String>(), harness.engine.commands)
+            reply.complete(WaveBatch("S1", "B2", tracks("m1")))
+            runCurrent()
+            assertEquals(listOf("append [m1]", "seek 3", "prepare", "play"), harness.engine.commands)
+        }
+
+    @Test
+    fun `ERR-05 the third broken track in a row stops a wave too`() = runTest {
         val harness = QueueHarness(this)
-        harness.source.onStartWave = { WaveBatch("S1", "B1", tracks("w1")) }
+        harness.source.onStartWave = { WaveBatch("S1", "B1", tracks("w1", "w2", "w3")) }
+        harness.source.onMoreWave = { _, _ -> CompletableDeferred<WaveBatch>().await() }
         harness.controller.playWave(listOf("user:onyourwave"), "My Wave")
         runCurrent()
-        harness.events.clear()
-        harness.engine.fail(FailureKind.TRACK)
+        repeat(3) { harness.engine.fail(FailureKind.TRACK) }
         runCurrent()
-        assertEquals(QueueEvent.StoppedAfterFailures(1), harness.events.last())
+        assertEquals(QueueEvent.StoppedAfterFailures(3), harness.events.last())
     }
 
     @Test

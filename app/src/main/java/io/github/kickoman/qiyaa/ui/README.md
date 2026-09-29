@@ -45,7 +45,7 @@ ui/
 
 `toggleShuffle()` и `toggleRepeat()` во время волны плеер не трогают и показывают `player_shuffle_wave` / `player_repeat_wave`; кнопки SHF и RPT на экране плеера при волне приглушены (`dimmer`). Правило живёт в `queue/WaveModeRule`.
 
-`previous()`: после 3 с (`RESTART_AFTER_MS`) — в начало трека, иначе — предыдущий, как в Winamp. `next()` в волне без следующего трека показывает «Loading more…» и ждёт догрузку.
+`previous()`: после 3 с (`RESTART_AFTER_MS`) — в начало трека, иначе — предыдущий, как в Winamp. `next()` в волне без следующего трека вызывает `queue.requestMore()` (WAVE-09) и показывает «Loading more…».
 
 **Traps:**
 - Обе view model — `AndroidViewModel` с областью Activity; `PlayerViewModel.onCleared` освобождает контроллер.

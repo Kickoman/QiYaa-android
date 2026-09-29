@@ -11,6 +11,7 @@ import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -142,9 +143,8 @@ class QueueWaveTest {
         assertEquals(QueueEvent.SourceLoaded("Liked", 1), harness.events.last())
     }
 
-    // Gap A4 (Kickoman/QiYaa-android#29): the spec drops a stale failure silently.
     @Test
-    fun `WAVE-07 gap A4 - a failed reply for a replaced queue currently still shows an error`() = runTest {
+    fun `WAVE-07 a failed reply for a replaced queue is dropped silently`() = runTest {
         val harness = startedWave(this, "w1", "w2")
         val reply = CompletableDeferred<WaveBatch>()
         harness.source.onMoreWave = { _, _ -> reply.await() }
@@ -157,7 +157,71 @@ class QueueWaveTest {
         )
         runCurrent()
         assertEquals(listOf("l1"), harness.engine.ids())
-        assertEquals(Stage.WAVE_MORE, (harness.events.last() as QueueEvent.Failed).stage)
+        assertEquals(QueueEvent.SourceLoaded("Liked", 1), harness.events.last())
+        assertFalse(harness.controller.state.value.loadingMore)
+    }
+
+    @Test
+    fun `WAVE-09 a wave stopped after a failed load-more waits, and Next asks again and continues`() =
+        runTest {
+            val harness = startedWave(this, "w1", "w2")
+            harness.source.onMoreWave =
+                { _, _ -> throw NetworkException("POST", "/rotor/session/S1/tracks", IOException("offline")) }
+            harness.engine.finishTrack()
+            harness.engine.finishTrack()
+            runCurrent()
+            assertTrue(harness.engine.isEnded)
+            assertEquals(Stage.WAVE_MORE, (harness.events.last() as QueueEvent.Failed).stage)
+            val attempts = harness.source.calls.count { it.startsWith("moreWave") }
+            advanceTimeBy(10 * 60_000L)
+            assertEquals(
+                "no retry on its own",
+                attempts,
+                harness.source.calls.count {
+                    it.startsWith("moreWave")
+                },
+            )
+
+            var answered = false
+            harness.source.onMoreWave = { _, _ ->
+                if (answered) CompletableDeferred<WaveBatch>().await()
+                answered = true
+                WaveBatch("S1", "B2", tracks("m1", "m2"))
+            }
+            harness.engine.commands.clear()
+            harness.controller.requestMore()
+            runCurrent()
+            assertTrue("Next sent the load-more request again", answered)
+            assertEquals(
+                listOf("append [m1, m2]", "seek 2", "prepare", "play"),
+                harness.engine.commands.take(4),
+            )
+            assertEquals(2, harness.engine.currentIndex)
+        }
+
+    @Test
+    fun `WAVE-09 a load-more with no available track keeps the wave stopped at its end`() = runTest {
+        val harness = startedWave(this, "w1", "w2")
+        harness.source.onMoreWave = { _, _ -> WaveBatch("S1", "B2", listOf(track("x", available = false))) }
+        harness.engine.finishTrack()
+        harness.engine.finishTrack()
+        runCurrent()
+        harness.engine.commands.clear()
+        harness.controller.requestMore()
+        runCurrent()
+        assertTrue(harness.engine.isEnded)
+        assertEquals(emptyList<String>(), harness.engine.commands)
+        assertEquals(listOf("w1", "w2"), harness.engine.ids())
+    }
+
+    @Test
+    fun `requestMore does nothing outside a wave`() = runTest {
+        val harness = QueueHarness(this)
+        harness.controller.loadSource("Liked") { tracks("a") }
+        runCurrent()
+        harness.controller.requestMore()
+        runCurrent()
+        assertEquals(emptyList<String>(), harness.source.calls)
     }
 
     @Test
