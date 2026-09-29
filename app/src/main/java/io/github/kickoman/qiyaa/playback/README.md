@@ -65,7 +65,7 @@ class Media3Engine(player: Player, controller: QueueController) : PlayerEngine {
 
 | Событие ExoPlayer | Вызов |
 |---|---|
-| `onMediaItemTransition(item)` | `onItemChanged(MediaItems.toTrack(item))` |
+| `onMediaItemTransition(item, reason)` | `onItemChanged(MediaItems.toTrack(item), transition, player.isPlaying)`; причина: `AUTO` → `AUTO`, `REPEAT` → `REPEAT`, `SEEK` → `SEEK`, остальное (`PLAYLIST_CHANGED`) → `NEW_QUEUE` |
 | `onPlaybackStateChanged(STATE_ENDED)` | `onEnded()` |
 | `onShuffleModeEnabledChanged(on)` | `onShuffleChanged(on)` |
 | `onRepeatModeChanged(mode)` | `onRepeatChanged(mode != REPEAT_MODE_OFF)`; `repeatEnabled = true` — это `REPEAT_MODE_ALL` (повтора одного трека нет, TR-06) |

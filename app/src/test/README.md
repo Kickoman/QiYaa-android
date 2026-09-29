@@ -10,7 +10,7 @@ JUnit 4 без эмулятора: `./gradlew testDebugUnitTest`. Сетевые
 |---|---|
 | `support/SpecFixtures.kt` | `Spec.fixture(endpoint, case)` — тело и HTTP-статус из имени случая (`401-…` → 401), `Spec.expected(…)`, `Spec.cases(endpoint)`; `Fixture.response()` для `MockWebServer` |
 | `support/SpecJson.kt` | Android-модели → нейтральный JSON спеки. `Track` не хранит `albumTitle`, `year`, `genre`: они убираются с ожидаемой стороны, а `coverUri` сравнивается как URL, построенный `TrackParsing.coverUrl` |
-| `support/FakeEngine.kt` | `queue.PlayerEngine` для тестов: плейлист, курсор, конец очереди, порядок shuffle, синхронные колбэки в `QueueController`, как у ExoPlayer, включая повтор всей очереди, позицию, «назад» и паузу. Журнал команд `commands` |
+| `support/FakeEngine.kt` | `queue.PlayerEngine` для тестов: плейлист, курсор, конец очереди, порядок shuffle, синхронные колбэки в `QueueController`, как у ExoPlayer, включая повтор всей очереди, позицию, «назад», паузу, причину перехода (`Transition`) и флаг «играет»; при удалении текущего трека сообщает переход, как ExoPlayer. Журнал команд `commands` |
 | `support/FakeMusicSource.kt` | `queue.MusicSource` с ответами-лямбдами (в том числе отложенными через `CompletableDeferred`), журнал вызовов и отметок `/play-audio` |
 | `support/QueueHarness.kt` | контроллер + фейки на виртуальном времени `runTest`, собранные события `events`, `track()`/`tracks()` |
 
@@ -32,6 +32,7 @@ JUnit 4 без эмулятора: `./gradlew testDebugUnitTest`. Сетевые
 | `yandex/TrackParsingTest.kt` | все фикстуры `tracks/*` против `expected/`, `formatSeconds` |
 | `yandex/TrackUrlTest.kt` | фикстуры `tracks-download-info/*` (варианты и выбор) и `storage-download-info/*` (разбор и подписанная ссылка, XML → невалидно); эталонный md5 из Yaamp, `idString` |
 | `yandex/ErrorsTest.kt` | дерево исключений: `IOException`, `isTokenRejected`, причина, `NotSignedInException` |
+| `yandex/WaveFeedbackTest.kt` | TRK-03…11 на уровне `Library.waveFeedback`: поля событий, тело сессии и `batchId`, запасной путь через станцию при 4xx и запоминание сессии, без станции — ничего, 5xx и сеть не повторяются |
 | `yandex/SessionTest.kt` | состояния сессии на фейковом `AccountGateway` и виртуальном времени: офлайн-старт, backoff 2…60 с, сброс по возврату сети, 401 и `AuthException` → `Expired`, `tokenRejections`, `signIn`/`signOut` |
 | `playback/PlaybackFailuresTest.kt` | вид ошибки воспроизведения: коды 2001/2002, `NetworkException` (в том числе обёрнутый), `UnknownHost`, 401 → сессия, 2004/404/нет вариантов/декодер → трек |
 | `queue/ErrorPolicyTest.kt` | `decide` по всем веткам (лимит 3 подряд, последний трек); `awaitRetry`: возврат в момент появления сети, паузы 2…60 с при живой сети |
@@ -42,7 +43,8 @@ JUnit 4 без эмулятора: `./gradlew testDebugUnitTest`. Сетевые
 | `queue/QueueErrorsTest.kt` | ERR-01…07: пауза без сети и возврат, повторы 2/4/8 с, пропуск битого трека и стоп на третьем, сброс счётчика; битый последний трек волны ждёт догрузку (ERR-07) |
 | `queue/QueueEditingTest.kt` | удаление выбранных, выбрать всё, очистка, лайк, дизлайк (TR-07) |
 | `queue/QueueTrackingTest.kt` | TRK-01, TRK-02: `/play-audio` при реальном старте, не при постановке в очередь; пауза и перемотка — не старт; битая ссылка — не старт; рестарт, повтор одного трека, «плей» после стопа и конца — новый `play-id` |
-| `queue/PlayTrackerTest.kt` | правило старта трека на уровне `PlayTracker` |
+| `queue/PlayTrackerTest.kt` | старт трека, закрытие (дослушан/пропущен), секунды только при игре (TRK-08) |
+| `queue/QueueFeedbackTest.kt` | TRK-03…08 на уровне очереди: `radioStarted` первым, `batchId` порции трека, `trackFinished` с секундами, `skip` для «вперёд», рестарта, «стоп», удаления, новой очереди и дизлайка, события в свою сессию после смены волны, без фидбека для обычной очереди и пустой волны |
 | `queue/QueueTransportTest.kt` | TR-01…05 и WAVE-09 через `next()`/`previous()`; новый движок получает ту же очередь на паузе на том же треке и позиции; источник, выбранный до движка, применяется при подключении; очистка без движка |
 | `audio/DspVectorsTest.kt` | эталоны `spec/dsp`: АЧХ EQ (50 случаев × 41 частота, 1e-4 дБ), центры полос и Q, 17 пресетов, `levelToDb` для уровней 0…65, границы 19 полос и один кадр спектра для 24 синусов (1e-3). Из `eqf.json` не проверяются байты файла и `dbToLevel`: `.eqf` на Android n/a |
 | `audio/EqualizerTest.kt` | пресеты Winamp, тождество плоского EQ, АЧХ в центре полосы, усиление синуса на 6 дБ |

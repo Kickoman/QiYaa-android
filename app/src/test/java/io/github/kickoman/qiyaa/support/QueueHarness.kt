@@ -22,6 +22,7 @@ class QueueHarness(scope: TestScope, attached: Boolean = true) {
             scope = scope.backgroundScope,
             io = StandardTestDispatcher(scope.testScheduler),
             newPlayId = { "play-${++playIds}" },
+            clock = { scope.testScheduler.currentTime },
         )
     val engine = FakeEngine(controller).also { if (attached) controller.attach(it) }
     val events = ArrayList<QueueEvent>()

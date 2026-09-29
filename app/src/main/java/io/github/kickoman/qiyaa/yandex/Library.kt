@@ -1,5 +1,6 @@
 package io.github.kickoman.qiyaa.yandex
 
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -15,6 +16,8 @@ import kotlinx.serialization.json.putJsonArray
 class Library(val api: YandexApi) : AccountGateway {
     private val mutableAccount = MutableStateFlow(Account())
     val account: StateFlow<Account> = mutableAccount.asStateFlow()
+
+    private val stationFeedbackSessions: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
     private val mutableLikedIds = MutableStateFlow<Set<String>>(emptySet())
     val likedIds: StateFlow<Set<String>> = mutableLikedIds.asStateFlow()
@@ -182,6 +185,55 @@ class Library(val api: YandexApi) : AccountGateway {
         mutableLikedIds.update { it - trackId }
     }
 
+    suspend fun waveFeedback(context: WaveContext, event: WaveEvent, track: Track?, playedSeconds: Double) {
+        val eventBody =
+            buildJsonObject {
+                put("type", event.wireName)
+                put("timestamp", api.timestampNow())
+                if (event == WaveEvent.RADIO_STARTED) put("from", RADIO_FROM)
+                if (track !=
+                    null
+                ) {
+                    put(
+                        "trackId",
+                        if (track.albumId.isEmpty()) track.id else "${track.id}:${track.albumId}",
+                    )
+                }
+                if (event == WaveEvent.TRACK_FINISHED || event == WaveEvent.SKIP) {
+                    put("totalPlayedSeconds", Math.round(playedSeconds * 10) / 10.0)
+                }
+            }
+        val sessionId = context.sessionId
+        if (sessionId.isEmpty() || sessionId in stationFeedbackSessions) {
+            feedbackViaStation(context, eventBody)
+            return
+        }
+        val body =
+            buildJsonObject {
+                put("event", eventBody)
+                if (context.batchId.isNotEmpty()) put("batchId", context.batchId)
+            }
+        try {
+            api.postJson("/rotor/session/$sessionId/feedback", body)
+        } catch (failed: HttpException) {
+            if (failed.status !in CLIENT_ERRORS) return
+            stationFeedbackSessions += sessionId
+            feedbackViaStation(context, eventBody)
+        } catch (ignored: YandexException) {
+            // Feedback is best-effort and is not retried (TRK-11).
+        }
+    }
+
+    private suspend fun feedbackViaStation(context: WaveContext, eventBody: JsonObject) {
+        if (context.stationId.isEmpty()) return
+        val query = if (context.batchId.isEmpty()) emptyMap() else mapOf("batch-id" to context.batchId)
+        try {
+            api.postJson("/rotor/station/${context.stationId}/feedback", eventBody, query)
+        } catch (ignored: YandexException) {
+            // Feedback is best-effort and is not retried (TRK-11).
+        }
+    }
+
     private fun userPath(rest: String): String {
         val uid = mutableAccount.value.uid
         if (uid.isEmpty()) throw NotSignedInException("/users/{uid}/$rest")
@@ -193,6 +245,8 @@ class Library(val api: YandexApi) : AccountGateway {
     companion object {
         const val TRACKS_PER_REQUEST = 250
         const val ARTIST_TOP_LIMIT = 100
+        const val RADIO_FROM = "web-main-rup-radio-main"
+        private val CLIENT_ERRORS = 400..499
 
         fun parseWaveBatch(result: JsonElement): WaveBatch {
             val item = result.objectOrEmpty

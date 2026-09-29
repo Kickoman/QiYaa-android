@@ -4,6 +4,7 @@ import io.github.kickoman.qiyaa.queue.FailureKind
 import io.github.kickoman.qiyaa.queue.PlayOrder
 import io.github.kickoman.qiyaa.queue.PlayerEngine
 import io.github.kickoman.qiyaa.queue.QueueController
+import io.github.kickoman.qiyaa.queue.Transition
 import io.github.kickoman.qiyaa.yandex.Track
 
 // Mirrors the parts of ExoPlayer the queue relies on: a playlist with a cursor, the end state,
@@ -13,6 +14,8 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
     val tracks = ArrayList<Track>()
     val commands = ArrayList<String>()
     var playWhenReady = false
+        private set
+    var playing = false
         private set
     var shuffleOrder: List<Int>? = null
 
@@ -65,7 +68,7 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
         positionMs = startPositionMs
         isEnded = false
         this.playWhenReady = playWhenReady
-        controller.onItemChanged(tracks.getOrNull(startIndex))
+        controller.onItemChanged(tracks.getOrNull(startIndex), Transition.NEW_QUEUE, playing)
     }
 
     override fun appendTracks(tracks: List<Track>) {
@@ -76,7 +79,11 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
     override fun removeAt(index: Int) {
         commands += "remove $index"
         tracks.removeAt(index)
-        if (index < currentIndex) currentIndex--
+        if (index < currentIndex) {
+            currentIndex--
+        } else if (index == currentIndex) {
+            controller.onItemChanged(tracks.getOrNull(currentIndex), Transition.NEW_QUEUE, playing)
+        }
     }
 
     override fun clear() {
@@ -90,14 +97,14 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
         currentIndex = index
         positionMs = 0
         isEnded = false
-        controller.onItemChanged(tracks[index])
+        controller.onItemChanged(tracks[index], Transition.SEEK, playing)
     }
 
     override fun skipToNext() {
         commands += "next"
         nextInOrder()?.let { next ->
             currentIndex = next
-            controller.onItemChanged(tracks[currentIndex])
+            controller.onItemChanged(tracks[currentIndex], Transition.SEEK, playing)
         }
     }
 
@@ -117,7 +124,7 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
         if (previous != null) {
             currentIndex = previous
             positionMs = 0
-            controller.onItemChanged(tracks[currentIndex])
+            controller.onItemChanged(tracks[currentIndex], Transition.SEEK, playing)
         }
     }
 
@@ -130,6 +137,7 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
     override fun pause() {
         commands += "pause"
         playWhenReady = false
+        if (playing) stopPlaying()
     }
 
     override fun prepare() {
@@ -148,11 +156,14 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
     fun finishTrack() {
         val next = nextInOrder()
         if (next != null) {
+            val transition = if (next == currentIndex) Transition.REPEAT else Transition.AUTO
             currentIndex = next
-            controller.onItemChanged(tracks[currentIndex])
+            positionMs = 0
+            controller.onItemChanged(tracks[currentIndex], transition, playing)
         } else {
             isEnded = true
             controller.onEnded()
+            if (playing) stopPlaying()
         }
     }
 
@@ -166,9 +177,15 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
         }
     }
 
-    fun startPlaying() = controller.onPlayingChanged(true)
+    fun startPlaying() {
+        playing = true
+        controller.onPlayingChanged(true)
+    }
 
-    fun stopPlaying() = controller.onPlayingChanged(false)
+    fun stopPlaying() {
+        playing = false
+        controller.onPlayingChanged(false)
+    }
 
     fun fail(kind: FailureKind, message: String = "boom") = controller.onFailure(kind, message)
 

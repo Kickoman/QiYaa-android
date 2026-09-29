@@ -21,7 +21,8 @@ grep -rln 'qiyaa\.\(playback\|ui\|data\)\.' app/src/main/java/io/github/kickoman
 | `ErrorPolicy.kt` | `ErrorAction`, `ErrorPolicy` — что делать с ошибкой; ожидание сети перед повтором |
 | `FailureKind.kt` | `FailureKind` — `NETWORK`, `SESSION`, `TRACK` (определяет `playback/PlaybackFailures`) |
 | `WaveModeRule.kt` | `WaveModeRule` — режим пользователя (shuffle, повтор), который в волне выключен и потом возвращается |
-| `PlayTracker.kt` | `PlayTracker` — когда трек «начался» (для `/play-audio`, а с #26 — и для фидбека волны) |
+| `PlayTracker.kt` | `PlayTracker` — когда трек начался и закрылся (дослушан или пропущен) и сколько секунд реально играл |
+| `Transition.kt` | `Transition` — причина смены трека: `AUTO`, `REPEAT`, `SEEK`, `NEW_QUEUE` |
 | `PlayOrder.kt` | `PlayOrder.remainingAfter` — сколько треков после текущего в порядке воспроизведения |
 
 ## `QueueController`
@@ -29,7 +30,7 @@ grep -rln 'qiyaa\.\(playback\|ui\|data\)\.' app/src/main/java/io/github/kickoman
 ```kotlin
 data class QueueState(tracks: List<Track>, title: String, isWave: Boolean, loadingMore: Boolean, selected: Set<Int>, activeSourceId: String?)
 
-class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: CoroutineScope, io: CoroutineContext, newPlayId: () -> String = UUID) {
+class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: CoroutineScope, io: CoroutineContext, newPlayId: () -> String = UUID, clock: () -> Long = монотонные мс) {
     val state: StateFlow<QueueState>;  val events: SharedFlow<QueueEvent>;  val engine: PlayerEngine?
     fun attach(engine: PlayerEngine);  fun detach(engine: PlayerEngine)
     // команды из UI
@@ -42,7 +43,7 @@ class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: C
     fun toggleLike(track: Track);  fun dislikeAndSkip(track: Track)
     fun requestMore()   // «вперёд» в конце волны: снова запросить догрузку и продолжить с первого нового трека
     // события движка
-    fun onItemChanged(track: Track?);  fun onEnded();  fun onShuffleChanged(enabled: Boolean);  fun onRepeatChanged(enabled: Boolean)
+    fun onItemChanged(track: Track?, transition: Transition, isPlaying: Boolean);  fun onEnded();  fun onShuffleChanged(enabled: Boolean);  fun onRepeatChanged(enabled: Boolean)
     fun onPlayingChanged(isPlaying: Boolean);  fun onFailure(kind: FailureKind, message: String)
     companion object { MY_WAVE_SEED = "user:onyourwave"; LOAD_MORE_WHEN_LEFT = 2; WAVE_HISTORY = 5; RESTART_AFTER_MS = 3_000 }
 }
@@ -59,8 +60,9 @@ class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: C
 - **«Вперёд»** (`next()`): следующий трек в порядке воспроизведения (TR-03), с повтором — первый после последнего (TR-05); в конце конечной очереди — пауза и начало текущего трека, курсор остаётся (TR-04); в конце волны — `LoadingMore` и `requestMore()` (WAVE-09).
 - **«Назад»** (`previous()`): после 3 с (`RESTART_AFTER_MS`) — в начало текущего трека (TR-02), иначе предыдущий трек, на первом с повтором — последний, без повтора — в начало (TR-01).
 - **Один хозяин плеера.** Движок может смениться (сервис пересоздан при живом процессе): `detach` запоминает трек и позицию, `attach` нового движка кладёт ту же очередь на паузе туда же, вместе с режимами shuffle и повтора. Очередь, выбранная без движка, применяется при `attach`; правка очереди без движка меняет только `state`. Подробнее — `playback/README.md`.
-- **Дизлайк** = запрос `dislike` + переход к следующему; в конечной очереди без следующего — стоп, в волне — ничего, ждём догрузку (TR-07).
-- **Отметка `/play-audio`** (TRK-01, TRK-02) уходит, когда трек **начался**: стал текущим и впервые после этого заиграл (`onPlayingChanged(true)`). Трек, который только стоит в очереди или у которого не получилась ссылка, не начинался. Новый старт с новым `play-id` — рестарт «назад» после 3 с, повтор очереди из одного трека, «плей» после «стоп» (`stop()`) или после конца трека. Пауза с продолжением и перемотка внутри трека — не новый старт. Отправка best-effort, ошибки игнорируются.
+- **Дизлайк** = запрос `dislike` + то же, что «вперёд» (TR-07, TRK-07): следующий трек, в конце конечной очереди — пауза и начало трека, в конце волны — догрузка.
+- **Обратная связь волны** (TRK-03…08). Каждый трек волны помнит `WaveContext` — сессию, станцию (первый сид) и `batchId` порции, из которой пришёл, включая догруженные. `radioStarted` уходит при старте волны до её первого `trackStarted`. `trackStarted` — когда трек начался; при закрытии — `trackFinished` (автопереход, повтор, конец очереди) или `skip` (всё остальное: «вперёд», «назад», выбор трека, рестарт, «стоп», новая очередь, удаление текущего трека, ошибка трека, дизлайк, отключение движка) с секундами, которые звук реально играл. События трека уходят в его сессию, даже если очередь уже сменилась на другую волну. Обычные очереди фидбек не шлют. Все события отправляются по одному через `Channel`, поэтому `skip` уходит раньше следующего `trackStarted`.
+- **Отметка `/play-audio`** (TRK-01, TRK-02) уходит, когда трек **начался**: стал текущим и после этого заиграл — сразу, если при смене трека звук уже шёл (`isPlaying` в `onItemChanged`, как при бесшовном переходе), иначе при первом `onPlayingChanged(true)`. Трек, который только стоит в очереди или у которого не получилась ссылка, не начинался. Новый старт с новым `play-id` — рестарт «назад» после 3 с, повтор очереди из одного трека, «плей» после «стоп» (`stop()`) или после конца трека. Пауза с продолжением и перемотка внутри трека — не новый старт. Отправка best-effort, ошибки игнорируются.
 
 `events` — `MutableSharedFlow(extraBufferCapacity = 8)` с `tryEmit`: без подписчика события теряются, это нормально для тостов.
 
@@ -97,6 +99,7 @@ object ErrorPolicy {
 `app/src/test/.../queue/`: `QueueSourcesTest`, `QueueWaveTest`, `QueueErrorsTest`, `QueueEditingTest` гоняют контроллер с `support/FakeEngine` (плейлист, курсор, конец, порядок shuffle, синхронные колбэки — как ExoPlayer, без повтора) и `support/FakeMusicSource` (ответы — лямбды, в том числе отложенные `CompletableDeferred`). Имена тестов начинаются с ID сценария.
 
 **Traps:**
+- Секунды прослушивания считаются по часам `clock` только между `onPlayingChanged(true)` и `(false)` открытого трека; перемотка времени не добавляет. В тестах часы — виртуальное время `runTest`.
 - `title` — данные из UI или сервера (имя плейлиста, `getString(R.string.library_my_wave)`), не константа этого пакета.
 - `state.tracks` и плейлист плеера пишет только контроллер, поэтому сверять их не нужно; если в плеер начнёт писать кто-то ещё (например, команда удаления из уведомления), это должно идти через контроллер.
 - `removeIndices` удаляет по убыванию индексов, иначе сдвиг сломает выборку.
