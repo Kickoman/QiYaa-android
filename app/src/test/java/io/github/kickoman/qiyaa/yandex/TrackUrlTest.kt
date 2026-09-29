@@ -1,12 +1,67 @@
 package io.github.kickoman.qiyaa.yandex
 
+import io.github.kickoman.qiyaa.support.Spec
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
 import org.junit.Test
 
 class TrackUrlTest {
+    @Test
+    fun `download variants and the chosen one match the spec for every case`() {
+        for (case in Spec.cases("tracks-download-info")) {
+            val variants = TrackUrl.parseDownloadVariants(Spec.fixture("tracks-download-info", case).result())
+            val actual =
+                buildJsonObject {
+                    put(
+                        "variants",
+                        buildJsonArray {
+                            for (variant in variants) {
+                                add(
+                                    buildJsonObject {
+                                        put("codec", variant.codec)
+                                        put("bitrateKbps", variant.bitrateKbps)
+                                        put("preview", variant.preview)
+                                        put("downloadInfoUrl", variant.downloadInfoUrl)
+                                    },
+                                )
+                            }
+                        },
+                    )
+                    put(
+                        "best",
+                        TrackUrl.pickBestVariant(variants)?.downloadInfoUrl?.let(::JsonPrimitive) ?: JsonNull,
+                    )
+                }
+            assertEquals("tracks-download-info/$case", Spec.expected("tracks-download-info", case), actual)
+        }
+    }
+
+    @Test
+    fun `storage download info and the signed link match the spec for every case`() {
+        for (case in Spec.cases("storage-download-info")) {
+            val info = TrackUrl.parseDownloadInfo(Spec.fixture("storage-download-info", case).body)
+            val actual: JsonObject =
+                if (info == null) {
+                    buildJsonObject { put("invalid", true) }
+                } else {
+                    buildJsonObject {
+                        put("host", info.host)
+                        put("path", info.path)
+                        put("ts", info.timestamp)
+                        put("s", info.secret)
+                        put("trackUrl", TrackUrl.buildTrackUrl(info))
+                    }
+                }
+            assertEquals("storage-download-info/$case", Spec.expected("storage-download-info", case), actual)
+        }
+    }
+
     @Test
     fun `buildTrackUrl signs the path like Yaamp`() {
         val info =
@@ -15,52 +70,6 @@ class TrackUrlTest {
         assertEquals(
             "https://s123vla.storage.yandex.net/get-mp3/5c38e49c01f9a959428986790af6f9ca/000612a3b4c5d/rmusic/U2FsdGVk/abc",
             TrackUrl.buildTrackUrl(info),
-        )
-    }
-
-    @Test
-    fun `pickBestVariant prefers the full mp3 with the highest bitrate`() {
-        val variants =
-            Json.parseToJsonElement(
-                """[
-                {"codec":"mp3","bitrateInKbps":320,"preview":true,"downloadInfoUrl":"https://x/a?sign=1"},
-                {"codec":"aac","bitrateInKbps":256,"preview":false,"downloadInfoUrl":"https://x/b?sign=1"},
-                {"codec":"mp3","bitrateInKbps":192,"preview":false,"downloadInfoUrl":"https://x/c?sign=1"},
-                {"codec":"mp3","bitrateInKbps":320,"preview":false,"downloadInfoUrl":"https://x/d?sign=1"}
-                ]""",
-            )
-        val best = TrackUrl.pickBestVariant(TrackUrl.parseDownloadVariants(variants))
-        assertNotNull(best)
-        assertEquals(320, best!!.bitrateKbps)
-        assertEquals("https://x/d?sign=1", best.downloadInfoUrl)
-    }
-
-    @Test
-    fun `pickBestVariant falls back to the first variant and to null`() {
-        val variants =
-            Json.parseToJsonElement(
-                """[{"codec":"aac","bitrateInKbps":64,"preview":false,"downloadInfoUrl":"https://x/a"}]""",
-            )
-        assertEquals(
-            "https://x/a",
-            TrackUrl.pickBestVariant(TrackUrl.parseDownloadVariants(variants))!!.downloadInfoUrl,
-        )
-        assertNull(TrackUrl.pickBestVariant(emptyList()))
-    }
-
-    @Test
-    fun `parseDownloadInfo accepts numeric ts and refuses malformed bodies`() {
-        val info = TrackUrl.parseDownloadInfo(
-            """{"s":"abc","ts":"0005","path":"/p/q","host":"h.net","regional-host":[]}""",
-        )
-        assertNotNull(info)
-        assertEquals("h.net", info!!.host)
-        assertEquals("0005", info.timestamp)
-        assertNull(TrackUrl.parseDownloadInfo("<xml/>"))
-        assertNull(TrackUrl.parseDownloadInfo("""{"s":"abc","ts":"1","path":"noslash","host":"h"}"""))
-        assertEquals(
-            "5",
-            TrackUrl.parseDownloadInfo("""{"s":"abc","ts":5,"path":"/p","host":"h"}""")!!.timestamp,
         )
     }
 

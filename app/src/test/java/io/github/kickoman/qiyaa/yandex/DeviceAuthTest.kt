@@ -1,7 +1,13 @@
 package io.github.kickoman.qiyaa.yandex
 
+import io.github.kickoman.qiyaa.support.Spec
 import java.net.URLDecoder
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
@@ -12,6 +18,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
+import org.junit.Ignore
 import org.junit.Test
 
 class DeviceAuthTest {
@@ -24,66 +31,76 @@ class DeviceAuthTest {
     fun tearDown() = server.shutdown()
 
     @Test
-    fun `device login polls the token endpoint until the user confirms`() = runBlocking {
+    fun `the device code reply parses to the spec's code`() = runBlocking {
+        server.enqueue(Spec.fixture("oauth-device-code", "ok").response())
+        val code = DeviceAuth(OkHttpClient(), baseUrl(), deviceName = "Test", clock = {
+            0L
+        }).requestCode()
+        val actual =
+            buildJsonObject {
+                put("deviceCode", code.deviceCode)
+                put("userCode", code.userCode)
+                put("verificationUrl", code.verificationUrl)
+                put("intervalSeconds", code.intervalMs / 1000)
+                put("expiresInSeconds", code.deadlineMs / 1000)
+            }
+        assertEquals(Spec.expected("oauth-device-code", "ok"), actual)
+        val form = server.takeRequest().form()
+        assertEquals(DeviceAuth.CLIENT_ID, form["client_id"])
+        assertEquals("QiYaa (Test)", form["device_name"])
+    }
+
+    @Test
+    fun `authorization_pending keeps polling until the token arrives`() = runBlocking {
+        assertEquals(
+            true,
+            Spec.expected(
+                "oauth-token",
+                "400-authorization-pending",
+            )["pending"]?.jsonPrimitive?.content?.toBoolean(),
+        )
         var polls = 0
         val seen = ArrayList<Map<String, String>>()
         server.dispatcher =
             object : Dispatcher() {
                 override fun dispatch(request: RecordedRequest): MockResponse {
-                    val form = request.form()
-                    seen += form
-                    return when (request.path) {
-                        "/device/code" ->
-                            MockResponse().setBody(
-                                """{"device_code":"DEV","user_code":"ABCD1234",""" +
-                                    """"verification_url":"https://ya.ru/device","interval":0,"expires_in":300}""",
-                            )
-                        "/token" ->
-                            when {
-                                form["code"] != "DEV" ->
-                                    MockResponse().setResponseCode(
-                                        400,
-                                    ).setBody("""{"error":"bad_verification_code"}""")
-                                ++polls < 2 ->
-                                    MockResponse().setResponseCode(
-                                        400,
-                                    ).setBody("""{"error":"authorization_pending"}""")
-                                else -> MockResponse().setBody(
-                                    """{"access_token":"NEW_TOKEN","token_type":"bearer"}""",
-                                )
-                            }
-                        else -> MockResponse().setResponseCode(404)
-                    }
+                    seen += request.form()
+                    polls++
+                    val case = if (polls < 2) "400-authorization-pending" else "ok"
+                    return Spec.fixture("oauth-token", case).response()
                 }
             }
-        val auth = DeviceAuth(OkHttpClient(), baseUrl(), deviceName = "Test")
-        val code = auth.requestCode()
-        assertEquals("ABCD1234", code.userCode)
-        assertEquals("https://ya.ru/device", code.verificationUrl)
-        assertEquals(1000L, code.intervalMs)
-        assertEquals(DeviceAuth.CLIENT_ID, seen[0]["client_id"])
-        assertEquals("QiYaa (Test)", seen[0]["device_name"])
-        val token = auth.waitForToken(code)
-        assertEquals("NEW_TOKEN", token)
+        val auth = DeviceAuth(OkHttpClient(), baseUrl())
+        val token = auth.waitForToken(
+            DeviceAuth.Code("DEV", "ABCD1234", "https://ya.ru/device", 1, Long.MAX_VALUE),
+        )
+        val expected = Spec.expected("oauth-token", "ok").getValue("accessToken").jsonPrimitive.content
+        assertEquals(expected, token)
         assertEquals(2, polls)
-        val tokenRequest = seen.last()
-        assertEquals("device_code", tokenRequest["grant_type"])
-        assertEquals(DeviceAuth.CLIENT_SECRET, tokenRequest["client_secret"])
+        assertEquals("device_code", seen.last()["grant_type"])
+        assertEquals("DEV", seen.last()["code"])
+        assertEquals(DeviceAuth.CLIENT_SECRET, seen.last()["client_secret"])
     }
 
     @Test
-    fun `a failed code request reports the server's error_description`() = runBlocking {
-        server.enqueue(
-            MockResponse()
-                .setResponseCode(400)
-                .setBody("""{"error":"invalid_client","error_description":"Client not found"}"""),
-        )
-        val auth = DeviceAuth(OkHttpClient(), baseUrl())
-        try {
-            auth.requestCode()
-            fail("expected AuthException")
-        } catch (failed: AuthException) {
-            assertEquals("Client not found", failed.message)
+    fun `OAuth errors carry the server's error_description`() = runBlocking {
+        for ((endpoint, case) in OAUTH_ERRORS) {
+            val message = expectedError(endpoint, case).getValue("message").jsonPrimitive.content
+            val failure = oauthFailure(endpoint, case)
+            assertTrue("$endpoint/$case: ${failure.message}", failure.message!!.contains(message))
+        }
+    }
+
+    @Ignore("Known divergence Kickoman/QiYaa-android#33: AuthException does not name the HTTP status")
+    @Test
+    fun `OAuth errors name the HTTP status`() = runBlocking {
+        for ((endpoint, case) in OAUTH_ERRORS) {
+            val status = expectedError(endpoint, case).getValue("status").jsonPrimitive.int
+            val failure = oauthFailure(endpoint, case)
+            assertTrue(
+                "$endpoint/$case: ${failure.message}",
+                failure.message!!.contains(status.toString()),
+            )
         }
     }
 
@@ -101,10 +118,35 @@ class DeviceAuthTest {
         }
     }
 
+    private suspend fun oauthFailure(endpoint: String, case: String): AuthException {
+        server.enqueue(Spec.fixture(endpoint, case).response())
+        val auth = DeviceAuth(OkHttpClient(), baseUrl())
+        try {
+            if (endpoint == "oauth-device-code") {
+                auth.requestCode()
+            } else {
+                auth.waitForToken(DeviceAuth.Code("DEV", "X", "https://ya.ru/device", 1, Long.MAX_VALUE))
+            }
+        } catch (failed: AuthException) {
+            return failed
+        }
+        throw AssertionError("$endpoint/$case: expected AuthException")
+    }
+
+    private fun expectedError(endpoint: String, case: String) =
+        Spec.expected(endpoint, case).getValue("error").jsonObject
+
     private fun baseUrl() = server.url("/").toString().removeSuffix("/")
 
     private fun RecordedRequest.form(): Map<String, String> = body.readUtf8().split('&').associate {
         URLDecoder.decode(it.substringBefore('='), "UTF-8") to
             URLDecoder.decode(it.substringAfter('='), "UTF-8")
+    }
+
+    private companion object {
+        val OAUTH_ERRORS = listOf(
+            "oauth-device-code" to "400-invalid-client",
+            "oauth-token" to "400-bad-verification-code",
+        )
     }
 }

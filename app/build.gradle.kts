@@ -91,6 +91,14 @@ ktlint {
     version.set(libs.versions.ktlint.get())
 }
 
+tasks.withType<Test>().configureEach {
+    val specDir = rootProject.file("spec")
+    systemProperty("qiyaa.spec.dir", specDir.absolutePath)
+    inputs.files(fileTree(specDir) { include("fixtures/**", "expected/**", "dsp/**", "player/**") })
+        .withPropertyName("spec")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
