@@ -237,13 +237,18 @@ fun PlayerScreen(viewModel: PlayerViewModel) {
         ) {
             RoundButton(
                 52.dp,
-                if (ui.shuffle) colors.accentBackground else colors.surface,
+                if (ui.shuffle && !queue.isWave) colors.accentBackground else colors.surface,
                 onClick = viewModel::toggleShuffle,
             ) {
                 QiText(
                     stringResource(R.string.player_shuffle),
                     TransportLabelStyle,
-                    color = if (ui.shuffle) colors.accent else colors.muted,
+                    color =
+                    when {
+                        queue.isWave -> colors.dimmer
+                        ui.shuffle -> colors.accent
+                        else -> colors.muted
+                    },
                 )
             }
             RoundButton(56.dp, colors.surface2, onClick = viewModel::previous) {

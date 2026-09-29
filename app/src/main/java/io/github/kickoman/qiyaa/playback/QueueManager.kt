@@ -58,6 +58,7 @@ class QueueManager(
     private var consecutiveTrackFailures = 0
     private var networkRetryAttempt = 0
     private var retryJob: Job? = null
+    private val shuffleRule = ShuffleRule()
 
     private val listener =
         object : Player.Listener {
@@ -73,6 +74,12 @@ class QueueManager(
             override fun onPlaybackStateChanged(playbackState: Int) {
                 val current = player ?: return
                 if (playbackState == Player.STATE_ENDED) maybeLoadMore(current)
+            }
+
+            override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
+                val current = player ?: return
+                val target = shuffleRule.onPlayerChanged(shuffleModeEnabled, mutableState.value.isWave)
+                if (target != shuffleModeEnabled) current.shuffleModeEnabled = target
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -203,6 +210,7 @@ class QueueManager(
         mutableState.value =
             QueueState(tracks = playable, title = title, isWave = isWave, activeSourceId = sourceId)
         reportedItemId = null
+        current.shuffleModeEnabled = shuffleRule.playerModeFor(isWave)
         current.setMediaItems(playable.map(MediaItems::toMediaItem), 0, 0L)
         current.prepare()
         current.playWhenReady = autoplay
@@ -338,7 +346,8 @@ class QueueManager(
         val state = mutableState.value
         val session = waveSessionId ?: return
         if (!state.isWave || state.loadingMore) return
-        val left = current.mediaItemCount - current.currentMediaItemIndex
+        val order = PlayOrder.of(current.currentTimeline, current.shuffleModeEnabled)
+        val left = PlayOrder.remainingAfter(order, current.currentMediaItemIndex) + 1
         if (left > LOAD_MORE_WHEN_LEFT) return
         val generation = queueGeneration
         val wasEnded = current.playbackState == Player.STATE_ENDED

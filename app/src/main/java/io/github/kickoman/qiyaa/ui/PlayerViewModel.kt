@@ -154,6 +154,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun toggleShuffle() {
         val current = controller ?: return
+        if (queue.state.value.isWave) {
+            notify(string(R.string.player_shuffle_wave))
+            return
+        }
         current.shuffleModeEnabled = !current.shuffleModeEnabled
         notify(
             string(

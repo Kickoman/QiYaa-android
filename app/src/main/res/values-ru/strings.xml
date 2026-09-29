@@ -134,4 +134,5 @@
         <item quantity="many">%d треков подряд не играют · стоп</item>
         <item quantity="other">%d трека подряд не играют · стоп</item>
     </plurals>
+    <string name="player_shuffle_wave">В волне порядок задаёт Яндекс · shuffle не действует</string>
 </resources>
