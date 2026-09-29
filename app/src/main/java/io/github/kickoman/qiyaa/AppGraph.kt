@@ -16,8 +16,10 @@ import io.github.kickoman.qiyaa.yandex.Session
 import io.github.kickoman.qiyaa.yandex.YandexApi
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 
 class AppGraph(val context: Context) {
@@ -38,9 +40,13 @@ class AppGraph(val context: Context) {
     val session = Session(library, networkMonitor.available, applicationScope).also { it.start() }
     val deviceAuth = DeviceAuth(httpClient, deviceName = Build.MODEL ?: "Android")
     val audioBus =
-        AudioBus().also {
-            it.equalizer.publish(settings.eq.value)
-            it.setBalance(settings.balance.value)
+        AudioBus().also { bus ->
+            applicationScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                settings.eq.collect(bus.equalizer::publish)
+            }
+            applicationScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                settings.balance.collect(bus::setBalance)
+            }
         }
     val queue =
         QueueController(

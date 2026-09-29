@@ -85,6 +85,22 @@ class EqualizerTest {
     }
 
     @Test
+    fun `a new sample rate keeps the settings published last`() {
+        val rock = EqPresets.byName("Rock")!!.settings
+        val switched = EqualizerDsp(44_100)
+        switched.publish(rock)
+        switched.setSampleRate(48_000)
+        val fresh = EqualizerDsp(48_000)
+        fresh.publish(rock)
+        val a = FloatArray(512) { i -> kotlin.math.sin(i * 0.05).toFloat() * 0.5f }
+        val b = a.copyOf()
+        switched.process(a, 256, 2)
+        fresh.process(b, 256, 2)
+        assertArrayEquals(b, a, 0f)
+        assertEquals(48_000, switched.sampleRate)
+    }
+
+    @Test
     fun `bands above half the sample rate become identity`() {
         val coefficients = EqualizerDsp.compute(EqSettings(bandsDb = List(10) { 12.0 }), 22050.0)
         assertTrue(coefficients.bands[9].identity)

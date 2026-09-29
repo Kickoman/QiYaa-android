@@ -30,7 +30,7 @@ grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   #
 
 ## `PlaybackService`
 
-Собирает `ExoPlayer` с `DefaultRenderersFactory`, у которого `buildAudioSink` подменён на `DefaultAudioSink` с двумя процессорами и `enableFloatOutput = false` (процессоры принимают только `ENCODING_PCM_16BIT`). Атрибуты `USAGE_MEDIA`/`AUDIO_CONTENT_TYPE_MUSIC` с `handleAudioFocus = true`, `handleAudioBecomingNoisy`, `WAKE_MODE_NETWORK`, User-Agent `QiYaa/Android`. Стартовая громкость — из `Settings.volume` через `AudioBus.volumeGain`. Тап по уведомлению открывает launcher-intent пакета (сервис не знает про `ui/`). Иконка уведомления — `R.drawable.ic_notification`.
+Собирает `ExoPlayer` с `DefaultRenderersFactory`, у которого `buildAudioSink` подменён на `DefaultAudioSink` с двумя процессорами и `enableFloatOutput = false` (процессоры принимают только `ENCODING_PCM_16BIT`). Атрибуты `USAGE_MEDIA`/`AUDIO_CONTENT_TYPE_MUSIC` с `handleAudioFocus = true`, `handleAudioBecomingNoisy`, `WAKE_MODE_NETWORK`, User-Agent `QiYaa/Android`. Громкость сервис берёт из `Settings.volume` и следит за ней сам (`serviceScope`, `AudioBus.volumeGain`), поэтому она применяется и без открытого экрана.volumeGain`. Тап по уведомлению открывает launcher-intent пакета (сервис не знает про `ui/`). Иконка уведомления — `R.drawable.ic_notification`.
 
 Сервис объявлен `exported="true"` с `tools:ignore="ExportedService"`: так требует Media3, чтобы система и гарнитуры могли привязаться к `MediaSessionService`. `onCreate` создаёт `Media3Engine(player, appGraph.queue)`, подключает его и отдаёт сессии `QueueForwardingPlayer(player, appGraph.queue)`; сессия получает `SessionCallback` (кнопки лайка и дизлайка, «играть» после выгрузки процесса); `onTaskRemoved` останавливает сервис, если ничего не играет; `onDestroy` отключает движок (контроллер запоминает, где остановились), освобождает плеер и сессию.
 
@@ -148,7 +148,7 @@ class TrackUrlCache(clock: () -> Long, ttlMs: Long = TTL_MS, capacity: Int = CAP
 
 ## Процессоры
 
-Оба — `BaseAudioProcessor`, только `ENCODING_PCM_16BIT` (иначе `UnhandledAudioFormatException`). `EqualizerProcessor.onConfigure` сообщает формат в `AudioBus.setFormat`. `queueInput`: пустой буфер возвращается сразу — `replaceOutputBuffer(0)` в Media3 1.4 отдаёт общий `EMPTY_BUFFER`, и `put(inputBuffer)` на нём бросает «The source buffer is this buffer». `onFlush`/`onReset` сбрасывают состояние EQ и очищают кольцо.
+Оба — `BaseAudioProcessor` и работают только с `ENCODING_PCM_16BIT`. На другой формат (float, 24 бит) `onConfigure` возвращает `AudioFormat.NOT_SET`: процессор выключается, и `DefaultAudioSink` его пропускает, а звук идёт без EQ и визуализации, но играет. Раньше они бросали `UnhandledAudioFormatException`, и падало всё воспроизведение. `enableFloatOutput = false` держит декодеры в PCM16, так что это страховка. `EqualizerProcessor.onConfigure` сообщает формат в `AudioBus.setFormat`. `queueInput`: пустой буфер возвращается сразу — `replaceOutputBuffer(0)` в Media3 1.4 отдаёт общий `EMPTY_BUFFER`, и `put(inputBuffer)` на нём бросает «The source buffer is this buffer». `onFlush`/`onReset` сбрасывают состояние EQ и очищают кольцо.
 
 ## Not here
 

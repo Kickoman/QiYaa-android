@@ -45,26 +45,30 @@ class EqualizerDsp(sampleRate: Int = DEFAULT_SAMPLE_RATE) {
 
     class Coefficients(val enabled: Boolean, val preamp: Float, val bands: List<Biquad>)
 
-    @Volatile
-    private var coefficients: Coefficients = compute(EqSettings.FLAT, sampleRate.toDouble())
+    private class State(val settings: EqSettings, val sampleRate: Int, val coefficients: Coefficients)
 
     @Volatile
-    var sampleRate: Int = sampleRate
-        private set
+    private var state = State(EqSettings.FLAT, sampleRate, compute(EqSettings.FLAT, sampleRate.toDouble()))
+    private val writeLock = Any()
 
-    private var lastSettings: EqSettings = EqSettings.FLAT
+    val sampleRate: Int get() = state.sampleRate
 
     private val delay1 = Array(EqSettings.BAND_COUNT) { FloatArray(MAX_CHANNELS) }
     private val delay2 = Array(EqSettings.BAND_COUNT) { FloatArray(MAX_CHANNELS) }
 
     fun setSampleRate(rate: Int) {
-        sampleRate = if (rate > 0) rate else DEFAULT_SAMPLE_RATE
-        coefficients = compute(lastSettings, sampleRate.toDouble())
+        val newRate = if (rate > 0) rate else DEFAULT_SAMPLE_RATE
+        synchronized(writeLock) {
+            val settings = state.settings
+            state = State(settings, newRate, compute(settings, newRate.toDouble()))
+        }
     }
 
     fun publish(settings: EqSettings) {
-        lastSettings = settings
-        coefficients = compute(settings, sampleRate.toDouble())
+        synchronized(writeLock) {
+            val currentRate = state.sampleRate
+            state = State(settings, currentRate, compute(settings, currentRate.toDouble()))
+        }
     }
 
     fun reset() {
@@ -75,7 +79,7 @@ class EqualizerDsp(sampleRate: Int = DEFAULT_SAMPLE_RATE) {
     }
 
     fun process(frames: FloatArray, frameCount: Int, channels: Int) {
-        val current = coefficients
+        val current = state.coefficients
         if (!current.enabled) return
         val channelCount = channels.coerceIn(1, MAX_CHANNELS)
         val sampleCount = frameCount * channels
