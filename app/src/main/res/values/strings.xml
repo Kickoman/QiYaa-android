@@ -171,4 +171,6 @@
     <string name="error_code_expired">the code expired, start again</string>
     <string name="error_track_unplayable">the track cannot be played</string>
     <string name="error_unknown">something went wrong</string>
+    <string name="library_row_error">ERROR</string>
+    <string name="library_retry">TAP TO RETRY</string>
 </resources>

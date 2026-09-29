@@ -156,4 +156,6 @@
     <string name="error_code_expired">код устарел, начните заново</string>
     <string name="error_track_unplayable">трек не воспроизводится</string>
     <string name="error_unknown">что-то пошло не так</string>
+    <string name="library_row_error">ОШИБКА</string>
+    <string name="library_retry">НАЖМИТЕ, ЧТОБЫ ПОВТОРИТЬ</string>
 </resources>
