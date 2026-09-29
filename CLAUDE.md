@@ -295,5 +295,8 @@ descriptive name (`mutableState` behind `state`), never the decoration.
 
   Say explicitly that nothing was verified on a device when no device or
   emulator was available.
+- CI (`.github/workflows/ci.yml`) runs the same check on every push. A
+  release is a pushed tag `vX.Y.Z`; never edit `versionName`/`versionCode`
+  in code, they come from the tag (`docs/release.md`).
 - Performance claims need a measurement on a release build on a named
   device, reported with how it was taken.

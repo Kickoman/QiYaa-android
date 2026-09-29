@@ -24,7 +24,11 @@ printf 'sdk.dir=%s\n' "$HOME/android-sdk" > local.properties   # или export A
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Сборка обязана быть чистой: предупреждения Kotlin — ошибки (`allWarningsAsErrors`), ktlint по `.editorconfig` (стиль `android_studio`, строка ≤ 110), Android lint с `warningsAsErrors` (отключены только проверки свежести зависимостей). Правила кода — в `CLAUDE.md`.
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) выполняет ту же проверку на каждый push и pull request и собирает release-APK. Сборка обязана быть чистой: предупреждения Kotlin — ошибки (`allWarningsAsErrors`), ktlint по `.editorconfig` (стиль `android_studio`, строка ≤ 110), Android lint с `warningsAsErrors` (отключены только проверки свежести зависимостей). Правила кода — в `CLAUDE.md`.
+
+## Релизы
+
+Готовые APK лежат в [Releases](https://github.com/Kickoman/QiYaa-android/releases) (появляются, когда в репозиторий пушится тег вида `v0.2.0`) и в артефактах каждого прогона GitHub Actions (неподписанные, для проверки). Версия приложения берётся из тега, все релизы подписаны одним ключом. Как выпустить релиз и настроить ключ — [docs/release.md](docs/release.md).
 
 ## Проверка вручную
 
