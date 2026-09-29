@@ -35,6 +35,7 @@ JUnit 4 без эмулятора: `./gradlew testDebugUnitTest`. Сетевые
 | `yandex/ErrorsTest.kt` | дерево исключений: `IOException`, `isTokenRejected`, причина, `NotSignedInException` |
 | `yandex/WaveFeedbackTest.kt` | TRK-03…11 на уровне `Library.waveFeedback`: поля событий, тело сессии и `batchId`, запасной путь через станцию при 4xx и запоминание сессии, без станции — ничего, 5xx и сеть не повторяются |
 | `yandex/SessionTest.kt` | состояния сессии на фейковом `AccountGateway` и виртуальном времени: офлайн-старт, backoff 2…60 с, сброс по возврату сети, 401 и `AuthException` → `Expired`, `tokenRejections`, `signIn`/`signOut` |
+| `playback/QueueForwardingPlayerTest.kt` | каждое событие `Player.Listener` доходит до слушателя сессии так же, как через обычный `ForwardingPlayer` (плеер — `java.lang.reflect.Proxy`, аргументы — пустые значения Media3); снятый слушатель снимается с плеера |
 | `playback/PlaybackFailuresTest.kt` | вид ошибки воспроизведения: коды 2001/2002, `NetworkException` (в том числе обёрнутый), `UnknownHost`, 401 → сессия, 2004/404/нет вариантов/декодер → трек |
 | `queue/ErrorPolicyTest.kt` | `decide` по всем веткам (лимит 3 подряд, последний трек); `awaitRetry`: возврат в момент появления сети, паузы 2…60 с при живой сети |
 | `queue/PlayOrderTest.kt` | остаток после текущего трека по порядку воспроизведения, в том числе перемешанному |

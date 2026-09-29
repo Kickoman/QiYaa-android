@@ -77,6 +77,7 @@ object NotificationButtons {
 
 **Traps:**
 - `MediaSession` берёт набор команд и из `getAvailableCommands`, и из события `onAvailableCommandsChanged`; поэтому листенеры оборачиваются (`TransportCommandsListener`), и событие несёт тот же расширенный набор.
+- `TransportCommandsListener` пересылает каждый из 37 методов `Player.Listener` явно, включая устаревшие (`@Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")`: их пересылает и `ForwardingListener` из Media3). Делегирование Kotlin `Player.Listener by listener` не годится: для default-методов Java-интерфейса Kotlin пересылку не генерирует, а в `Player.Listener` все методы такие. Так было в v0.2.0: сессия получала только смену команд, и контроллеры (экран плеера, уведомление Media3, экран блокировки) навсегда оставались со снимком состояния на момент подключения — не шёл прогресс и спектр, не появлялось уведомление, сервис не уходил в foreground и умирал при выходе из приложения. `playback/QueueForwardingPlayerTest` сверяет доставку каждого события с обычным `ForwardingPlayer`; новый метод слушателя в Media3 уронит этот тест, пока его не перешлют.
 - `Media3Engine` управляет самим ExoPlayer, а не `QueueForwardingPlayer`: иначе `QueueController.next()` → `skipToNext()` вернулся бы в `next()`.
 
 ## `Media3Engine`
