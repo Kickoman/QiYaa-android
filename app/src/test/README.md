@@ -10,7 +10,7 @@ JUnit 4 без эмулятора: `./gradlew testDebugUnitTest`. Сетевые
 |---|---|
 | `support/SpecFixtures.kt` | `Spec.fixture(endpoint, case)` — тело и HTTP-статус из имени случая (`401-…` → 401), `Spec.expected(…)`, `Spec.cases(endpoint)`; `Fixture.response()` для `MockWebServer` |
 | `support/SpecJson.kt` | Android-модели → нейтральный JSON спеки. `Track` не хранит `albumTitle`, `year`, `genre`: они убираются с ожидаемой стороны, а `coverUri` сравнивается как URL, построенный `TrackParsing.coverUrl` |
-| `support/FakeEngine.kt` | `queue.PlayerEngine` для тестов: плейлист, курсор, конец очереди, порядок shuffle, синхронные колбэки в `QueueController`, как у ExoPlayer, включая повтор всей очереди. Журнал команд `commands` |
+| `support/FakeEngine.kt` | `queue.PlayerEngine` для тестов: плейлист, курсор, конец очереди, порядок shuffle, синхронные колбэки в `QueueController`, как у ExoPlayer, включая повтор всей очереди, позицию, «назад» и паузу. Журнал команд `commands` |
 | `support/FakeMusicSource.kt` | `queue.MusicSource` с ответами-лямбдами (в том числе отложенными через `CompletableDeferred`), журнал вызовов и отметок `/play-audio` |
 | `support/QueueHarness.kt` | контроллер + фейки на виртуальном времени `runTest`, собранные события `events`, `track()`/`tracks()` |
 
@@ -40,7 +40,8 @@ JUnit 4 без эмулятора: `./gradlew testDebugUnitTest`. Сетевые
 | `queue/QueueSourcesTest.kt` | SRC-01…12: побеждает последний источник, недоступные треки, пустой источник и источник только из недоступных, маршруты поиска |
 | `queue/QueueWaveTest.kt` | WAVE-01…08, 10…12: старт, догрузка с последними 5 id, один запрос за раз, поколения, продолжение после конца, shuffle и повтор в волне; пустая первая порция (WAVE-03), молчаливый ответ для заменённой очереди (WAVE-07), «вперёд» в конце после неудачи (WAVE-09); TRK-01/02 — как есть (гэп A2) |
 | `queue/QueueErrorsTest.kt` | ERR-01…07: пауза без сети и возврат, повторы 2/4/8 с, пропуск битого трека и стоп на третьем, сброс счётчика; битый последний трек волны ждёт догрузку (ERR-07) |
-| `queue/QueueEditingTest.kt` | удаление выбранных, выбрать всё, очистка, `syncFromPlayer`, лайк, дизлайк (TR-07) |
+| `queue/QueueEditingTest.kt` | удаление выбранных, выбрать всё, очистка, лайк, дизлайк (TR-07) |
+| `queue/QueueTransportTest.kt` | TR-01…05 и WAVE-09 через `next()`/`previous()`; новый движок получает ту же очередь на паузе на том же треке и позиции; источник, выбранный до движка, применяется при подключении; очистка без движка |
 | `audio/DspVectorsTest.kt` | эталоны `spec/dsp`: АЧХ EQ (50 случаев × 41 частота, 1e-4 дБ), центры полос и Q, 17 пресетов, `levelToDb` для уровней 0…65, границы 19 полос и один кадр спектра для 24 синусов (1e-3). Из `eqf.json` не проверяются байты файла и `dbToLevel`: `.eqf` на Android n/a |
 | `audio/EqualizerTest.kt` | пресеты Winamp, тождество плоского EQ, АЧХ в центре полосы, усиление синуса на 6 дБ |
 | `audio/AnalyzerTest.kt` | 0 dBFS для синуса полной шкалы, полоса спектра для 1 кГц, спад 0.07/кадр |

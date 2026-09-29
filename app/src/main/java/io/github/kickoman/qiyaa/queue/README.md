@@ -36,13 +36,14 @@ class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: C
     fun playWave(seeds: List<String>, title: String, sourceId: String = seeds.first())
     fun search(text: String, title: String)
     fun setQueue(tracks, title, isWave, autoplay, sourceId);  fun appendTracks(tracks);  fun clear()
-    fun removeIndices(indices: Set<Int>);  fun toggleSelected(index: Int);  fun selectAllOrNone();  fun syncFromPlayer()
+    fun removeIndices(indices: Set<Int>);  fun toggleSelected(index: Int);  fun selectAllOrNone()
+    fun next();  fun previous()   // транспорт: сюда приходят кнопки приложения, уведомление и гарнитура
     fun toggleLike(track: Track);  fun dislikeAndSkip(track: Track)
     fun requestMore()   // «вперёд» в конце волны: снова запросить догрузку и продолжить с первого нового трека
     // события движка
     fun onItemChanged(track: Track?);  fun onEnded();  fun onShuffleChanged(enabled: Boolean);  fun onRepeatChanged(enabled: Boolean)
     fun onPlayingChanged(isPlaying: Boolean);  fun onFailure(kind: FailureKind, message: String)
-    companion object { MY_WAVE_SEED = "user:onyourwave"; LOAD_MORE_WHEN_LEFT = 2; WAVE_HISTORY = 5 }
+    companion object { MY_WAVE_SEED = "user:onyourwave"; LOAD_MORE_WHEN_LEFT = 2; WAVE_HISTORY = 5; RESTART_AFTER_MS = 3_000 }
 }
 ```
 
@@ -54,6 +55,9 @@ class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: C
 - **Волна** стартует с `SourceLoading` сразу и `WaveStarted` после ответа (WAVE-01). Догружается, когда текущий трек — один из двух последних в порядке воспроизведения (`LOAD_MORE_WHEN_LEFT = 2` считает текущий вместе с оставшимися), с последними 5 id очереди, не больше одного запроса за раз (WAVE-05, WAVE-06). Поколение очереди не даёт дописать ответ к уже заменённой очереди, а её ошибку показать (WAVE-07). Если плеер дошёл до конца во время догрузки, продолжает с первого нового трека (WAVE-08). Неудачная догрузка в конце волны сама не повторяется; `requestMore()` («вперёд») отправляет запрос снова, и после ответа воспроизведение продолжается с первого нового трека (WAVE-09). Ответ, где нет ни одного доступного трека, ничего не меняет.
 - **Shuffle и повтор в волне не действуют** (WAVE-10…12). Два экземпляра `WaveModeRule`: `setQueue` ставит движку `playerModeFor(isWave)` для каждого режима, а `onShuffleChanged`/`onRepeatChanged` возвращают выключенный режим, если его включили во время волны с любого контроллера. Выбор пользователя запоминается только вне волны и возвращается для обычных очередей. Так последний трек волны не переходит к первому, а ждёт догрузку (WAVE-08).
 - **Ошибки воспроизведения** (ERR-01…07) — по `ErrorPolicy`, см. ниже.
+- **«Вперёд»** (`next()`): следующий трек в порядке воспроизведения (TR-03), с повтором — первый после последнего (TR-05); в конце конечной очереди — пауза и начало текущего трека, курсор остаётся (TR-04); в конце волны — `LoadingMore` и `requestMore()` (WAVE-09).
+- **«Назад»** (`previous()`): после 3 с (`RESTART_AFTER_MS`) — в начало текущего трека (TR-02), иначе предыдущий трек, на первом с повтором — последний, без повтора — в начало (TR-01).
+- **Один хозяин плеера.** Движок может смениться (сервис пересоздан при живом процессе): `detach` запоминает трек и позицию, `attach` нового движка кладёт ту же очередь на паузе туда же, вместе с режимами shuffle и повтора. Очередь, выбранная без движка, применяется при `attach`; правка очереди без движка меняет только `state`. Подробнее — `playback/README.md`.
 - **Дизлайк** = запрос `dislike` + переход к следующему; в конечной очереди без следующего — стоп, в волне — ничего, ждём догрузку (TR-07).
 - **Отметка `/play-audio`** уходит на смену id текущего трека, best-effort, ошибки игнорируются.
 
@@ -67,7 +71,6 @@ class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: C
 |---|---|---|---|
 | A2 | `/play-audio` уходит на смену элемента, в том числе без автозапуска, и не повторяется для того же трека | TRK-01, TRK-02 | #27 |
 
-Транспорт «назад»/«вперёд» (TR-01…05) пока живёт в `ui/PlayerViewModel` поверх `MediaController`; переедет в очередь с Kickoman/QiYaa-android#6. До тех пор `requestMore()` вызывает только кнопка «вперёд» в приложении: «вперёд» из уведомления или гарнитуры в конце волны догрузку не повторяет.
 
 ## `ErrorPolicy`
 
@@ -95,7 +98,7 @@ object ErrorPolicy {
 
 **Traps:**
 - `title` — данные из UI или сервера (имя плейлиста, `getString(R.string.library_my_wave)`), не константа этого пакета.
-- `syncFromPlayer` сверяет `state.tracks` с плеером только по числу элементов.
+- `state.tracks` и плейлист плеера пишет только контроллер, поэтому сверять их не нужно; если в плеер начнёт писать кто-то ещё (например, команда удаления из уведомления), это должно идти через контроллер.
 - `removeIndices` удаляет по убыванию индексов, иначе сдвиг сломает выборку.
 - `DefaultShuffleOrder` ExoPlayer вставляет дописанные треки в случайные места перемешанного порядка, поэтому в волне shuffle запрещён, а не «исправлен». Выбор shuffle и повтора хранится только в памяти `WaveModeRule`.
 - `QueueController` не должен импортировать `yandex/Library` напрямую: только `MusicSource`, иначе тесты потеряют фейк, а `yandex` — место внизу графа.

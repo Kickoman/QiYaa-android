@@ -27,6 +27,8 @@ data class QueueState(
     val activeSourceId: String? = null,
 )
 
+private data class RestorePoint(val index: Int, val positionMs: Long, val playWhenReady: Boolean)
+
 class QueueController(
     private val source: MusicSource,
     private val connectivity: Flow<Boolean>,
@@ -53,15 +55,53 @@ class QueueController(
     private var networkRetryAttempt = 0
     private var retryJob: Job? = null
     private var continueAtEnd = false
+    private var restorePoint: RestorePoint? = null
     private val shuffleRule = WaveModeRule()
     private val repeatRule = WaveModeRule()
 
     fun attach(engine: PlayerEngine) {
         this.engine = engine
+        val restore = restorePoint ?: return
+        restorePoint = null
+        val state = mutableState.value
+        if (state.tracks.isEmpty()) return
+        engine.shuffleEnabled = shuffleRule.playerModeFor(state.isWave)
+        engine.repeatEnabled = repeatRule.playerModeFor(state.isWave)
+        val index = restore.index.coerceIn(0, state.tracks.lastIndex)
+        engine.setTracks(state.tracks, restore.playWhenReady, index, restore.positionMs)
     }
 
     fun detach(engine: PlayerEngine) {
-        if (this.engine === engine) this.engine = null
+        if (this.engine !== engine) return
+        if (mutableState.value.tracks.isNotEmpty()) {
+            restorePoint =
+                RestorePoint(engine.currentIndex, engine.positionMs.coerceAtLeast(0), playWhenReady = false)
+        }
+        this.engine = null
+    }
+
+    fun next() {
+        val current = engine ?: return
+        when {
+            current.hasNext() -> current.skipToNext()
+            mutableState.value.isWave -> {
+                emit(QueueEvent.LoadingMore)
+                requestMore()
+            }
+            else -> {
+                current.pause()
+                current.seekToPosition(0)
+            }
+        }
+    }
+
+    fun previous() {
+        val current = engine ?: return
+        when {
+            current.positionMs > RESTART_AFTER_MS -> current.seekToPosition(0)
+            current.hasPrevious() -> current.skipToPrevious()
+            else -> current.seekToPosition(0)
+        }
     }
 
     fun onItemChanged(track: Track?) {
@@ -218,10 +258,6 @@ class QueueController(
 
     fun setQueue(tracks: List<Track>, title: String, isWave: Boolean, autoplay: Boolean, sourceId: String?) {
         val current = engine
-        if (current == null) {
-            emit(QueueEvent.PlayerNotReady)
-            return
-        }
         queueGeneration++
         resetFailures()
         continueAtEnd = false
@@ -230,35 +266,39 @@ class QueueController(
         mutableState.value =
             QueueState(tracks = playable, title = title, isWave = isWave, activeSourceId = sourceId)
         reportedItemId = null
+        if (current == null) {
+            restorePoint = RestorePoint(0, 0, playWhenReady = autoplay)
+            return
+        }
+        restorePoint = null
         current.shuffleEnabled = shuffleRule.playerModeFor(isWave)
         current.repeatEnabled = repeatRule.playerModeFor(isWave)
         current.setTracks(playable, playWhenReady = autoplay)
     }
 
     fun appendTracks(tracks: List<Track>) {
-        val current = engine ?: return
         val playable = tracks.filter { it.available }
         if (playable.isEmpty()) return
         mutableState.update { it.copy(tracks = it.tracks + playable) }
-        current.appendTracks(playable)
+        engine?.appendTracks(playable)
     }
 
     fun clear() {
-        val current = engine ?: return
         queueGeneration++
         resetFailures()
         continueAtEnd = false
+        restorePoint = null
         waveSessionId = null
         mutableState.value = QueueState()
+        val current = engine ?: return
         current.stop()
         current.clear()
     }
 
     fun removeIndices(indices: Set<Int>) {
-        val current = engine ?: return
         if (indices.isEmpty()) return
         val sorted = indices.filter { it in mutableState.value.tracks.indices }.sortedDescending()
-        for (index in sorted) current.removeAt(index)
+        engine?.let { current -> for (index in sorted) current.removeAt(index) }
         mutableState.update { state ->
             state.copy(
                 tracks = state.tracks.filterIndexed { index, _ ->
@@ -284,14 +324,6 @@ class QueueController(
     fun selectAllOrNone() = mutableState.update { state ->
         val all = state.selected.size == state.tracks.size
         state.copy(selected = if (all) emptySet() else state.tracks.indices.toSet())
-    }
-
-    fun syncFromPlayer() {
-        val current = engine ?: return
-        val count = current.itemCount
-        if (count == mutableState.value.tracks.size) return
-        val tracks = (0 until count).map(current::trackAt)
-        mutableState.update { it.copy(tracks = tracks, selected = emptySet()) }
     }
 
     fun toggleLike(track: Track) {
@@ -402,6 +434,7 @@ class QueueController(
         const val MY_WAVE_SEED = "user:onyourwave"
         const val LOAD_MORE_WHEN_LEFT = 2
         const val WAVE_HISTORY = 5
+        const val RESTART_AFTER_MS = 3_000L
         private const val EVENT_BUFFER = 8
     }
 }

@@ -61,7 +61,7 @@ class PlaybackService : MediaSessionService() {
         player.volume = AudioBus.volumeGain(graph.settings.volume.value)
         engine = Media3Engine(player, graph.queue).also { it.attach() }
 
-        val builder = MediaSession.Builder(this, player)
+        val builder = MediaSession.Builder(this, QueueForwardingPlayer(player, graph.queue))
         openAppIntent()?.let(builder::setSessionActivity)
         session = builder.build()
         setMediaNotificationProvider(

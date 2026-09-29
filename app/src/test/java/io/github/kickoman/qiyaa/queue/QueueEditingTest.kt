@@ -49,16 +49,6 @@ class QueueEditingTest {
     }
 
     @Test
-    fun `syncFromPlayer takes the tracks from the player when the counts differ`() = runTest {
-        val harness = QueueHarness(this)
-        harness.controller.loadSource("Liked") { tracks("a", "b", "c") }
-        runCurrent()
-        harness.engine.removeAt(2)
-        harness.controller.syncFromPlayer()
-        assertEquals(listOf("a", "b"), harness.controller.state.value.tracks.map { it.id })
-    }
-
-    @Test
     fun `toggling a like flips it and reports the new state`() = runTest {
         val harness = QueueHarness(this)
         harness.controller.toggleLike(track("a"))

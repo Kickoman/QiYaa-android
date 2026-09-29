@@ -126,7 +126,6 @@
     <string name="queue_empty">%1$s: empty</string>
     <string name="queue_wave_started">%1$s: wave started</string>
     <string name="queue_nothing_found">Nothing found</string>
-    <string name="queue_player_not_ready">Player is still starting, try again</string>
     <string name="queue_liked">Added to Liked</string>
     <string name="queue_unliked">Removed from Liked</string>
     <string name="queue_disliked">Disliked · skipping</string>

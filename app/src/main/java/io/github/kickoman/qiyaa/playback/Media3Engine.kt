@@ -39,6 +39,7 @@ class Media3Engine(private val player: Player, private val controller: QueueCont
 
     override val itemCount: Int get() = player.mediaItemCount
     override val currentIndex: Int get() = player.currentMediaItemIndex
+    override val positionMs: Long get() = player.currentPosition
     override val isEnded: Boolean get() = player.playbackState == Player.STATE_ENDED
 
     override var shuffleEnabled: Boolean
@@ -65,6 +66,8 @@ class Media3Engine(private val player: Player, private val controller: QueueCont
 
     override fun hasNext(): Boolean = player.hasNextMediaItem()
 
+    override fun hasPrevious(): Boolean = player.hasPreviousMediaItem()
+
     override fun playOrder(): List<Int> {
         val timeline = player.currentTimeline
         val shuffle = player.shuffleModeEnabled
@@ -77,10 +80,13 @@ class Media3Engine(private val player: Player, private val controller: QueueCont
         return order
     }
 
-    override fun trackAt(index: Int): Track = MediaItems.toTrack(player.getMediaItemAt(index))
-
-    override fun setTracks(tracks: List<Track>, playWhenReady: Boolean) {
-        player.setMediaItems(tracks.map(MediaItems::toMediaItem), 0, 0L)
+    override fun setTracks(
+        tracks: List<Track>,
+        playWhenReady: Boolean,
+        startIndex: Int,
+        startPositionMs: Long,
+    ) {
+        player.setMediaItems(tracks.map(MediaItems::toMediaItem), startIndex, startPositionMs)
         player.prepare()
         player.playWhenReady = playWhenReady
     }
@@ -93,7 +99,13 @@ class Media3Engine(private val player: Player, private val controller: QueueCont
 
     override fun seekTo(index: Int) = player.seekTo(index, 0L)
 
+    override fun seekToPosition(positionMs: Long) = player.seekTo(positionMs)
+
     override fun skipToNext() = player.seekToNextMediaItem()
+
+    override fun skipToPrevious() = player.seekToPreviousMediaItem()
+
+    override fun pause() = player.pause()
 
     override fun prepare() = player.prepare()
 

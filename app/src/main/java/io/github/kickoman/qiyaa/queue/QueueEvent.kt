@@ -13,7 +13,7 @@ sealed interface QueueEvent {
 
     data object NothingFound : QueueEvent
 
-    data object PlayerNotReady : QueueEvent
+    data object LoadingMore : QueueEvent
 
     data class LikeChanged(val liked: Boolean) : QueueEvent
 
