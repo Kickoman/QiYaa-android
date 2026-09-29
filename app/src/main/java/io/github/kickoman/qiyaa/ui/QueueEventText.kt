@@ -18,6 +18,9 @@ fun QueueEvent.render(context: Context): String = when (this) {
         if (liked) R.string.queue_liked else R.string.queue_unliked,
     )
     QueueEvent.DislikedAndSkipped -> context.getString(R.string.queue_disliked)
+    QueueEvent.WaitingForNetwork -> context.getString(R.string.queue_waiting_for_network)
+    is QueueEvent.StoppedAfterFailures ->
+        context.resources.getQuantityString(R.plurals.queue_stopped_after_failures, count, count)
     is QueueEvent.Failed -> context.getString(stage.stringId(), message)
 }
 

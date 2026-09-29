@@ -127,4 +127,11 @@
     <string name="theme_ice">Ледяной синий</string>
     <string name="session_offline">НЕТ СЕТИ · ПОВТОРЮ САМ</string>
     <string name="login_expired">Сессия истекла. Войдите снова.</string>
+    <string name="queue_waiting_for_network">Нет сети · продолжу, когда появится</string>
+    <plurals name="queue_stopped_after_failures">
+        <item quantity="one">%d трек подряд не играет · стоп</item>
+        <item quantity="few">%d трека подряд не играют · стоп</item>
+        <item quantity="many">%d треков подряд не играют · стоп</item>
+        <item quantity="other">%d трека подряд не играют · стоп</item>
+    </plurals>
 </resources>

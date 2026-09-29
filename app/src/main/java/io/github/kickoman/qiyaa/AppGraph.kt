@@ -38,7 +38,7 @@ class AppGraph(val context: Context) {
             it.equalizer.publish(settings.eq.value)
             it.setBalance(settings.balance.value)
         }
-    val queue = QueueManager(library, api)
+    val queue = QueueManager(library, api, networkMonitor.available)
 
     companion object {
         const val HTTP_TIMEOUT_SECONDS = 20L

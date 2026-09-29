@@ -11,6 +11,8 @@ grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   #
 | `PlaybackService.kt` | `PlaybackService` — сборка ExoPlayer и `MediaSession`, уведомление |
 | `QueueManager.kt` | `QueueState`, `QueueManager` — источники, волна, выделение, лайки, отметки прослушивания |
 | `QueueEvent.kt` | `QueueEvent` — что очередь сообщает наружу |
+| `PlaybackFailures.kt` | `FailureKind`, `PlaybackFailures.classify` — вид ошибки воспроизведения по коду и причине |
+| `ErrorPolicy.kt` | `ErrorAction`, `ErrorPolicy` — что делать с ошибкой; ожидание сети перед повтором (без Media3-плеера) |
 | `MediaItems.kt` | `MediaItems` — `Track` ↔ `MediaItem` |
 | `TrackResolver.kt` | `TrackResolver` — `qiyaa://track/{id}` → подписанная ссылка |
 | `EqualizerProcessor.kt` | `EqualizerProcessor` — PCM16 → float → EQ → баланс → PCM16 |
@@ -33,7 +35,7 @@ grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   #
 ```kotlin
 data class QueueState(tracks: List<Track>, title: String, isWave: Boolean, loadingMore: Boolean, selected: Set<Int>, activeSourceId: String?)
 
-class QueueManager(library: Library, api: YandexApi) {
+class QueueManager(library: Library, api: YandexApi, connectivity: Flow<Boolean>) {   // connectivity = NetworkMonitor.available
     val state: StateFlow<QueueState>;  val events: SharedFlow<QueueEvent>;  val player: Player?
     fun attach(player: Player);  fun detach(player: Player)
     fun loadSource(title: String, sourceId: String? = null, autoplay: Boolean = true, loader: suspend () -> List<Track>)
@@ -48,6 +50,7 @@ class QueueManager(library: Library, api: YandexApi) {
 sealed interface QueueEvent {
     SourceLoading(title); SearchStarted(title); SourceLoaded(title, trackCount); SourceEmpty(title); WaveStarted(title)
     NothingFound; PlayerNotReady; LikeChanged(liked); DislikedAndSkipped
+    WaitingForNetwork; StoppedAfterFailures(count)
     Failed(stage: Stage, message)   // Stage: SOURCE, WAVE, WAVE_MORE, SEARCH, LIKE, PLAYBACK
 }
 ```
@@ -59,7 +62,7 @@ sealed interface QueueEvent {
 - **Недоступные треки** (`available == false`) не попадают в очередь.
 - **Волна догружается**, когда после текущего трека остаётся ≤ 2 (`LOAD_MORE_WHEN_LEFT`): `moreWave(sessionId, последние 5 id)`; если плеер уже дошёл до конца, воспроизведение продолжается с первого догруженного. Поколение очереди (`queueGeneration`) защищает от применения догрузки к уже заменённой очереди.
 - **Отметка прослушивания** (`reportPlayStarted`) отправляется один раз на смену `mediaId`, best-effort, ошибки игнорируются.
-- **Ошибка воспроизведения** → `Failed(PLAYBACK)` и переход к следующему треку, как в десктопной версии.
+- **Ошибка воспроизведения** разбирается по виду, см. «Ошибки воспроизведения» ниже: без сети очередь не проматывается.
 - **Dislike** = запрос `dislike` + переход к следующему; в конечной очереди без следующего — стоп, в волне — ждём догрузку.
 - `search`: если лучший результат — исполнитель или альбом, играют его треки под его именем, иначе найденные треки под `title`.
 
@@ -69,6 +72,39 @@ sealed interface QueueEvent {
 - `title` — данные из UI или сервера (имя плейлиста, `getString(R.string.library_my_wave)`), не константа в этом пакете.
 - `syncFromPlayer` синхронизирует `state.tracks` с таймлайном плеера только по числу элементов; порядок при shuffle плеер хранит сам.
 - `removeIndices` удаляет по убыванию индексов, иначе сдвиг сломает выборку.
+
+## Ошибки воспроизведения
+
+```kotlin
+enum class FailureKind { NETWORK, SESSION, TRACK }
+object PlaybackFailures { fun classify(errorCode: Int, cause: Throwable?): FailureKind }
+
+sealed interface ErrorAction { WaitForNetwork; Hold; SkipToNext; Stop }
+object ErrorPolicy {
+    const val MAX_CONSECUTIVE_TRACK_FAILURES = 3
+    fun decide(kind: FailureKind, consecutiveTrackFailures: Int, hasNext: Boolean): ErrorAction
+    suspend fun awaitRetry(connectivity: Flow<Boolean>, attempt: Int)
+    fun retryDelayMs(attempt: Int): Long         // 2, 4, 8 … 60 с, те же пределы, что у yandex/Session
+}
+```
+
+Вид определяется по коду `PlaybackException` и по цепочке `cause`, никогда по тексту. Проверки идут сверху вниз:
+
+| Вид | Признак | Действие в `QueueManager` |
+|---|---|---|
+| `SESSION` | в цепочке `HttpException` с `isTokenRejected` | `Hold`: остаться на месте, `Failed(PLAYBACK)`; `Session` уведёт на вход через `tokenRejections` |
+| `NETWORK` | код 2001/2002 (`IO_NETWORK_CONNECTION_*`) или в цепочке `NetworkException`, `UnknownHost`, `Connect`, `SocketTimeout`, `NoRouteToHost` | `WaitForNetwork`: пауза на текущем треке, один раз `WaitingForNetwork`; когда `awaitRetry` вернулся — `prepare()` |
+| `TRACK` | всё остальное: 2004 (статус хранилища), `HttpException` 4xx/5xx от API, `MalformedResponseException`, парсинг 3xxx, декодер 4xxx | 1-я и 2-я неудача подряд — `SkipToNext` с `Failed(PLAYBACK)`; 3-я или нет следующего трека — `Stop` и `StoppedAfterFailures(3)` |
+
+`awaitRetry`: если сети нет, ждёт её и возвращается сразу, как только она появилась; если сеть есть, а загрузка всё равно падает, ждёт `retryDelayMs(attempt)`. После ошибки ExoPlayer в `STATE_IDLE` помнит позицию и `playWhenReady`, поэтому `prepare()` продолжает с того же места и играет, только если играло до ошибки: пауза, поставленная за время ожидания, сохраняется.
+
+Счётчики (`consecutiveTrackFailures`, номер попытки сети) и ожидание сбрасываются, когда трек реально заиграл (`onIsPlayingChanged(true)`), и при `setQueue`/`clear`.
+
+**Traps:**
+- ExoPlayer сам повторяет сетевые ошибки загрузчика (около 3 попыток с паузой до 5 с) до `onPlayerError`, поэтому пауза наступает через несколько секунд после пропажи сети, а не сразу. Пока в буфере есть звук, трек доигрывает.
+- Ошибки `TrackResolver` приходят с общим кодом 2000 (`IO_UNSPECIFIED`): отличить сеть от битого трека можно только по причине, поэтому `yandex` бросает типизированные исключения.
+- При `Stop` плеер остаётся в `IDLE` на неигравшем треке; тап по треку или «плей» пробуют снова.
+- Десктоп при ошибке получения ссылки останавливается; правило «сеть → пауза, трек → пропуск, не больше 3» нужно записать в общие сценарии (Kickoman/QiYaa#2), чтобы стороны не разошлись.
 
 ## `MediaItems`, `TrackResolver`
 
