@@ -1,11 +1,12 @@
 # `data/` — сохранение настроек
 
-Всё, что переживает перезапуск: пользовательские настройки и OAuth-токен, в приватных `SharedPreferences` приложения (`MODE_PRIVATE`, резервное копирование отключено в манифесте). Пакет **не** применяет настройки к плееру — это делают `ui/PlayerViewModel` (подписки на `StateFlow`) и `AppGraph` (начальные значения).
+Всё, что переживает перезапуск: пользовательские настройки и OAuth-токен в приватных `SharedPreferences` приложения (`MODE_PRIVATE`), очередь — в файле `queue.json` во внутренней памяти. Резервное копирование отключено в манифесте. Пакет **не** применяет настройки к плееру — это делают `ui/PlayerViewModel` (подписки на `StateFlow`) и `AppGraph` (начальные значения).
 
 | Файл | Содержит |
 |---|---|
 | `Settings.kt` | `Settings` — громкость, баланс, визуализатор, EQ, тема |
 | `TokenStore.kt` | `TokenStore` — токен |
+| `QueueFile.kt` | `QueueFile` — сохранённая очередь, файл `queue.json` |
 | `AccentTheme.kt` | `AccentTheme` — три акцентные темы |
 | `VisualizerMode.kt` | `VisualizerMode` — спектр / осциллограф / выкл |
 
@@ -35,6 +36,10 @@
 ## `TokenStore`
 
 Файл `auth`, ключ `token`. `load()` возвращает `""`, если токена нет; `clear()` удаляет ключ. Пустая строка означает «не вошли».
+
+## `QueueFile`
+
+Файл `filesDir/queue.json` через `android.util.AtomicFile`: запись во временную копию и переименование, поэтому выгрузка процесса посреди записи оставляет прежний файл. `read()` возвращает `null`, если файла нет или он не читается; `write` бросает `IOException`. Содержимое — текст, формат которого знает только `queue/QueueSnapshotCodec` (см. `queue/README.md`); `AppGraph` оборачивает `QueueFile` в `queue.QueueStore`, потому что `data` не зависит от `queue`. Пишется с потока `Dispatchers.IO`.
 
 ## `AccentTheme`, `VisualizerMode`
 

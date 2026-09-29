@@ -16,9 +16,12 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.ListenableFuture
 import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.appGraph
 import io.github.kickoman.qiyaa.audio.AudioBus
+import io.github.kickoman.qiyaa.queue.QueueController
 
 @UnstableApi
 class PlaybackService : MediaSessionService() {
@@ -61,7 +64,9 @@ class PlaybackService : MediaSessionService() {
         player.volume = AudioBus.volumeGain(graph.settings.volume.value)
         engine = Media3Engine(player, graph.queue).also { it.attach() }
 
-        val builder = MediaSession.Builder(this, QueueForwardingPlayer(player, graph.queue))
+        val builder =
+            MediaSession.Builder(this, QueueForwardingPlayer(player, graph.queue))
+                .setCallback(ResumptionCallback(graph.queue))
         openAppIntent()?.let(builder::setSessionActivity)
         session = builder.build()
         setMediaNotificationProvider(
@@ -93,6 +98,30 @@ class PlaybackService : MediaSessionService() {
         session = null
         engine = null
         super.onDestroy()
+    }
+
+    /**
+     * "Play" from a headset or the system's resumption card when the player is empty: hand back the
+     * saved queue, paused where it stopped (`QueueController` restored it from `data/QueueFile`).
+     */
+    private class ResumptionCallback(private val queue: QueueController) : MediaSession.Callback {
+        override fun onPlaybackResumption(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            val point =
+                queue.resumePoint()
+                    ?: return Futures.immediateFailedFuture(
+                        UnsupportedOperationException("The queue is empty"),
+                    )
+            return Futures.immediateFuture(
+                MediaSession.MediaItemsWithStartPosition(
+                    point.tracks.map(MediaItems::toMediaItem),
+                    point.index,
+                    point.positionMs,
+                ),
+            )
+        }
     }
 
     companion object {

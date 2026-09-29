@@ -30,6 +30,9 @@ data class QueueState(
     val activeSourceId: String? = null,
 )
 
+/** Where playback would resume: for the notification's "play" after the process was killed. */
+data class ResumePoint(val tracks: List<Track>, val index: Int, val positionMs: Long)
+
 private data class RestorePoint(val index: Int, val positionMs: Long, val playWhenReady: Boolean)
 
 class QueueController(
@@ -39,6 +42,7 @@ class QueueController(
     private val io: CoroutineContext,
     private val newPlayId: () -> String = { UUID.randomUUID().toString() },
     clock: () -> Long = { System.nanoTime() / NANOS_PER_MILLI },
+    private val store: QueueStore? = null,
 ) {
     private val mutableState = MutableStateFlow(QueueState())
     val state: StateFlow<QueueState> = mutableState.asStateFlow()
@@ -78,6 +82,23 @@ class QueueController(
     private var restorePoint: RestorePoint? = null
     private val shuffleRule = WaveModeRule()
     private val repeatRule = WaveModeRule()
+    private val saves = Channel<String>(Channel.CONFLATED)
+    private var waveSessionStale = false
+
+    init {
+        store?.read()?.let(QueueSnapshotCodec::decode)?.let(::restore)
+        if (store != null) {
+            scope.launch(io) {
+                for (text in saves) {
+                    try {
+                        store.write(text)
+                    } catch (ignored: Exception) {
+                        // A failed save keeps the previous file; the next change writes again.
+                    }
+                }
+            }
+        }
+    }
 
     fun attach(engine: PlayerEngine) {
         this.engine = engine
@@ -99,6 +120,21 @@ class QueueController(
                 RestorePoint(engine.currentIndex, engine.positionMs.coerceAtLeast(0), playWhenReady = false)
         }
         this.engine = null
+        save()
+    }
+
+    fun resumePoint(): ResumePoint? {
+        val tracks = mutableState.value.tracks
+        if (tracks.isEmpty()) return null
+        val current = engine
+        val restore = restorePoint
+        val (index, positionMs) =
+            when {
+                current != null && current.itemCount > 0 -> current.currentIndex to current.positionMs
+                restore != null -> restore.index to restore.positionMs
+                else -> 0 to 0L
+            }
+        return ResumePoint(tracks, index.coerceIn(0, tracks.lastIndex), positionMs.coerceAtLeast(0))
     }
 
     fun next() {
@@ -164,6 +200,7 @@ class QueueController(
     fun onItemChanged(track: Track?, transition: Transition, isPlaying: Boolean) {
         val current = engine ?: return
         apply(playTracker.onItemChanged(track, transition, isPlaying))
+        save()
         maybeLoadMore(current)
     }
 
@@ -188,6 +225,7 @@ class QueueController(
     fun onPlayingChanged(isPlaying: Boolean) {
         if (isPlaying) resetFailures()
         playTracker.onPlayingChanged(isPlaying)?.let(::onStarted)
+        if (!isPlaying) save()
     }
 
     fun onFailure(kind: FailureKind, message: String) {
@@ -275,6 +313,7 @@ class QueueController(
                     return@launch
                 }
                 waveSessionId = batch.sessionId
+                waveSessionStale = false
                 waveStationId = seeds.first()
                 waveContexts.clear()
                 registerBatch(batch.sessionId, batch)
@@ -327,6 +366,7 @@ class QueueController(
         queueGeneration++
         resetFailures()
         continueAtEnd = false
+        waveSessionStale = false
         val playable = tracks.filter { it.available }
         if (!isWave) {
             waveSessionId = null
@@ -336,12 +376,14 @@ class QueueController(
             QueueState(tracks = playable, title = title, isWave = isWave, activeSourceId = sourceId)
         if (current == null) {
             restorePoint = RestorePoint(0, 0, playWhenReady = autoplay)
+            save()
             return
         }
         restorePoint = null
         current.shuffleEnabled = shuffleRule.playerModeFor(isWave)
         current.repeatEnabled = repeatRule.playerModeFor(isWave)
         current.setTracks(playable, playWhenReady = autoplay)
+        save()
     }
 
     fun appendTracks(tracks: List<Track>) {
@@ -349,6 +391,7 @@ class QueueController(
         if (playable.isEmpty()) return
         mutableState.update { it.copy(tracks = it.tracks + playable) }
         engine?.appendTracks(playable)
+        save()
     }
 
     fun clear() {
@@ -358,7 +401,9 @@ class QueueController(
         continueAtEnd = false
         restorePoint = null
         waveSessionId = null
+        waveSessionStale = false
         mutableState.value = QueueState()
+        save()
         val current = engine ?: return
         current.stop()
         current.clear()
@@ -377,6 +422,7 @@ class QueueController(
                 selected = emptySet(),
             )
         }
+        save()
     }
 
     fun toggleSelected(index: Int) = mutableState.update { state ->
@@ -457,6 +503,62 @@ class QueueController(
         }
     }
 
+    private fun restore(snapshot: QueueSnapshot) {
+        if (snapshot.tracks.isEmpty()) return
+        mutableState.value =
+            QueueState(
+                tracks = snapshot.tracks,
+                title = snapshot.title,
+                isWave = snapshot.isWave,
+                activeSourceId = snapshot.sourceId,
+            )
+        shuffleRule.onPlayerChanged(snapshot.shuffle, isWave = false)
+        repeatRule.onPlayerChanged(snapshot.repeat, isWave = false)
+        if (snapshot.isWave && snapshot.waveSessionId.isNotEmpty()) {
+            waveSessionId = snapshot.waveSessionId
+            waveStationId = snapshot.waveStationId
+            waveSessionStale = true
+            snapshot.tracks.forEachIndexed { i, track ->
+                val batchId = snapshot.batchIds.getOrElse(i) { "" }
+                waveContexts[track.id] = WaveContext(snapshot.waveSessionId, snapshot.waveStationId, batchId)
+            }
+        }
+        restorePoint = RestorePoint(snapshot.index, snapshot.positionMs, playWhenReady = false)
+    }
+
+    /** A wave session does not outlive the process: the restored wave asks its station for a new one. */
+    private fun startRestoredSession(batch: WaveBatch) {
+        waveSessionStale = false
+        waveSessionId = batch.sessionId
+        sendFeedback(
+            WaveContext(batch.sessionId, waveStationId, batch.batchId),
+            WaveEvent.RADIO_STARTED,
+            null,
+            0.0,
+        )
+    }
+
+    private fun save() {
+        if (store == null) return
+        val state = mutableState.value
+        val point = resumePoint()
+        val snapshot =
+            QueueSnapshot(
+                tracks = state.tracks,
+                batchIds = state.tracks.map { waveContexts[it.id]?.batchId.orEmpty() },
+                title = state.title,
+                sourceId = state.activeSourceId,
+                isWave = state.isWave,
+                waveSessionId = if (state.isWave) waveSessionId.orEmpty() else "",
+                waveStationId = if (state.isWave) waveStationId else "",
+                index = point?.index ?: 0,
+                positionMs = point?.positionMs ?: 0,
+                shuffle = shuffleRule.wanted,
+                repeat = repeatRule.wanted,
+            )
+        saves.trySend(QueueSnapshotCodec.encode(snapshot))
+    }
+
     private fun maybeLoadMore(current: PlayerEngine) {
         val state = mutableState.value
         val session = waveSessionId ?: return
@@ -471,7 +573,11 @@ class QueueController(
         scope.launch {
             val batch: WaveBatch? =
                 try {
-                    withContext(io) { source.moreWave(session, recent) }
+                    if (waveSessionStale && waveStationId.isNotEmpty()) {
+                        withContext(io) { source.startWave(listOf(waveStationId)) }
+                    } else {
+                        withContext(io) { source.moreWave(session, recent) }
+                    }
                 } catch (failed: Exception) {
                     if (generation ==
                         queueGeneration
@@ -485,6 +591,7 @@ class QueueController(
             val resume = continueAtEnd
             continueAtEnd = false
             if (batch == null || batch.tracks.none { it.available }) return@launch
+            if (waveSessionStale) startRestoredSession(batch)
             registerBatch(batch.sessionId.ifEmpty { session }, batch)
             appendTracks(batch.tracks)
             val afterAppend = engine ?: return@launch
