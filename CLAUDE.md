@@ -281,6 +281,20 @@ descriptive name (`mutableState` behind `state`), never the decoration.
   cases is fine. If an expectation really has to change, say so and explain
   why.
 
+## Behaviour lives in `spec/`
+
+`spec/` is a submodule, [Kickoman/QiYaa-spec](https://github.com/Kickoman/QiYaa-spec), shared with
+the desktop app. It holds the player scenarios, the API fixtures, the DSP reference vectors and the
+parity table; [spec/README.md](spec/README.md) says what is where. Nothing in it is Android-only.
+
+- **Change the spec before the code.** When a change alters behaviour that the spec describes (or
+  should), commit the spec change to QiYaa-spec first. Then bump `spec/` here in the same change as
+  the code and tests, and open an issue in Kickoman/QiYaa for the other side.
+- **Tests name the scenario.** A test that checks a spec scenario names its ID in the test name
+  (`` `WAVE-03 …` ``).
+- **Never edit `spec/` only here.** A change inside the submodule that is not pushed to QiYaa-spec
+  breaks every other checkout.
+
 ## 7. For agents
 
 - Never commit or push. Leave the work in the working tree and describe it.
@@ -292,6 +306,7 @@ descriptive name (`mutableState` behind `state`), never the decoration.
   they are:
 
   ```bash
+  git submodule update --init
   export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
   ./gradlew ktlintCheck assembleDebug testDebugUnitTest lintDebug
   ```

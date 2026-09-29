@@ -17,6 +17,7 @@ Android-порт [QiYaa](https://github.com/Kickoman/QiYaa) — плеера Я�
 Нужны JDK 17 и Android SDK (platform 35, build-tools 35). Минимальная версия Android — 8.0 (API 26). Шрифты уже лежат в `app/src/main/res/font`; обновить — `bash scripts/fetch-fonts.sh`.
 
 ```sh
+git clone --recurse-submodules git@github.com:Kickoman/QiYaa-android.git   # или git submodule update --init в готовом клоне
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64      # если по умолчанию другой JDK
 printf 'sdk.dir=%s\n' "$HOME/android-sdk" > local.properties   # или export ANDROID_HOME
 ./gradlew ktlintCheck assembleDebug testDebugUnitTest lintDebug   # полная проверка перед сдачей
@@ -51,6 +52,7 @@ CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) выполняет �
 | `ui/` | Compose: экраны, view model, тема | [ui/README.md](app/src/main/java/io/github/kickoman/qiyaa/ui/README.md) |
 | корень | `AppGraph` (ручной граф зависимостей, один на процесс), `QiYaaApp`, `NetworkMonitor` (есть ли сеть; питает `yandex/Session`) | — |
 | `app/src/test/` | JVM-тесты | [test/README.md](app/src/test/README.md) |
+| `spec/` | Подмодуль [Kickoman/QiYaa-spec](https://github.com/Kickoman/QiYaa-spec): сценарии плеера, фикстуры API, эталоны DSP и таблица паритета, общие с десктопом. Меняется сначала там, потом здесь (`CLAUDE.md`) | [spec/README.md](spec/README.md) |
 
 Как трек доходит до динамика: `Library` → `QueueManager` → `MediaItem` с виртуальным `qiyaa://track/{id}` → ExoPlayer → `TrackResolver` подписывает ссылку при открытии → `OkHttpDataSource` → `EqualizerProcessor` → `VisualizerTapProcessor` → `AudioTrack`. Подробности — в `playback/README.md`.
 
