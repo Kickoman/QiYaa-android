@@ -79,7 +79,7 @@ ui/
 
 ## Строки
 
-Все тексты — `res/values/strings.xml` (английский) и `res/values-ru/strings.xml`; `queue_loaded` — `plurals`. Ключи `queue_*` рендерят `QueueEvent`, `theme_*` — подписи `AccentTheme`.
+Все тексты — `res/values/strings.xml` (английский) и `res/values-ru/strings.xml`; `queue_loaded` — `plurals`. Ключи `queue_*` рендерят `QueueEvent` (в том числе `queue_waiting_for_network` и plurals `queue_stopped_after_failures`), `theme_*` — подписи `AccentTheme`.
 
 ## Not here
 

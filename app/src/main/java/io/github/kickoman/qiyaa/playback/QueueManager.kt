@@ -13,6 +13,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -32,7 +33,11 @@ data class QueueState(
     val activeSourceId: String? = null,
 )
 
-class QueueManager(private val library: Library, private val api: YandexApi) {
+class QueueManager(
+    private val library: Library,
+    private val api: YandexApi,
+    private val connectivity: Flow<Boolean>,
+) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val mutableState = MutableStateFlow(QueueState())
@@ -50,6 +55,9 @@ class QueueManager(private val library: Library, private val api: YandexApi) {
     private var sourceTicket = 0L
     private var loadJob: Job? = null
     private var reportedItemId: String? = null
+    private var consecutiveTrackFailures = 0
+    private var networkRetryAttempt = 0
+    private var retryJob: Job? = null
 
     private val listener =
         object : Player.Listener {
@@ -67,13 +75,28 @@ class QueueManager(private val library: Library, private val api: YandexApi) {
                 if (playbackState == Player.STATE_ENDED) maybeLoadMore(current)
             }
 
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (isPlaying) resetFailures()
+            }
+
             override fun onPlayerError(error: PlaybackException) {
-                emit(QueueEvent.Failed(Stage.PLAYBACK, error.cause?.message ?: error.errorCodeName))
                 val current = player ?: return
-                if (current.hasNextMediaItem()) {
-                    current.seekToNextMediaItem()
-                    current.prepare()
-                    current.play()
+                val kind = PlaybackFailures.classify(error.errorCode, error.cause)
+                val message = error.cause?.message ?: error.errorCodeName
+                when (ErrorPolicy.decide(kind, consecutiveTrackFailures, current.hasNextMediaItem())) {
+                    ErrorAction.WaitForNetwork -> waitForNetwork(current)
+                    ErrorAction.Hold -> emit(QueueEvent.Failed(Stage.PLAYBACK, message))
+                    ErrorAction.SkipToNext -> {
+                        consecutiveTrackFailures++
+                        emit(QueueEvent.Failed(Stage.PLAYBACK, message))
+                        current.seekToNextMediaItem()
+                        current.prepare()
+                        current.play()
+                    }
+                    ErrorAction.Stop -> {
+                        emit(QueueEvent.StoppedAfterFailures(consecutiveTrackFailures + 1))
+                        consecutiveTrackFailures = 0
+                    }
                 }
             }
         }
@@ -174,6 +197,7 @@ class QueueManager(private val library: Library, private val api: YandexApi) {
             return
         }
         queueGeneration++
+        resetFailures()
         val playable = tracks.filter { it.available }
         if (!isWave) waveSessionId = null
         mutableState.value =
@@ -195,6 +219,7 @@ class QueueManager(private val library: Library, private val api: YandexApi) {
     fun clear() {
         val current = player ?: return
         queueGeneration++
+        resetFailures()
         waveSessionId = null
         mutableState.value = QueueState()
         current.stop()
@@ -268,6 +293,23 @@ class QueueManager(private val library: Library, private val api: YandexApi) {
         } else if (!mutableState.value.isWave) {
             current.stop()
         }
+    }
+
+    private fun waitForNetwork(current: Player) {
+        if (retryJob?.isActive == true) return
+        if (networkRetryAttempt == 0) emit(QueueEvent.WaitingForNetwork)
+        val attempt = networkRetryAttempt++
+        retryJob =
+            scope.launch {
+                ErrorPolicy.awaitRetry(connectivity, attempt)
+                if (player === current) current.prepare()
+            }
+    }
+
+    private fun resetFailures() {
+        retryJob?.cancel()
+        consecutiveTrackFailures = 0
+        networkRetryAttempt = 0
     }
 
     private fun emit(event: QueueEvent) {
