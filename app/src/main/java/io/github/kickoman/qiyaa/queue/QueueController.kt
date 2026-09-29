@@ -466,6 +466,9 @@ class QueueController(
         next()
     }
 
+    fun currentWaveSeed(): String? =
+        waveStationId.takeIf { mutableState.value.isWave && waveSessionId != null && it.isNotEmpty() }
+
     fun likeCurrent() {
         currentTrack()?.let(::toggleLike)
     }

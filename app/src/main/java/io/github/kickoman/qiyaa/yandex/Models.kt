@@ -33,6 +33,8 @@ data class PlaylistRef(val ownerUid: String, val kind: String, val title: String
 
 data class Station(val id: String, val type: String, val name: String)
 
+data class WheelWave(val name: String, val description: String, val seeds: List<String>)
+
 data class WaveBatch(
     val sessionId: String = "",
     val batchId: String = "",

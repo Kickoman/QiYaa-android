@@ -155,6 +155,9 @@ fun LibraryScreen(viewModel: AppViewModel, player: PlayerViewModel) {
             SourceRow(stringResource(R.string.library_for_you), countOrPending(libraryUi.forYou)) {
                 viewModel.openSection(LibrarySection.FOR_YOU)
             }
+            SourceRow(stringResource(R.string.library_wheel), stringResource(R.string.library_wheel_meta)) {
+                viewModel.openSection(LibrarySection.WHEEL)
+            }
             SourceRow(stringResource(R.string.library_playlists), countOrPending(libraryUi.playlists)) {
                 viewModel.openSection(LibrarySection.PLAYLISTS)
             }

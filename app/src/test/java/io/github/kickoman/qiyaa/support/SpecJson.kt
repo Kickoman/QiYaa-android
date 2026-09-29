@@ -7,11 +7,13 @@ import io.github.kickoman.qiyaa.yandex.Station
 import io.github.kickoman.qiyaa.yandex.Track
 import io.github.kickoman.qiyaa.yandex.TrackParsing
 import io.github.kickoman.qiyaa.yandex.WaveBatch
+import io.github.kickoman.qiyaa.yandex.WheelWave
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -95,6 +97,23 @@ object SpecJson {
                         buildJsonObject {
                             put("id", it.id)
                             put("name", it.name)
+                        },
+                    )
+                }
+            },
+        )
+    }
+
+    fun waves(waves: List<WheelWave>): JsonObject = buildJsonObject {
+        put(
+            "waves",
+            buildJsonArray {
+                for (wave in waves) {
+                    add(
+                        buildJsonObject {
+                            put("name", wave.name)
+                            put("description", wave.description)
+                            put("seeds", buildJsonArray { wave.seeds.forEach { add(it) } })
                         },
                     )
                 }

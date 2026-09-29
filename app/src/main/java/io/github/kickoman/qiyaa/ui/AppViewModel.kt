@@ -12,6 +12,7 @@ import io.github.kickoman.qiyaa.yandex.PlaylistRef
 import io.github.kickoman.qiyaa.yandex.SessionState
 import io.github.kickoman.qiyaa.yandex.Station
 import io.github.kickoman.qiyaa.yandex.TokenNormalizer
+import io.github.kickoman.qiyaa.yandex.WheelWave
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -24,7 +25,7 @@ import kotlinx.coroutines.withContext
 
 enum class Screen { LOGIN, PLAYER, PLAYLIST, EQ, LIBRARY }
 
-enum class LibrarySection { FOR_YOU, STATIONS, PLAYLISTS, ARTISTS, ALBUMS }
+enum class LibrarySection { FOR_YOU, WHEEL, STATIONS, PLAYLISTS, ARTISTS, ALBUMS }
 
 sealed interface LoginStatus {
     data object Requesting : LoginStatus
@@ -52,6 +53,8 @@ data class LibraryUi(
     val albums: List<NamedRef>? = null,
     val stations: List<Station>? = null,
     val loading: Boolean = false,
+    val wheel: List<WheelWave>? = null,
+    val wheelMatchesCurrent: Boolean = false,
     val error: String? = null,
     val searchText: String = "",
 ) {
@@ -121,7 +124,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openSection(section: LibrarySection) {
         mutableSection.value = section
-        loadLibraryLists()
+        if (section == LibrarySection.WHEEL) loadWheel() else loadLibraryLists()
+    }
+
+    private fun loadWheel() {
+        if (!library.isLoggedIn) return
+        val current = queue.currentWaveSeed()
+        mutableLibraryUi.update { it.copy(wheel = null, wheelMatchesCurrent = current != null, error = null) }
+        viewModelScope.launch {
+            try {
+                val waves = withContext(Dispatchers.IO) {
+                    library.wheelWaves(listOf(current ?: QueueController.MY_WAVE_SEED))
+                }
+                mutableLibraryUi.update { it.copy(wheel = waves) }
+            } catch (failed: Exception) {
+                mutableLibraryUi.update { it.copy(error = describe(failed)) }
+            }
+        }
     }
 
     fun closeSection() {
@@ -216,6 +235,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun playLiked() {
         queue.loadSource(string(R.string.library_liked), sourceId = "liked") { library.likedTracks() }
+        go(Screen.PLAYER)
+    }
+
+    fun playWheelWave(wave: WheelWave) {
+        queue.playWave(wave.seeds, wave.name)
         go(Screen.PLAYER)
     }
 
