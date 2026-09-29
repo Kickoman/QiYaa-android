@@ -14,7 +14,6 @@ import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.appGraph
-import io.github.kickoman.qiyaa.audio.AudioBus
 import io.github.kickoman.qiyaa.audio.EqPresets
 import io.github.kickoman.qiyaa.audio.EqSettings
 import io.github.kickoman.qiyaa.data.AccentTheme
@@ -80,9 +79,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     init {
         connect()
-        viewModelScope.launch { settings.volume.collect { controller?.volume = AudioBus.volumeGain(it) } }
-        viewModelScope.launch { settings.balance.collect { audioBus.setBalance(it) } }
-        viewModelScope.launch { settings.eq.collect { audioBus.equalizer.publish(it) } }
     }
 
     fun togglePlay() {
@@ -246,7 +242,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 }
             controller = connected
             connected.addListener(listener)
-            connected.volume = AudioBus.volumeGain(settings.volume.value)
             refresh(connected)
         }, ContextCompat.getMainExecutor(application))
     }

@@ -31,6 +31,7 @@ import io.github.kickoman.qiyaa.appGraph
 import io.github.kickoman.qiyaa.audio.AudioBus
 import io.github.kickoman.qiyaa.queue.QueueController
 import io.github.kickoman.qiyaa.yandex.Library
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -88,7 +89,9 @@ class PlaybackService : MediaSessionService() {
                 .setHandleAudioBecomingNoisy(true)
                 .setWakeMode(C.WAKE_MODE_NETWORK)
                 .build()
-        player.volume = AudioBus.volumeGain(graph.settings.volume.value)
+        serviceScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            graph.settings.volume.collect { player.volume = AudioBus.volumeGain(it) }
+        }
         engine = Media3Engine(player, graph.queue).also { it.attach() }
 
         val builder =
