@@ -26,7 +26,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
-import org.junit.Ignore
 import org.junit.Test
 
 class YandexApiTest {
@@ -270,7 +269,6 @@ class YandexApiTest {
             assertEquals("0", url.queryParameter("page"))
         }
 
-    @Ignore("Known divergence Kickoman/QiYaa-android#34: bestType keeps the raw type")
     @Test
     fun `a best result of another type is reported as other`() = runBlocking {
         route("GET", "/search", Spec.fixture("search", "best-podcast"))

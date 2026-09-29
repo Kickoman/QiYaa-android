@@ -116,7 +116,7 @@ object TrackParsing {
 }
 ```
 
-`title` получает суффикс ` (version)`, если есть `version`. `albumId` — id первого элемента `albums`. `coverUri` берётся из трека, иначе из первого альбома; `%%` заменяется на размер, `https://` добавляется, если схемы нет. `durationMs` через `double`, `available` по умолчанию `true`.
+`title` получает суффикс ` (version)`, если есть `version`. `albumId` — id первого элемента `albums`. Обложка — `coverUri` первого альбома, иначе `coverUri` трека, иначе `ogImage` трека (порядок спеки, фикстура `tracks/cover-order`); `%%` заменяется на размер, `https://` добавляется, если схемы нет. `durationMs` через `double`, `available` по умолчанию `true`.
 
 ## `TrackUrl`
 
@@ -176,7 +176,7 @@ class Library(val api: YandexApi) : AccountGateway {
 | GET | `/albums/{id}/with-tracks` | — → `volumes[][]`, `albumId` подставляется при отсутствии |
 | POST | `/rotor/session/new` | JSON `{seeds, includeTracksInResponse, includeWaveModel, interactive: true}` |
 | POST | `/rotor/session/{id}/tracks` | JSON `{queue: [последние id]}` |
-| GET | `/search` | `text`, `type=all`, `page=0` → `best.{type,result}`, `tracks.results` |
+| GET | `/search` | `text`, `type=all`, `page=0` → `best.{type,result}`, `tracks.results`. `bestType` — `artist`, `album`, `track`, `playlist` как есть, любой другой тип — `other`, без `best` — `""` |
 | POST | `/users/{uid}/likes/tracks/add-multiple`, `…/remove`, `…/dislikes/tracks/add-multiple` | `track-ids=<id>` |
 
 `stationGroupKey` сводит тип `user` к `personal`; остальные типы — ключ как есть. Порядок и названия групп задаёт `ui/screens/LibrarySectionScreen`.
