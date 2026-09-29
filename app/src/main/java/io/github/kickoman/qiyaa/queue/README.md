@@ -32,7 +32,7 @@ grep -rln 'qiyaa\.\(playback\|ui\|data\)\.' app/src/main/java/io/github/kickoman
 ```kotlin
 data class QueueState(tracks: List<Track>, title: String, isWave: Boolean, loadingMore: Boolean, selected: Set<Int>, activeSourceId: String?)
 
-class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: CoroutineScope, io: CoroutineContext, newPlayId: () -> String = UUID, clock: () -> Long = монотонные мс, store: QueueStore? = null) {
+class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: CoroutineScope, io: CoroutineContext, newPlayId: () -> String = UUID, clock: () -> Long = монотонные мс, store: QueueStore? = null, logFailure: (Stage, Throwable) -> Unit = {}) {
     val state: StateFlow<QueueState>;  val events: SharedFlow<QueueEvent>;  val engine: PlayerEngine?
     fun attach(engine: PlayerEngine);  fun detach(engine: PlayerEngine)
     fun resumePoint(): ResumePoint?   // треки, индекс и позиция для «играть» после выгрузки процесса; null — очередь пуста
@@ -49,7 +49,7 @@ class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: C
     fun requestMore()   // «вперёд» в конце волны: снова запросить догрузку и продолжить с первого нового трека
     // события движка
     fun onItemChanged(track: Track?, transition: Transition, isPlaying: Boolean);  fun onEnded();  fun onShuffleChanged(enabled: Boolean);  fun onRepeatChanged(enabled: Boolean)
-    fun onPlayingChanged(isPlaying: Boolean);  fun onFailure(kind: FailureKind, message: String)
+    fun onPlayingChanged(isPlaying: Boolean);  fun onFailure(kind: FailureKind, error: ErrorKind)
     companion object { MY_WAVE_SEED = "user:onyourwave"; LOAD_MORE_WHEN_LEFT = 2; WAVE_HISTORY = 5; RESTART_AFTER_MS = 3_000 }
 }
 ```
@@ -69,6 +69,8 @@ class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: C
 - **Дизлайк** = запрос `dislike` + то же, что «вперёд» (TR-07, TRK-07): следующий трек, в конце конечной очереди — пауза и начало трека, в конце волны — догрузка.
 - **Обратная связь волны** (TRK-03…08). Каждый трек волны помнит `WaveContext` — сессию, станцию (первый сид) и `batchId` порции, из которой пришёл, включая догруженные. `radioStarted` уходит при старте волны до её первого `trackStarted`. `trackStarted` — когда трек начался; при закрытии — `trackFinished` (автопереход, повтор, конец очереди) или `skip` (всё остальное: «вперёд», «назад», выбор трека, рестарт, «стоп», новая очередь, удаление текущего трека, ошибка трека, дизлайк, отключение движка) с секундами, которые звук реально играл. События трека уходят в его сессию, даже если очередь уже сменилась на другую волну. Обычные очереди фидбек не шлют. Все события отправляются по одному через `Channel`, поэтому `skip` уходит раньше следующего `trackStarted`.
 - **Отметка `/play-audio`** (TRK-01, TRK-02) уходит, когда трек **начался**: стал текущим и после этого заиграл — сразу, если при смене трека звук уже шёл (`isPlaying` в `onItemChanged`, как при бесшовном переходе), иначе при первом `onPlayingChanged(true)`. Трек, который только стоит в очереди или у которого не получилась ссылка, не начинался. Новый старт с новым `play-id` — рестарт «назад» после 3 с, повтор очереди из одного трека, «плей» после «стоп» (`stop()`) или после конца трека. Пауза с продолжением и перемотка внутри трека — не новый старт. Отправка best-effort, ошибки игнорируются.
+
+**Ошибки источников и лайков.** Упавший запрос даёт `QueueEvent.Failed(stage, error)`, где `error` — `yandex/ErrorKind.of(failed)`, а само исключение уходит в `logFailure(stage, failed)`; в приложении это `Log.w` из `AppGraph`. Текста исключения в событии нет. Ошибка воспроизведения приходит уже с видом: `onFailure(kind, error)` от `playback/PlaybackFailures`. Ошибка догрузки заменённой волны пишется в лог, но события не даёт (WAVE-07).
 
 `events` — `MutableSharedFlow(extraBufferCapacity = 8)` с `tryEmit`: без подписчика события теряются, это нормально для тостов.
 

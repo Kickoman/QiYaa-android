@@ -4,6 +4,7 @@ import io.github.kickoman.qiyaa.queue.QueueEvent.Stage
 import io.github.kickoman.qiyaa.support.QueueHarness
 import io.github.kickoman.qiyaa.support.QueueHarness.Companion.track
 import io.github.kickoman.qiyaa.support.QueueHarness.Companion.tracks
+import io.github.kickoman.qiyaa.yandex.ErrorKind
 import io.github.kickoman.qiyaa.yandex.NetworkException
 import io.github.kickoman.qiyaa.yandex.SearchResult
 import io.github.kickoman.qiyaa.yandex.Track
@@ -64,14 +65,15 @@ class QueueSourcesTest {
     }
 
     @Test
-    fun `SRC-04 a failed source leaves the queue and shows an error`() = runTest {
+    fun `SRC-04 a failed source leaves the queue, shows the kind of error and logs the details`() = runTest {
         val harness = QueueHarness(this)
         harness.controller.loadSource("Old") { tracks("o1") }
         runCurrent()
         harness.controller.loadSource("New") { throw networkFailure() }
         runCurrent()
         assertEquals(listOf("o1"), harness.engine.ids())
-        assertEquals(QueueEvent.Failed(Stage.SOURCE, "GET /x failed: offline"), harness.events.last())
+        assertEquals(QueueEvent.Failed(Stage.SOURCE, ErrorKind.NoNetwork), harness.events.last())
+        assertEquals(listOf("SOURCE GET /x failed: offline"), harness.logged)
     }
 
     @Test

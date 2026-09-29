@@ -118,7 +118,7 @@
     <string name="queue_wave_more_error">Волна: %1$s</string>
     <string name="queue_search_error">Ошибка поиска: %1$s</string>
     <string name="queue_playback_error">Ошибка воспроизведения: %1$s</string>
-    <string name="player_service_unavailable">Сервис плеера недоступен: %1$s</string>
+    <string name="player_service_unavailable">Сервис плеера недоступен</string>
     <string name="error_generic">Ошибка: %1$s</string>
 
     <string name="theme_green">Классический зелёный</string>
@@ -148,4 +148,12 @@
     <string name="library_sub_wheel">КОЛЕСО ВОЛН</string>
     <string name="library_group_wheel_current">ПОД ТЕКУЩУЮ ВОЛНУ</string>
     <string name="library_group_wheel_my">ПОД МОЮ ВОЛНУ</string>
+    <string name="error_no_network">нет сети</string>
+    <string name="error_token_rejected">токен отклонён, войдите снова</string>
+    <string name="error_server">сервер ответил ошибкой %1$d</string>
+    <string name="error_malformed">непонятный ответ сервера</string>
+    <string name="error_sign_in_refused">Яндекс отклонил вход</string>
+    <string name="error_code_expired">код устарел, начните заново</string>
+    <string name="error_track_unplayable">трек не воспроизводится</string>
+    <string name="error_unknown">что-то пошло не так</string>
 </resources>

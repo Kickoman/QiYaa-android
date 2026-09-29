@@ -1,6 +1,7 @@
 package io.github.kickoman.qiyaa.yandex
 
 import io.github.kickoman.qiyaa.support.Spec
+import java.net.ServerSocket
 import java.net.URLDecoder
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.buildJsonObject
@@ -18,7 +19,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
-import org.junit.Ignore
 import org.junit.Test
 
 class DeviceAuthTest {
@@ -91,7 +91,6 @@ class DeviceAuthTest {
         }
     }
 
-    @Ignore("Known divergence Kickoman/QiYaa-android#33: AuthException does not name the HTTP status")
     @Test
     fun `OAuth errors name the HTTP status`() = runBlocking {
         for ((endpoint, case) in OAUTH_ERRORS) {
@@ -101,6 +100,18 @@ class DeviceAuthTest {
                 "$endpoint/$case: ${failure.message}",
                 failure.message!!.contains(status.toString()),
             )
+            assertEquals(status, failure.status)
+        }
+    }
+
+    @Test
+    fun `a failed connection while signing in is a network failure, not a refused sign-in`() = runBlocking {
+        val closedPort = ServerSocket(0).use { it.localPort }
+        try {
+            DeviceAuth(OkHttpClient(), "http://127.0.0.1:$closedPort").requestCode()
+            fail("expected NetworkException")
+        } catch (failed: NetworkException) {
+            assertTrue(failed.message!!.contains("POST /device/code"))
         }
     }
 
@@ -112,13 +123,13 @@ class DeviceAuthTest {
         now = 11
         try {
             auth.waitForToken(code)
-            fail("expected AuthException")
-        } catch (failed: AuthException) {
+            fail("expected CodeExpiredException")
+        } catch (failed: CodeExpiredException) {
             assertTrue(failed.message!!.contains("expired"))
         }
     }
 
-    private suspend fun oauthFailure(endpoint: String, case: String): AuthException {
+    private suspend fun oauthFailure(endpoint: String, case: String): OAuthException {
         server.enqueue(Spec.fixture(endpoint, case).response())
         val auth = DeviceAuth(OkHttpClient(), baseUrl())
         try {
@@ -127,10 +138,10 @@ class DeviceAuthTest {
             } else {
                 auth.waitForToken(DeviceAuth.Code("DEV", "X", "https://ya.ru/device", 1, Long.MAX_VALUE))
             }
-        } catch (failed: AuthException) {
+        } catch (failed: OAuthException) {
             return failed
         }
-        throw AssertionError("$endpoint/$case: expected AuthException")
+        throw AssertionError("$endpoint/$case: expected OAuthException")
     }
 
     private fun expectedError(endpoint: String, case: String) =

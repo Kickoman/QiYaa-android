@@ -10,7 +10,8 @@ grep -rlnE '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiy
 
 | Файл | Содержит |
 |---|---|
-| `Errors.kt` | `YandexException` и пять наследников |
+| `Errors.kt` | `YandexException` и его наследники |
+| `ErrorKind.kt` | `ErrorKind` — вид ошибки для пользователя по типу исключения |
 | `JsonFields.kt` | мягкий доступ к JSON: `objectOrEmpty`, `arrayOrEmpty`, `string`, `int`, `long`, `boolean`, `scalarString`, `idString`, `parseJsonObjectOrNull` |
 | `Models.kt` | `Account`, `Track`, `NamedRef`, `PlaylistRef`, `Station`, `WheelWave`, `WaveBatch`, `SearchResult`, `DownloadVariant`, `DownloadInfo`, `ResolvedUrl`, `WaveEvent`, `WaveContext` |
 | `YandexApi.kt` | `YandexApi` — транспорт (OkHttp), конверт, `accountStatus`, `tracks`, `resolveTrackUrl`, `reportPlayStarted` |
@@ -31,13 +32,42 @@ YandexException : IOException
 │     isTokenRejected == status in {401, 403}
 ├── NetworkException(method, path, cause)            // OkHttp не получил ответ
 ├── MalformedResponseException(method, path, detail) // ответ 2xx, но без нужного поля
-├── AuthException(message)                           // OAuth-поток или токен не принят
+├── AuthException(message)                           // токен не принят (аккаунт без uid)
+│   ├── OAuthException(status, method, path, reason) // OAuth ответил ошибкой: "HTTP 400 on POST /device/code: Client not found"
+│   └── CodeExpiredException                         // код устройства истёк до входа
 └── NotSignedInException(path)                       // запрос к /users/{uid}/… до того, как аккаунт известен
 ```
 
 Корень наследует `IOException` намеренно: `playback/TrackResolver` вызывает `resolveTrackUrl` из `ResolvingDataSource.Resolver`, которому ExoPlayer разрешает бросать только `IOException`. Сообщения всегда содержат метод и путь: `HTTP 401 on GET /users/42/likes/artists: Token expired`.
 
 Данные, а не исключения: состояние сессии (`SessionState.Offline`, `Expired`), пустой `uid` в `Account` (`isValid == false`), `null` от `TrackUrl.pickBestVariant` и `parseDownloadInfo`, `""` от `TokenNormalizer.normalize`, пустые списки от `Library` при пустых ответах.
+
+## `ErrorKind`
+
+```kotlin
+sealed interface ErrorKind {   // NoNetwork, TokenRejected, ServerError(status), Malformed, SignInRefused, CodeExpired, TrackUnplayable, Unknown
+    companion object {
+        fun of(failed: Throwable): ErrorKind
+        fun isNetworkFailure(failure: Throwable): Boolean
+        fun causes(first: Throwable?): List<Throwable>   // цепочка cause без циклов
+    }
+}
+```
+
+Что показать пользователю, решает тип исключения, а не его текст. `of` идёт по цепочке `cause` и берёт первое звено, которое узнаёт:
+
+| Звено | Вид |
+|---|---|
+| `NetworkException`, `UnknownHost`, `Connect`, `SocketTimeout`, `NoRouteToHost` | `NoNetwork` |
+| `HttpException` 401/403 | `TokenRejected` |
+| `HttpException` с другим статусом | `ServerError(status)` |
+| `NotSignedInException`, `AuthException` (не OAuth) | `TokenRejected` |
+| `OAuthException` | `SignInRefused` |
+| `CodeExpiredException` | `CodeExpired` |
+| `MalformedResponseException` | `Malformed` |
+| ничего из этого | `Unknown` |
+
+`TrackUnplayable` здесь не выдаётся: его назначает `playback/PlaybackFailures` битому треку. Тексты видов — в `ui/ErrorText.kt`, подробности пишет в лог тот, кто поймал исключение.
 
 ## `YandexApi`
 
@@ -222,12 +252,12 @@ class Session(gateway: AccountGateway, connectivity: Flow<Boolean>, scope: Corou
 class DeviceAuth(client: OkHttpClient, baseUrl = "https://oauth.yandex.ru", deviceName = "QiYaa", clock: () -> Long) {
     data class Code(deviceCode, userCode, verificationUrl, intervalMs, deadlineMs)
     suspend fun requestCode(): Code            // POST /device/code
-    suspend fun waitForToken(code: Code): String   // POST /token, опрос до токена или AuthException
+    suspend fun waitForToken(code: Code): String   // POST /token, опрос до токена, OAuthException или CodeExpiredException
     companion object { CLIENT_ID, CLIENT_SECRET, BROWSER_LOGIN_URL, DEFAULT_VERIFICATION_URL, DEFAULT_INTERVAL_SECONDS = 5, DEFAULT_EXPIRES_IN_SECONDS = 300, SLOW_DOWN_STEP_MS = 2_000 }
 }
 ```
 
-`device_name` отправляется как `QiYaa (<deviceName>)`. Интервал опроса не меньше 1 с; `slow_down` прибавляет 2 с; `authorization_pending` продолжает; любой другой `error` — `AuthException(error_description | error)`. Дедлайн — `clock() + expires_in`. Клиент — публичный клиент Яндекс Музыки, тот же, что в Yaamp и yandex-music-api.
+`device_name` отправляется как `QiYaa (<deviceName>)`. Интервал опроса не меньше 1 с; `slow_down` прибавляет 2 с; `authorization_pending` продолжает; любой другой `error` — `OAuthException(status, "POST", "/token", error_description | error)`. `/device/code` со статусом ≥ 400 — `OAuthException` со статусом и `error_description`; ответ 2xx без `device_code` или `user_code` — `MalformedResponseException`. Сеть — `NetworkException`, а не ошибка входа. Истёкший код — `CodeExpiredException`. Дедлайн — `clock() + expires_in`. Клиент — публичный клиент Яндекс Музыки, тот же, что в Yaamp и yandex-music-api.
 
 ## `TokenNormalizer`
 

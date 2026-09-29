@@ -133,7 +133,7 @@
     <string name="queue_wave_more_error">Wave: %1$s</string>
     <string name="queue_search_error">Search error: %1$s</string>
     <string name="queue_playback_error">Playback error: %1$s</string>
-    <string name="player_service_unavailable">Player service unavailable: %1$s</string>
+    <string name="player_service_unavailable">Player service unavailable</string>
     <string name="error_generic">Error: %1$s</string>
 
     <!-- Accent themes -->
@@ -163,4 +163,12 @@
     <string name="library_sub_wheel">WHEEL OF WAVES</string>
     <string name="library_group_wheel_current">MATCHED TO THE CURRENT WAVE</string>
     <string name="library_group_wheel_my">MATCHED TO MY WAVE</string>
+    <string name="error_no_network">no network</string>
+    <string name="error_token_rejected">the token was rejected, sign in again</string>
+    <string name="error_server">server error %1$d</string>
+    <string name="error_malformed">unexpected reply from the server</string>
+    <string name="error_sign_in_refused">Yandex refused the sign-in</string>
+    <string name="error_code_expired">the code expired, start again</string>
+    <string name="error_track_unplayable">the track cannot be played</string>
+    <string name="error_unknown">something went wrong</string>
 </resources>

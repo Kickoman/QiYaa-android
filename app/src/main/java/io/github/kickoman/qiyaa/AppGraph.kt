@@ -2,6 +2,7 @@ package io.github.kickoman.qiyaa
 
 import android.content.Context
 import android.os.Build
+import android.util.Log
 import io.github.kickoman.qiyaa.audio.AudioBus
 import io.github.kickoman.qiyaa.data.QueueFile
 import io.github.kickoman.qiyaa.data.Settings
@@ -48,10 +49,12 @@ class AppGraph(val context: Context) {
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
             io = Dispatchers.IO,
             store = QueueFile(context).asQueueStore(),
+            logFailure = { stage, failed -> Log.w(LOG_TAG, "Queue $stage failed", failed) },
         )
 
     companion object {
         const val HTTP_TIMEOUT_SECONDS = 20L
+        const val LOG_TAG = "QiYaa"
 
         private fun QueueFile.asQueueStore(): QueueStore = object : QueueStore {
             override fun read(): String? = this@asQueueStore.read()

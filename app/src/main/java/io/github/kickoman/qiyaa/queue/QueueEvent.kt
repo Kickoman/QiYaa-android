@@ -1,5 +1,7 @@
 package io.github.kickoman.qiyaa.queue
 
+import io.github.kickoman.qiyaa.yandex.ErrorKind
+
 sealed interface QueueEvent {
     data class SourceLoading(val title: String) : QueueEvent
 
@@ -23,7 +25,7 @@ sealed interface QueueEvent {
 
     data class StoppedAfterFailures(val count: Int) : QueueEvent
 
-    data class Failed(val stage: Stage, val message: String) : QueueEvent
+    data class Failed(val stage: Stage, val error: ErrorKind) : QueueEvent
 
     enum class Stage { SOURCE, WAVE, WAVE_MORE, SEARCH, LIKE, PLAYBACK }
 }
