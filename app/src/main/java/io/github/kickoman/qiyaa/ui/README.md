@@ -45,7 +45,7 @@ ui/
 
 `toggleShuffle()` и `toggleRepeat()` во время волны плеер не трогают и показывают `player_shuffle_wave` / `player_repeat_wave`; кнопки SHF и RPT на экране плеера при волне приглушены (`dimmer`). Правило живёт в `queue/WaveModeRule`.
 
-`next()` и `previous()` вызывают `seekToNext`/`seekToPrevious` у `MediaController`; правила (3 с, конец очереди, конец волны) живут в `queue/QueueController` и одинаковы для приложения, уведомления и гарнитуры (см. `playback/README.md`, «Один хозяин плеера»). «Loading more…» показывает событие `QueueEvent.LoadingMore`.
+`next()` и `previous()` вызывают `seekToNext`/`seekToPrevious` у `MediaController`, `stop()` — `queue.stop()`; правила (3 с, конец очереди, конец волны) живут в `queue/QueueController` и одинаковы для приложения, уведомления и гарнитуры (см. `playback/README.md`, «Один хозяин плеера»). «Loading more…» показывает событие `QueueEvent.LoadingMore`.
 
 **Traps:**
 - Обе view model — `AndroidViewModel` с областью Activity; `PlayerViewModel.onCleared` освобождает контроллер.

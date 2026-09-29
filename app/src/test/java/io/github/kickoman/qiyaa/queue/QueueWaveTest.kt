@@ -309,22 +309,6 @@ class QueueWaveTest {
         assertEquals("repeat wraps an ordinary queue (TR-05)", 0, harness.engine.currentIndex)
     }
 
-    // Gap A2 (Kickoman/QiYaa-android#27): /play-audio goes out when the item changes, even
-    // without autoplay, and is not repeated for the same track.
-    @Test
-    fun `TRK-01 TRK-02 gap A2 - play-audio is currently sent on item change once per track id`() = runTest {
-        val harness = QueueHarness(this)
-        harness.controller.loadSource("Liked", autoplay = false) { tracks("a", "b") }
-        runCurrent()
-        assertEquals(listOf("a" to "play-1"), harness.source.reports)
-        harness.engine.seekTo(0)
-        runCurrent()
-        assertEquals(1, harness.source.reports.size)
-        harness.engine.finishTrack()
-        runCurrent()
-        assertEquals(listOf("a" to "play-1", "b" to "play-2"), harness.source.reports)
-    }
-
     private fun startedWave(scope: TestScope, vararg ids: String): QueueHarness {
         val harness = QueueHarness(scope)
         harness.source.onStartWave = { WaveBatch("S1", "B1", tracks(*ids)) }

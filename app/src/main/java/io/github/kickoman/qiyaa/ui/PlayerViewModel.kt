@@ -99,11 +99,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun stop() {
-        val current = controller ?: return
-        current.pause()
-        current.seekTo(0)
-    }
+    fun stop() = queue.stop()
 
     fun next() {
         controller?.seekToNext()

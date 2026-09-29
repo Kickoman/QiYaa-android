@@ -50,7 +50,7 @@ class QueueController(
     private var queueGeneration = 0L
     private var sourceTicket = 0L
     private var loadJob: Job? = null
-    private var reportedItemId: String? = null
+    private val playTracker = PlayTracker()
     private var consecutiveTrackFailures = 0
     private var networkRetryAttempt = 0
     private var retryJob: Job? = null
@@ -88,32 +88,38 @@ class QueueController(
                 emit(QueueEvent.LoadingMore)
                 requestMore()
             }
-            else -> {
-                current.pause()
-                current.seekToPosition(0)
-            }
+            else -> stop()
         }
     }
 
     fun previous() {
         val current = engine ?: return
         when {
-            current.positionMs > RESTART_AFTER_MS -> current.seekToPosition(0)
+            current.positionMs > RESTART_AFTER_MS -> restart(current)
             current.hasPrevious() -> current.skipToPrevious()
-            else -> current.seekToPosition(0)
+            else -> restart(current)
         }
+    }
+
+    fun stop() {
+        val current = engine ?: return
+        current.pause()
+        restart(current)
+    }
+
+    private fun restart(current: PlayerEngine) {
+        current.seekToPosition(0)
+        playTracker.onRestart()
     }
 
     fun onItemChanged(track: Track?) {
         val current = engine ?: return
-        if (track != null && reportedItemId != track.id) {
-            reportedItemId = track.id
-            reportPlay(track)
-        }
+        playTracker.onItemChanged(track)
         maybeLoadMore(current)
     }
 
     fun onEnded() {
+        playTracker.onRestart()
         val current = engine ?: return
         maybeLoadMore(current)
     }
@@ -132,6 +138,7 @@ class QueueController(
 
     fun onPlayingChanged(isPlaying: Boolean) {
         if (isPlaying) resetFailures()
+        playTracker.onPlayingChanged(isPlaying)?.let(::reportPlay)
     }
 
     fun onFailure(kind: FailureKind, message: String) {
@@ -265,7 +272,6 @@ class QueueController(
         if (!isWave) waveSessionId = null
         mutableState.value =
             QueueState(tracks = playable, title = title, isWave = isWave, activeSourceId = sourceId)
-        reportedItemId = null
         if (current == null) {
             restorePoint = RestorePoint(0, 0, playWhenReady = autoplay)
             return

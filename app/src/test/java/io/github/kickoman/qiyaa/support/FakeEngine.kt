@@ -168,6 +168,8 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
 
     fun startPlaying() = controller.onPlayingChanged(true)
 
+    fun stopPlaying() = controller.onPlayingChanged(false)
+
     fun fail(kind: FailureKind, message: String = "boom") = controller.onFailure(kind, message)
 
     fun ids(): List<String> = tracks.map { it.id }
