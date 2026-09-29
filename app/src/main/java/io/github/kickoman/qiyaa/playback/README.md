@@ -14,7 +14,11 @@ grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   #
 | `NotificationButtons.kt` | `NotificationButtons` — команды сессии «лайк» и «дизлайк» и их кнопки в уведомлении |
 | `PlaybackFailures.kt` | `PlaybackFailures.classify` — `queue.FailureKind` по коду `PlaybackException` и причине; `errorKind` — `yandex.ErrorKind` для пользователя |
 | `MediaItems.kt` | `MediaItems` — `Track` ↔ `MediaItem` |
-| `TrackResolver.kt` | `TrackResolver` — `qiyaa://track/{id}` → подписанная ссылка |
+| `TrackResolver.kt` | `TrackResolver` — `qiyaa://track/{id}` → подписанная ссылка из `TrackUrlCache` |
+| `TrackUrlCache.kt` | `TrackUrlCache` — подписанные ссылки по `trackId` на 15 минут, до 64 штук |
+| `ExpiredLinkDataSource.kt` | `ExpiredLinkDataSource` — при 403/410 от хранилища сбрасывает ссылку и открывает поток заново |
+| `LogTag.kt` | `LOG_TAG = "QiYaa"` — тег logcat пакета |
+| `CurrentBitrate.kt` | `CurrentBitrate` — битрейт по треку; в `AudioBus` попадает битрейт текущего трека |
 | `EqualizerProcessor.kt` | `EqualizerProcessor` — PCM16 → float → EQ → баланс → PCM16 |
 | `VisualizerTapProcessor.kt` | `VisualizerTapProcessor` — копия PCM в `VisualizerTap`, звук не меняет |
 
@@ -22,7 +26,7 @@ grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   #
 
 ## Конвейер
 
-`QueueController.setQueue` → `Media3Engine.setTracks` → `MediaItems.toMediaItem` → ExoPlayer → `ResolvingDataSource(TrackResolver)` → `OkHttpDataSource` → декодер → `DefaultAudioSink[EqualizerProcessor, VisualizerTapProcessor]` → `AudioTrack`. Ссылка на mp3 подписывается в момент открытия потока, поэтому очередь из 300 треков не делает 300 запросов заранее.
+`QueueController.setQueue` → `Media3Engine.setTracks` → `MediaItems.toMediaItem` → ExoPlayer → `ExpiredLinkDataSource` → `ResolvingDataSource(TrackResolver → TrackUrlCache)` → `OkHttpDataSource` → декодер → `DefaultAudioSink[EqualizerProcessor, VisualizerTapProcessor]` → `AudioTrack`. Ссылка на mp3 подписывается в момент открытия потока, поэтому очередь из 300 треков не делает 300 запросов заранее.
 
 ## `PlaybackService`
 
@@ -122,11 +126,25 @@ class Media3Engine(player: Player, controller: QueueController) : PlayerEngine {
 - ExoPlayer сам повторяет сетевые ошибки загрузчика (около 3 попыток с паузой до 5 с) до `onPlayerError`, поэтому пауза наступает через несколько секунд после пропажи сети, а не сразу. Пока в буфере есть звук, трек доигрывает.
 - Ошибки `TrackResolver` приходят с общим кодом 2000 (`IO_UNSPECIFIED`): отличить сеть от битого трека можно только по причине, поэтому `yandex` бросает типизированные исключения.
 
-## `MediaItems`, `TrackResolver`
+## `MediaItems`, `TrackResolver`, кэш ссылок
 
 URI трека виртуальный: `qiyaa://track/{id}` (`MediaItems.SCHEME`). `mediaId = track.id`. В `MediaMetadata.extras` (`Bundle`) лежат `id`, `albumId`, `durationMs` (long), `artists` (string array list), `cover` (nullable string), `title`, чтобы `toTrack` восстанавливал `Track` из уведомления и после пересоздания процесса без сети. `artworkUri` = `coverUrl`.
 
-`TrackResolver.resolveDataSpec` вызывается на loading-потоке ExoPlayer; `runBlocking { api.resolveTrackUrl(id) }` там допустим. Битрейт выбранного варианта публикуется в `AudioBus.bitrateKbps`. URI с другой схемой проходит без изменений. Исключения `yandex` — `IOException`, поэтому ExoPlayer превращает их в `PlaybackException`, а не падает (см. `yandex/README.md`).
+`TrackResolver.resolveDataSpec` вызывается на loading-потоке ExoPlayer при каждом открытии источника: старт, перемотка за скачанное, повтор после обрыва, предзагрузка следующего трека. `runBlocking { links.get(id) }` там допустим. URI с другой схемой проходит без изменений.
+
+```kotlin
+class TrackUrlCache(clock: () -> Long, ttlMs: Long = TTL_MS, capacity: Int = CAPACITY, resolve: suspend (String) -> ResolvedUrl) {
+    suspend fun get(trackId: String): ResolvedUrl   // из кэша, пока ссылке меньше ttlMs; иначе resolve
+    fun invalidate(trackId: String)
+    companion object { TTL_MS = 15 * 60 * 1_000; CAPACITY = 64 }
+}
+```
+
+`resolve` в сервисе — `YandexApi.resolveTrackUrl`: два запроса, `download-info` к API и `download-info` хранилища. Часы — `SystemClock.elapsedRealtime`. Каждая настоящая подпись пишет в logcat `Signing the link of track <id>` (тег `QiYaa`, уровень debug): по ней видно, что перемотка и повторное открытие обходятся без API. Без кэша эти два запроса шли на каждое открытие; с кэшем перемотка и предзагрузка того же трека обходятся без API. Срок жизни подписанной ссылки Яндекс не документирует, в фикстурах спеки его тоже нет. 15 минут выбраны, чтобы перемотка в любое место почти любого трека шла по той же ссылке. Если ссылка истекла раньше, хранилище отвечает 403 или 410, и `ExpiredLinkDataSource` сбрасывает запись, заново открывает источник, а `TrackResolver` подписывает новую ссылку: цена слишком длинного срока — один лишний запрос. `CAPACITY` ограничивает память в длинной волне; вытесняется давно не использованная ссылка. Упавшая подпись не кэшируется. Доступ к кэшу синхронизирован: предзагрузка и текущий трек открываются с разных потоков; два одновременных промаха по одному треку подпишут ссылку дважды, это допустимо.
+
+`ExpiredLinkDataSource` оборачивает `ResolvingDataSource` и повторяет открытие один раз, только для `HttpDataSource.InvalidResponseCodeException` 403/410 у `qiyaa://`-трека; второй отказ уходит в ExoPlayer как обычно (трековая ошибка, `queue/ErrorPolicy`). Все методы `DataSource` пересылаются явно: `getResponseHeaders` — default-метод Java, и делегирование Kotlin `by` его бы не переслало (см. ловушку `TransportCommandsListener`).
+
+**Битрейт.** `TrackResolver` сообщает битрейт выбранного варианта в `CurrentBitrate.onResolved(id, kbps)`, а сервис — смену текущего трека (`onMediaItemTransition` → `currentTrackId` → `onCurrentChanged`). В `AudioBus.bitrateKbps` попадает битрейт текущего трека: предзагрузка следующего за ~50 с до конца его не меняет, показание меняется ровно на переходе; пока ссылка текущего трека не подписана — 0 (`--K`). Битрейты помнятся для последних 64 треков. Исключения `yandex` — `IOException`, поэтому ExoPlayer превращает их в `PlaybackException`, а не падает (см. `yandex/README.md`).
 
 ## Процессоры
 

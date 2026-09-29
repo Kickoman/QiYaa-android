@@ -4,6 +4,8 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.SystemClock
+import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -63,8 +65,18 @@ class PlaybackService : MediaSessionService() {
                     .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                     .build()
             }
+        val links =
+            TrackUrlCache(clock = SystemClock::elapsedRealtime) { id ->
+                Log.d(LOG_TAG, "Signing the link of track $id")
+                graph.api.resolveTrackUrl(id)
+            }
+        val bitrate = CurrentBitrate(graph.audioBus::setBitrate)
         val httpDataSource = OkHttpDataSource.Factory(graph.httpClient).setUserAgent(USER_AGENT)
-        val dataSource = ResolvingDataSource.Factory(httpDataSource, TrackResolver(graph.api, graph.audioBus))
+        val dataSource =
+            ExpiredLinkDataSource.Factory(
+                ResolvingDataSource.Factory(httpDataSource, TrackResolver(links, bitrate)),
+                links,
+            )
         val audioAttributes =
             AudioAttributes.Builder().setUsage(
                 C.USAGE_MEDIA,
@@ -93,6 +105,7 @@ class PlaybackService : MediaSessionService() {
             },
         )
         currentTrackId.value = player.currentMediaItem?.mediaId
+        serviceScope.launch { currentTrackId.collect(bitrate::onCurrentChanged) }
         serviceScope.launch {
             combine(currentTrackId, graph.library.likedIds) { id, liked -> id != null && id in liked }
                 .distinctUntilChanged()
