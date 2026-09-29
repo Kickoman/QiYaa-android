@@ -52,6 +52,7 @@ class QueueController(
     private var consecutiveTrackFailures = 0
     private var networkRetryAttempt = 0
     private var retryJob: Job? = null
+    private var continueAtEnd = false
     private val shuffleRule = WaveModeRule()
     private val repeatRule = WaveModeRule()
 
@@ -95,7 +96,14 @@ class QueueController(
 
     fun onFailure(kind: FailureKind, message: String) {
         val current = engine ?: return
-        when (ErrorPolicy.decide(kind, consecutiveTrackFailures, current.hasNext())) {
+        when (
+            ErrorPolicy.decide(
+                kind,
+                consecutiveTrackFailures,
+                current.hasNext(),
+                mutableState.value.isWave,
+            )
+        ) {
             ErrorAction.WaitForNetwork -> waitForNetwork(current)
             ErrorAction.Hold -> emit(QueueEvent.Failed(Stage.PLAYBACK, message))
             ErrorAction.SkipToNext -> {
@@ -105,11 +113,24 @@ class QueueController(
                 current.prepare()
                 current.play()
             }
+            ErrorAction.WaitForMore -> {
+                consecutiveTrackFailures++
+                emit(QueueEvent.Failed(Stage.PLAYBACK, message))
+                continueAtEnd = true
+                maybeLoadMore(current)
+            }
             ErrorAction.Stop -> {
                 emit(QueueEvent.StoppedAfterFailures(consecutiveTrackFailures + 1))
                 consecutiveTrackFailures = 0
             }
         }
+    }
+
+    fun requestMore() {
+        val current = engine ?: return
+        if (!mutableState.value.isWave) return
+        continueAtEnd = true
+        maybeLoadMore(current)
     }
 
     fun loadSource(
@@ -203,6 +224,7 @@ class QueueController(
         }
         queueGeneration++
         resetFailures()
+        continueAtEnd = false
         val playable = tracks.filter { it.available }
         if (!isWave) waveSessionId = null
         mutableState.value =
@@ -225,6 +247,7 @@ class QueueController(
         val current = engine ?: return
         queueGeneration++
         resetFailures()
+        continueAtEnd = false
         waveSessionId = null
         mutableState.value = QueueState()
         current.stop()
@@ -353,15 +376,21 @@ class QueueController(
                 try {
                     withContext(io) { source.moreWave(session, recent) }
                 } catch (failed: Exception) {
-                    emit(QueueEvent.Failed(Stage.WAVE_MORE, describe(failed)))
+                    if (generation ==
+                        queueGeneration
+                    ) {
+                        emit(QueueEvent.Failed(Stage.WAVE_MORE, describe(failed)))
+                    }
                     null
                 }
             if (generation != queueGeneration) return@launch
             mutableState.update { it.copy(loadingMore = false) }
-            if (batch == null || batch.tracks.isEmpty()) return@launch
+            val resume = continueAtEnd
+            continueAtEnd = false
+            if (batch == null || batch.tracks.none { it.available }) return@launch
             appendTracks(batch.tracks)
             val afterAppend = engine ?: return@launch
-            if (wasEnded || afterAppend.isEnded) {
+            if (wasEnded || afterAppend.isEnded || resume) {
                 afterAppend.seekTo(oldCount)
                 afterAppend.prepare()
                 afterAppend.play()

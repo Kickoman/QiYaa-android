@@ -38,6 +38,7 @@ class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: C
     fun setQueue(tracks, title, isWave, autoplay, sourceId);  fun appendTracks(tracks);  fun clear()
     fun removeIndices(indices: Set<Int>);  fun toggleSelected(index: Int);  fun selectAllOrNone();  fun syncFromPlayer()
     fun toggleLike(track: Track);  fun dislikeAndSkip(track: Track)
+    fun requestMore()   // «вперёд» в конце волны: снова запросить догрузку и продолжить с первого нового трека
     // события движка
     fun onItemChanged(track: Track?);  fun onEnded();  fun onShuffleChanged(enabled: Boolean);  fun onRepeatChanged(enabled: Boolean)
     fun onPlayingChanged(isPlaying: Boolean);  fun onFailure(kind: FailureKind, message: String)
@@ -50,7 +51,7 @@ class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: C
 Гарантии (сценарии `spec/player/`):
 - **Побеждает последний источник** (SRC-01…03). Каждый `loadSource`/`playWave`/`search` берёт билет; ответ или ошибка устаревшего билета отбрасываются молча. Поиск с лучшим артистом или альбомом — один источник, как бы много запросов он ни делал.
 - **Недоступные треки** (`available == false`) не попадают в очередь (SRC-05). Источник, в котором нет ни одного доступного трека, оставляет очередь и воспроизведение как есть и сообщает `SourceEmpty` (SRC-07, SRC-08); поиск — `NothingFound` (SRC-12); первая порция волны — `SourceEmpty` без сессии и догрузки (WAVE-03). Проверка на пустоту идёт после фильтра доступности.
-- **Волна** стартует с `SourceLoading` сразу и `WaveStarted` после ответа (WAVE-01). Догружается, когда текущий трек — один из двух последних в порядке воспроизведения (`LOAD_MORE_WHEN_LEFT = 2` считает текущий вместе с оставшимися), с последними 5 id очереди, не больше одного запроса за раз (WAVE-05, WAVE-06). Поколение очереди не даёт дописать ответ к уже заменённой очереди (WAVE-07). Если плеер дошёл до конца во время догрузки, продолжает с первого нового трека (WAVE-08).
+- **Волна** стартует с `SourceLoading` сразу и `WaveStarted` после ответа (WAVE-01). Догружается, когда текущий трек — один из двух последних в порядке воспроизведения (`LOAD_MORE_WHEN_LEFT = 2` считает текущий вместе с оставшимися), с последними 5 id очереди, не больше одного запроса за раз (WAVE-05, WAVE-06). Поколение очереди не даёт дописать ответ к уже заменённой очереди, а её ошибку показать (WAVE-07). Если плеер дошёл до конца во время догрузки, продолжает с первого нового трека (WAVE-08). Неудачная догрузка в конце волны сама не повторяется; `requestMore()` («вперёд») отправляет запрос снова, и после ответа воспроизведение продолжается с первого нового трека (WAVE-09). Ответ, где нет ни одного доступного трека, ничего не меняет.
 - **Shuffle и повтор в волне не действуют** (WAVE-10…12). Два экземпляра `WaveModeRule`: `setQueue` ставит движку `playerModeFor(isWave)` для каждого режима, а `onShuffleChanged`/`onRepeatChanged` возвращают выключенный режим, если его включили во время волны с любого контроллера. Выбор пользователя запоминается только вне волны и возвращается для обычных очередей. Так последний трек волны не переходит к первому, а ждёт догрузку (WAVE-08).
 - **Ошибки воспроизведения** (ERR-01…07) — по `ErrorPolicy`, см. ниже.
 - **Дизлайк** = запрос `dislike` + переход к следующему; в конечной очереди без следующего — стоп, в волне — ничего, ждём догрузку (TR-07).
@@ -65,17 +66,16 @@ class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: C
 | Гэп | Сейчас | Сценарии | Задача |
 |---|---|---|---|
 | A2 | `/play-audio` уходит на смену элемента, в том числе без автозапуска, и не повторяется для того же трека | TRK-01, TRK-02 | #27 |
-| A4 | ошибка догрузки для заменённой очереди всё равно показывается; битый последний трек волны — стоп | WAVE-07, ERR-07 | #29 |
 
-Транспорт «назад»/«вперёд» (TR-01…05, WAVE-09) пока живёт в `ui/PlayerViewModel` поверх `MediaController`; переедет в очередь с Kickoman/QiYaa-android#6.
+Транспорт «назад»/«вперёд» (TR-01…05) пока живёт в `ui/PlayerViewModel` поверх `MediaController`; переедет в очередь с Kickoman/QiYaa-android#6. До тех пор `requestMore()` вызывает только кнопка «вперёд» в приложении: «вперёд» из уведомления или гарнитуры в конце волны догрузку не повторяет.
 
 ## `ErrorPolicy`
 
 ```kotlin
-sealed interface ErrorAction { WaitForNetwork; Hold; SkipToNext; Stop }
+sealed interface ErrorAction { WaitForNetwork; Hold; SkipToNext; WaitForMore; Stop }
 object ErrorPolicy {
     const val MAX_CONSECUTIVE_TRACK_FAILURES = 3
-    fun decide(kind: FailureKind, consecutiveTrackFailures: Int, hasNext: Boolean): ErrorAction
+    fun decide(kind: FailureKind, consecutiveTrackFailures: Int, hasNext: Boolean, isWave: Boolean = false): ErrorAction
     suspend fun awaitRetry(connectivity: Flow<Boolean>, attempt: Int)
     fun retryDelayMs(attempt: Int): Long         // 2, 4, 8 … 60 с, те же пределы, что у yandex/Session
 }
@@ -85,7 +85,7 @@ object ErrorPolicy {
 |---|---|
 | `SESSION` | `Hold`: остаться на месте, `Failed(PLAYBACK)`; `yandex/Session` уведёт на вход |
 | `NETWORK` | `WaitForNetwork`: пауза на текущем треке, один раз `WaitingForNetwork`; когда `awaitRetry` вернулся — `engine.prepare()` |
-| `TRACK` | 1-я и 2-я неудача подряд — `SkipToNext` с `Failed(PLAYBACK)`; 3-я или нет следующего трека — `Stop` и `StoppedAfterFailures(n)` |
+| `TRACK` | 3-я неудача подряд — `Stop` и `StoppedAfterFailures(3)` (ERR-05, и в волне тоже); иначе есть следующий трек — `SkipToNext` с `Failed(PLAYBACK)` (ERR-04); нет следующего в волне — `WaitForMore`: `Failed(PLAYBACK)`, догрузка и продолжение с первого нового трека (ERR-07); нет следующего в конечной очереди — `Stop` |
 
 `awaitRetry`: если сети нет, ждёт её и возвращается сразу, как только она появилась; если сеть есть, а загрузка всё равно падает, ждёт `retryDelayMs(attempt)`. Счётчики и ожидание сбрасываются, когда трек реально заиграл (`onPlayingChanged(true)`), и при `setQueue`/`clear`.
 

@@ -112,7 +112,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         val current = controller ?: return
         when {
             current.hasNextMediaItem() -> current.seekToNextMediaItem()
-            queue.state.value.isWave -> notify(string(R.string.playlist_loading_more_toast))
+            queue.state.value.isWave -> {
+                queue.requestMore()
+                notify(string(R.string.playlist_loading_more_toast))
+            }
             else -> stop()
         }
     }
