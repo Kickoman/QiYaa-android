@@ -11,6 +11,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -116,6 +117,22 @@ class QueueFeedbackTest {
             harness.source.feedback.takeLast(2),
         )
         assertEquals(1, harness.engine.currentIndex)
+    }
+
+    @Test
+    fun `TRK-07 a dislike of the current track from the notification closes it with a skip`() = runTest {
+        val harness = wave(this, "w1", "w2", "w3")
+        harness.engine.seekTo(1)
+        harness.engine.startPlaying()
+        advanceTimeBy(2_000)
+        harness.controller.dislikeCurrent()
+        runCurrent()
+        assertTrue(harness.source.calls.contains("dislike w2"))
+        assertEquals(
+            listOf("skip ${ctx(first)} w2 2.0", "trackStarted ${ctx(first)} w3 0.0"),
+            harness.source.feedback.takeLast(2),
+        )
+        assertEquals(2, harness.engine.currentIndex)
     }
 
     @Test

@@ -44,6 +44,7 @@ class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: C
     fun removeIndices(indices: Set<Int>);  fun toggleSelected(index: Int);  fun selectAllOrNone()
     fun next();  fun previous();  fun stop()   // транспорт: сюда приходят кнопки приложения, уведомление и гарнитура
     fun toggleLike(track: Track);  fun dislikeAndSkip(track: Track)
+    fun likeCurrent();  fun dislikeCurrent()   // то же для текущего трека плеера (кнопки уведомления); без движка или трека — ничего
     fun requestMore()   // «вперёд» в конце волны: снова запросить догрузку и продолжить с первого нового трека
     // события движка
     fun onItemChanged(track: Track?, transition: Transition, isPlaying: Boolean);  fun onEnded();  fun onShuffleChanged(enabled: Boolean);  fun onRepeatChanged(enabled: Boolean)

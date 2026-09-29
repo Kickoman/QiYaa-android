@@ -11,6 +11,7 @@ grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   #
 | `PlaybackService.kt` | `PlaybackService` — сборка ExoPlayer и `MediaSession`, уведомление, подключение `Media3Engine` |
 | `Media3Engine.kt` | `Media3Engine` — `queue.PlayerEngine` поверх `Player`; пересылает события листенера в `QueueController` |
 | `QueueForwardingPlayer.kt` | `QueueForwardingPlayer` — плеер, которого видит `MediaSession`: «вперёд» и «назад» уходят в `QueueController` |
+| `NotificationButtons.kt` | `NotificationButtons` — команды сессии «лайк» и «дизлайк» и их кнопки в уведомлении |
 | `PlaybackFailures.kt` | `PlaybackFailures.classify` — `queue.FailureKind` по коду `PlaybackException` и причине |
 | `MediaItems.kt` | `MediaItems` — `Track` ↔ `MediaItem` |
 | `TrackResolver.kt` | `TrackResolver` — `qiyaa://track/{id}` → подписанная ссылка |
@@ -27,7 +28,7 @@ grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   #
 
 Собирает `ExoPlayer` с `DefaultRenderersFactory`, у которого `buildAudioSink` подменён на `DefaultAudioSink` с двумя процессорами и `enableFloatOutput = false` (процессоры принимают только `ENCODING_PCM_16BIT`). Атрибуты `USAGE_MEDIA`/`AUDIO_CONTENT_TYPE_MUSIC` с `handleAudioFocus = true`, `handleAudioBecomingNoisy`, `WAKE_MODE_NETWORK`, User-Agent `QiYaa/Android`. Стартовая громкость — из `Settings.volume` через `AudioBus.volumeGain`. Тап по уведомлению открывает launcher-intent пакета (сервис не знает про `ui/`). Иконка уведомления — `R.drawable.ic_notification`.
 
-Сервис объявлен `exported="true"` с `tools:ignore="ExportedService"`: так требует Media3, чтобы система и гарнитуры могли привязаться к `MediaSessionService`. `onCreate` создаёт `Media3Engine(player, appGraph.queue)`, подключает его и отдаёт сессии `QueueForwardingPlayer(player, appGraph.queue)`; сессия получает `ResumptionCallback`; `onTaskRemoved` останавливает сервис, если ничего не играет; `onDestroy` отключает движок (контроллер запоминает, где остановились), освобождает плеер и сессию.
+Сервис объявлен `exported="true"` с `tools:ignore="ExportedService"`: так требует Media3, чтобы система и гарнитуры могли привязаться к `MediaSessionService`. `onCreate` создаёт `Media3Engine(player, appGraph.queue)`, подключает его и отдаёт сессии `QueueForwardingPlayer(player, appGraph.queue)`; сессия получает `SessionCallback` (кнопки лайка и дизлайка, «играть» после выгрузки процесса); `onTaskRemoved` останавливает сервис, если ничего не играет; `onDestroy` отключает движок (контроллер запоминает, где остановились), освобождает плеер и сессию.
 
 ## Один хозяин плеера
 
@@ -45,6 +46,28 @@ grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   #
 ## «Играть» после выгрузки процесса
 
 Кнопка гарнитуры или карточка возобновления в системе доходят до приложения через `androidx.media3.session.MediaButtonReceiver` в манифесте (`exported`, `android.intent.action.MEDIA_BUTTON`). Он поднимает `PlaybackService`, `onCreate` подключает движок, и очередь уже стоит в плеере. Если плеер всё же пуст, Media3 вызывает `MediaSession.Callback.onPlaybackResumption`: `ResumptionCallback` отдаёт треки, индекс и позицию из `QueueController.resumePoint()`, а при пустой очереди — неудачный `Future`, и команда ничего не делает.
+
+## Лайк и дизлайк в уведомлении
+
+```kotlin
+object NotificationButtons {
+    const val ACTION_LIKE = "io.github.kickoman.qiyaa.LIKE";  const val ACTION_DISLIKE = "io.github.kickoman.qiyaa.DISLIKE"
+    fun withCustomCommands(commands: SessionCommands): SessionCommands
+    fun layout(context: Context, liked: Boolean): List<CommandButton>   // [♥ залитое или пустое, 👎]
+}
+```
+
+Две пользовательские команды сессии без аргументов (`Bundle.EMPTY`). `SessionCallback.onConnect` добавляет их к `DEFAULT_SESSION_COMMANDS` каждому контроллеру (уведомление, экран блокировки, `ui/PlayerViewModel`) и отдаёт текущую раскладку. `onCustomCommand` передаёт `ACTION_LIKE` в `QueueController.likeCurrent()`, `ACTION_DISLIKE` — в `dislikeCurrent()`; сам трек выбирает очередь, поэтому дизлайк ведёт себя как кнопка на экране плеера (TR-07, TRK-07: запрос, `skip` в фидбек волны, «вперёд»). Незнакомая команда — `ERROR_NOT_SUPPORTED`.
+
+Состояние ♥: сервис держит `mediaId` текущего трека (листенер `onMediaItemTransition`) и объединяет его с `Library.likedIds`; при изменении вызывает `MediaSession.setCustomLayout`. Так ♥ меняется при смене трека, при лайке из шторки и при лайке с экрана плеера. Экран плеера читает те же `likedIds`, поэтому лайк из шторки виден там сразу после ответа сервера.
+
+Значки — встроенные `CommandButton.ICON_HEART_FILLED`/`ICON_HEART_UNFILLED` и `ICON_THUMB_DOWN_UNFILLED`. Подписи (для TalkBack) — строки `notification_like`, `notification_unlike`, `notification_dislike` из `res/values*/strings.xml`: сервис — точка входа Android и берёт ресурсы, как и иконку уведомления; событий и текста для тостов пакет по-прежнему не производит.
+
+Где стоят кнопки, решает система: в развёрнутом уведомлении — после «назад», «плей», «вперёд»; в медиапанели Android 13+ и на экране блокировки — в двух свободных слотах.
+
+**Traps:**
+- `CommandButton.Builder(icon)` в Media3 1.4.1 помечен `@UnstableApi`, поэтому `NotificationButtons` помечен так же, как сервис.
+- Команда, которой нет в `setAvailableSessionCommands`, не доходит до `onCustomCommand`, а кнопка с ней не показывается.
 
 ## `QueueForwardingPlayer`
 

@@ -150,4 +150,7 @@
     </plurals>
     <string name="player_shuffle_wave">Shuffle does not apply to waves · Yandex sets the order</string>
     <string name="player_repeat_wave">Repeat does not apply to waves · the wave keeps going</string>
+    <string name="notification_like">Like</string>
+    <string name="notification_unlike">Remove like</string>
+    <string name="notification_dislike">Dislike and skip</string>
 </resources>

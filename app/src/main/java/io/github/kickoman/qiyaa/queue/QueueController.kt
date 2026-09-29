@@ -466,6 +466,20 @@ class QueueController(
         next()
     }
 
+    fun likeCurrent() {
+        currentTrack()?.let(::toggleLike)
+    }
+
+    fun dislikeCurrent() {
+        currentTrack()?.let(::dislikeAndSkip)
+    }
+
+    private fun currentTrack(): Track? {
+        val current = engine ?: return null
+        if (current.itemCount == 0) return null
+        return mutableState.value.tracks.getOrNull(current.currentIndex)
+    }
+
     private fun waitForNetwork(current: PlayerEngine) {
         if (retryJob?.isActive == true) return
         if (networkRetryAttempt == 0) emit(QueueEvent.WaitingForNetwork)
