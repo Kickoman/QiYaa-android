@@ -229,6 +229,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         go(Screen.PLAYER)
     }
 
+    fun playSimilar(playlist: PlaylistRef) {
+        queue.loadSource(
+            string(R.string.queue_similar_title, playlist.title),
+            sourceId = playlist.similarSourceId,
+        ) {
+            library.playlistRecommendations(playlist)
+        }
+        go(Screen.PLAYER)
+    }
+
     fun playArtist(artist: NamedRef) {
         queue.loadSource(artist.name, sourceId = "artist:${artist.id}") { library.artistTopTracks(artist.id) }
         go(Screen.PLAYER)
@@ -286,3 +296,5 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 }
 
 val PlaylistRef.sourceId: String get() = "playlist:$ownerUid:$kind"
+
+val PlaylistRef.similarSourceId: String get() = "similar:$ownerUid:$kind"

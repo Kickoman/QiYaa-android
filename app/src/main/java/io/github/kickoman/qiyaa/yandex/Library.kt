@@ -91,8 +91,14 @@ class Library(val api: YandexApi) : AccountGateway {
         return PlaylistRef(owner, kind, item.string("title"), item.int("trackCount", 0))
     }
 
-    suspend fun playlistTracks(playlist: PlaylistRef): List<Track> {
-        val result = api.getJson("/users/${playlist.ownerUid}/playlists/${playlist.kind}")
+    suspend fun playlistTracks(playlist: PlaylistRef): List<Track> =
+        embeddedOrFetched(api.getJson("/users/${playlist.ownerUid}/playlists/${playlist.kind}"))
+
+    suspend fun playlistRecommendations(playlist: PlaylistRef): List<Track> = embeddedOrFetched(
+        api.getJson("/users/${playlist.ownerUid}/playlists/${playlist.kind}/recommendations"),
+    )
+
+    private suspend fun embeddedOrFetched(result: JsonElement): List<Track> {
         val items = result.objectOrEmpty["tracks"].arrayOrEmpty
         val embedded = TrackParsing.parseTrackArray(items)
         if (embedded.all { it.title.isNotEmpty() }) return embedded

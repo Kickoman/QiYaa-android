@@ -141,4 +141,6 @@
     <string name="library_for_you">Для вас</string>
     <string name="library_sub_for_you">ДЛЯ ВАС</string>
     <string name="library_group_for_you">СОБРАНО ДЛЯ ВАС</string>
+    <string name="queue_similar_title">Похожие: %1$s</string>
+    <string name="library_similar_hint">Удерживайте плейлист, чтобы включить похожие треки</string>
 </resources>

@@ -1,8 +1,10 @@
 package io.github.kickoman.qiyaa.ui.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -152,8 +154,9 @@ fun LedDot(color: Color, modifier: Modifier = Modifier, size: Dp = 6.dp) {
     )
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun Chip(text: String, active: Boolean, onClick: () -> Unit) {
+fun Chip(text: String, active: Boolean, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
     val colors = Qi.colors
     val color = if (active) colors.accent else colors.text
     Row(
@@ -161,7 +164,12 @@ fun Chip(text: String, active: Boolean, onClick: () -> Unit) {
             .height(40.dp)
             .clip(RoundedCornerShape(20.dp))
             .background(if (active) colors.accentBackground else colors.surface)
-            .tap(onClick = onClick)
+            .combinedClickable(
+                interactionSource = null,
+                indication = null,
+                onLongClick = onLongClick,
+                onClick = onClick,
+            )
             .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
