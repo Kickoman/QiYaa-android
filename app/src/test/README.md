@@ -13,6 +13,8 @@ JUnit 4 без эмулятора: `./gradlew testDebugUnitTest`. Сетевые
 | `yandex/SessionTest.kt` | состояния сессии на фейковом `AccountGateway` и виртуальном времени: офлайн-старт, backoff 2…60 с, сброс по возврату сети, 401 и `AuthException` → `Expired`, `tokenRejections`, `signIn`/`signOut` |
 | `playback/PlaybackFailuresTest.kt` | вид ошибки воспроизведения: коды 2001/2002, `NetworkException` (в том числе обёрнутый), `UnknownHost`, 401 → сессия, 2004/404/нет вариантов/декодер → трек |
 | `playback/ErrorPolicyTest.kt` | `decide` по всем веткам (лимит 3 подряд, последний трек); `awaitRetry`: возврат в момент появления сети, паузы 2…60 с при живой сети |
+| `playback/PlayOrderTest.kt` | остаток после текущего трека по порядку воспроизведения, в том числе перемешанному |
+| `playback/ShuffleRuleTest.kt` | shuffle выключен в волне, выбор пользователя запоминается и возвращается для обычных очередей |
 | `audio/EqualizerTest.kt` | пресеты Winamp, тождество плоского EQ, АЧХ в центре полосы, усиление синуса на 6 дБ |
 | `audio/AnalyzerTest.kt` | 0 dBFS для синуса полной шкалы, полоса спектра для 1 кГц, спад 0.07/кадр |
 | `audio/VisualizerTapTest.kt` | порядок чтения, моно → стерео, проверка ёмкости |
