@@ -1,6 +1,8 @@
 package io.github.kickoman.qiyaa.yandex
 
 import java.net.URLDecoder
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -323,6 +325,59 @@ class YandexApiTest {
         assertEquals(2, calls)
     }
 
+    @Test
+    fun `401 and 403 from any API endpoint are reported as token rejections`() = runBlocking {
+        library.connectAccount()
+        val seen = ArrayList<HttpException>()
+        val collector =
+            launch(start = CoroutineStart.UNDISPATCHED) {
+                api.tokenRejections.collect {
+                    seen +=
+                        it
+                }
+            }
+        json("GET", "/users/42/likes/artists", """{"error":{"message":"Token expired"}}""", 401)
+        json("POST", "/tracks/", """{"error":"forbidden"}""", 403)
+        ignoreFailure { library.likedArtists() }
+        ignoreFailure { api.tracks(listOf("1")) }
+        collector.cancel()
+        assertEquals(listOf(401, 403), seen.map { it.status })
+        assertEquals("/tracks/", seen[1].path)
+    }
+
+    @Test
+    fun `server errors, storage hosts and requests without a token are not token rejections`() = runBlocking {
+        library.connectAccount()
+        val seen = ArrayList<HttpException>()
+        val collector =
+            launch(start = CoroutineStart.UNDISPATCHED) {
+                api.tokenRejections.collect {
+                    seen +=
+                        it
+                }
+            }
+        json("GET", "/users/42/likes/artists", """{"error":"boom"}""", 500)
+        ignoreFailure { library.likedArtists() }
+        json("GET", "/download-info/xyz", "", 403)
+        ignoreFailure { api.getText(server.url("/download-info/xyz").toString()) }
+        api.token = ""
+        json("GET", "/account/status", """{"error":"no token"}""", 401)
+        ignoreFailure { api.accountStatus() }
+        collector.cancel()
+        assertEquals(emptyList<HttpException>(), seen)
+    }
+
+    @Test
+    fun `user endpoints refuse to run before the account is known`() = runBlocking {
+        try {
+            library.likedArtists()
+            fail("expected NotSignedInException")
+        } catch (expected: NotSignedInException) {
+            assertTrue(expected.message!!.contains("likes/artists"))
+        }
+        assertEquals(0, server.requestCount)
+    }
+
     private fun result(method: String, path: String, body: String) =
         json(method, path, """{"invocationInfo":{},"result":$body}""")
 
@@ -335,6 +390,14 @@ class YandexApiTest {
         var text = """{"id":$id,"title":"$title","artists":[{"name":"Artist"}],"durationMs":180000"""
         if (album != 0) text += ""","albums":[{"id":$album}]"""
         return "$text}"
+    }
+
+    private suspend fun ignoreFailure(call: suspend () -> Unit) {
+        try {
+            call()
+        } catch (ignored: YandexException) {
+            // The test looks at the emitted rejections, not at the thrown error.
+        }
     }
 
     private fun last(path: String) = requests[path] ?: error("no request to $path")

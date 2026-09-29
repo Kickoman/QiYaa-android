@@ -20,3 +20,5 @@ class MalformedResponseException(method: String, path: String, detail: String) :
     YandexException("$method $path: $detail")
 
 class AuthException(message: String) : YandexException(message)
+
+class NotSignedInException(path: String) : YandexException("$path needs a signed-in account")

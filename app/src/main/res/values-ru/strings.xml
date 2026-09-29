@@ -125,4 +125,6 @@
     <string name="theme_green">Классический зелёный</string>
     <string name="theme_amber">Янтарный</string>
     <string name="theme_ice">Ледяной синий</string>
+    <string name="session_offline">НЕТ СЕТИ · ПОВТОРЮ САМ</string>
+    <string name="login_expired">Сессия истекла. Войдите снова.</string>
 </resources>

@@ -73,6 +73,10 @@ fun LoginScreen(viewModel: AppViewModel) {
         QiText(stringResource(R.string.brand), mono(12.sp, 600, 3.sp), color = colors.muted)
         Spacer(Modifier.height(10.dp))
         QiText(stringResource(R.string.login_title), sans(26.sp, 600, colors.text, lineHeight = 30.sp))
+        login.notice?.let { notice ->
+            Spacer(Modifier.height(12.dp))
+            QiText(notice, HintStyle, color = colors.error)
+        }
         Spacer(Modifier.height(28.dp))
         QiText(stringResource(R.string.login_step1), LabelStyle, color = colors.dim)
         Spacer(Modifier.height(8.dp))

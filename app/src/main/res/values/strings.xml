@@ -141,4 +141,7 @@
     <string name="theme_green">Classic green</string>
     <string name="theme_amber">Amber</string>
     <string name="theme_ice">Ice blue</string>
+    <!-- Session -->
+    <string name="session_offline">NO CONNECTION · WILL RETRY</string>
+    <string name="login_expired">Your session has expired. Sign in again.</string>
 </resources>

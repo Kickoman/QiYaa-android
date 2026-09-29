@@ -10,17 +10,18 @@ grep -rlnE '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiy
 
 | Файл | Содержит |
 |---|---|
-| `Errors.kt` | `YandexException` и четыре наследника |
+| `Errors.kt` | `YandexException` и пять наследников |
 | `JsonFields.kt` | мягкий доступ к JSON: `objectOrEmpty`, `arrayOrEmpty`, `string`, `int`, `long`, `boolean`, `scalarString`, `idString`, `parseJsonObjectOrNull` |
 | `Models.kt` | `Account`, `Track`, `NamedRef`, `PlaylistRef`, `Station`, `WaveBatch`, `SearchResult`, `DownloadVariant`, `DownloadInfo`, `ResolvedUrl` |
 | `YandexApi.kt` | `YandexApi` — транспорт (OkHttp), конверт, `accountStatus`, `tracks`, `resolveTrackUrl`, `reportPlayStarted` |
 | `TrackParsing.kt` | `TrackParsing` — `JsonElement` → `Track` |
 | `TrackUrl.kt` | `TrackUrl` — выбор варианта и подпись ссылки на mp3 |
 | `Library.kt` | `Library` — аккаунт, лайки, источники треков, волна, поиск |
+| `Session.kt` | `SessionState`, `AccountGateway`, `Session` — жизненный цикл входа: офлайн, повторы, истёкший токен |
 | `DeviceAuth.kt` | `DeviceAuth` — OAuth «код устройства» |
 | `TokenNormalizer.kt` | `TokenNormalizer` — из вставленного текста в чистый токен |
 
-Зависимости внутри пакета: `Library → YandexApi → TrackParsing, TrackUrl → JsonFields, Models, Errors`. `DeviceAuth` и `TokenNormalizer` зависят только от `JsonFields` и `Errors`.
+Зависимости внутри пакета: `Session → AccountGateway` (реализует `Library`), `Library → YandexApi → TrackParsing, TrackUrl → JsonFields, Models, Errors`. `DeviceAuth` и `TokenNormalizer` зависят только от `JsonFields` и `Errors`.
 
 ## Исключения
 
@@ -30,18 +31,20 @@ YandexException : IOException
 │     isTokenRejected == status in {401, 403}
 ├── NetworkException(method, path, cause)            // OkHttp не получил ответ
 ├── MalformedResponseException(method, path, detail) // ответ 2xx, но без нужного поля
-└── AuthException(message)                           // OAuth-поток или токен не принят
+├── AuthException(message)                           // OAuth-поток или токен не принят
+└── NotSignedInException(path)                       // запрос к /users/{uid}/… до того, как аккаунт известен
 ```
 
 Корень наследует `IOException` намеренно: `playback/TrackResolver` вызывает `resolveTrackUrl` из `ResolvingDataSource.Resolver`, которому ExoPlayer разрешает бросать только `IOException`. Сообщения всегда содержат метод и путь: `HTTP 401 on GET /users/42/likes/artists: Token expired`.
 
-Данные, а не исключения: пустой `uid` в `Account` (`isValid == false`), `null` от `TrackUrl.pickBestVariant` и `parseDownloadInfo`, `""` от `TokenNormalizer.normalize`, пустые списки от `Library` при пустых ответах.
+Данные, а не исключения: состояние сессии (`SessionState.Offline`, `Expired`), пустой `uid` в `Account` (`isValid == false`), `null` от `TrackUrl.pickBestVariant` и `parseDownloadInfo`, `""` от `TokenNormalizer.normalize`, пустые списки от `Library` при пустых ответах.
 
 ## `YandexApi`
 
 ```kotlin
 class YandexApi(client: OkHttpClient, val baseUrl: String = "https://api.music.yandex.net") {
     @Volatile var token: String                                  // "" = без Authorization
+    val tokenRejections: SharedFlow<HttpException>               // 401/403 от API на запросе с токеном
     suspend fun getJson(path: String, query: Map<String, String> = emptyMap()): JsonElement
     suspend fun postForm(path: String, form: List<Pair<String, String>>): JsonElement
     suspend fun postJson(path: String, body: JsonObject): JsonElement
@@ -57,6 +60,8 @@ class YandexApi(client: OkHttpClient, val baseUrl: String = "https://api.music.y
 Каждый запрос уходит с `Accept-Language: ru` и, при непустом токене, `Authorization: OAuth <token>`. Все вызовы выполняются на `Dispatchers.IO`.
 
 Конверт: тело ответа — объект с полем `result`; оно и возвращается. При статусе ≥ 400 сообщение берётся из `error.message`, затем из строкового `error`, затем из HTTP reason phrase. Ответ 2xx без `result` — `MalformedResponseException`.
+
+`tokenRejections` получает каждое `HttpException` с `isTokenRejected`, если запрос ушёл с заголовком `Authorization`, до того как исключение брошено. Так `Session` узнаёт об отозванном токене на **любом** запросе, а не только при старте. Не эмитят: запросы без токена (вход), 5xx, `getText()` — у хранилища свой 403, не про токен. Поток — `MutableSharedFlow(extraBufferCapacity = 1)` с `tryEmit`: без подписчика событие теряется.
 
 `resolveTrackUrl` делает два запроса: `GET /tracks/{id}/download-info` → список вариантов; затем `GET <downloadInfoUrl>?format=json` → `{host, path, ts, s}` → подпись (см. `TrackUrl`). `accountStatus` без `uid` в ответе — `AuthException` (токен не принят).
 
@@ -100,10 +105,11 @@ object TrackUrl {
 ## `Library`
 
 ```kotlin
-class Library(val api: YandexApi) {
+class Library(val api: YandexApi) : AccountGateway {
     val account: StateFlow<Account>;  val likedIds: StateFlow<Set<String>>
     val isLoggedIn: Boolean;  fun isLiked(trackId: String): Boolean
     suspend fun connectAccount(): Account;  fun logout()
+    // AccountGateway: token = api.token, tokenRejections = api.tokenRejections, preloadLikes() = likedTrackIds(), forget() = logout()
     suspend fun tracksByIds(ids: List<String>): List<Track>          // чанками по TRACKS_PER_REQUEST = 250
     suspend fun likedTrackIds(): List<String>;  suspend fun likedTracks(): List<Track>
     suspend fun userPlaylists(): List<PlaylistRef>;  suspend fun playlistTracks(playlist: PlaylistRef): List<Track>
@@ -135,10 +141,52 @@ class Library(val api: YandexApi) {
 
 `stationGroupKey` сводит тип `user` к `personal`; остальные типы — ключ как есть. Порядок и названия групп задаёт `ui/screens/LibrarySectionScreen`.
 
+Методы с путём `/users/{uid}/…` до `connectAccount()` бросают `NotSignedInException` и не делают запрос: раньше они уходили на `/users//…`.
+
 **Traps:**
-- `likedIds` заполняется только `likedTrackIds()`/`likedTracks()` и правится `setLiked`/`dislike`; `connectAccount` его не трогает — UI вызывает предзагрузку сам.
+- `likedIds` заполняется только `likedTrackIds()`/`likedTracks()` и правится `setLiked`/`dislike`; `connectAccount` его не трогает — предзагрузку делает `Session` при переходе в `Online`.
 - `moreWave` возвращает `sessionId` из запроса, если сервер его не прислал.
 - `startWave` без `radioSessionId` — `MalformedResponseException`, а не пустая волна.
+
+## `Session`
+
+```kotlin
+sealed interface SessionState { LoggedOut; Connecting; Online(account); Offline; Expired }
+
+interface AccountGateway {
+    var token: String;  val tokenRejections: Flow<HttpException>
+    suspend fun connectAccount(): Account;  suspend fun preloadLikes();  fun forget()
+}
+
+class Session(gateway: AccountGateway, connectivity: Flow<Boolean>, scope: CoroutineScope) {
+    val state: StateFlow<SessionState>
+    fun start()                                  // пустой токен → LoggedOut, иначе цикл подключения
+    suspend fun signIn(token: String): Account   // ошибка → токен "", LoggedOut, исключение наружу
+    fun signOut()                                // forget() и LoggedOut
+    companion object { FIRST_RETRY_MS = 2_000; MAX_RETRY_MS = 60_000 }
+}
+```
+
+Одна корутина в `scope` держит сессию, пока та не станет `Expired` или `LoggedOut`:
+
+| Состояние | Что происходит | Переходы |
+|---|---|---|
+| `Offline` | ждём `connectivity == true` или конца паузы | сеть появилась → сразу `Connecting`; пауза кончилась → `Connecting` |
+| `Connecting` | `connectAccount()` | успех → `Online`; `AuthException` или 401/403 → `Expired`; любой другой `YandexException` (сеть, 5xx, без `result`) → `Offline` с паузой |
+| `Online(account)` | один раз `preloadLikes()`, затем ждём потери сети | сеть пропала → `Offline`, при возврате аккаунт перепроверяется |
+| `Expired` | ничего; цикл остановлен | только `signIn`/`signOut` |
+
+Пауза между неудачными попытками при живой сети: 2, 4, 8, 16, 32, 60, 60… с. Пропавшая и вернувшаяся сеть сбрасывает её на 2 с и запускает попытку сразу.
+
+`tokenRejections` в любом состоянии, кроме `LoggedOut`, останавливает цикл и ставит `Expired`. `signIn` проверяет новый токен в состоянии `LoggedOut`, поэтому неверный токен при входе даёт исключение, а не `Expired`.
+
+`connectivity` на устройстве — `NetworkMonitor.available` из корневого пакета (default network с `NET_CAPABILITY_INTERNET`); в тестах — `MutableStateFlow<Boolean>`.
+
+**Traps:**
+- `Session` не хранит токен на диске и не чистит `TokenStore`: это делает `ui/AppViewModel`, получив `Expired` или по «Выйти».
+- При переходе `Online → Offline` аккаунт в `Library` не стирается: экран продолжает показывать имя, а `likedIds` — последние известные лайки.
+- Исключения, не наследующие `YandexException`, из `connectAccount()` не ловятся и роняют `scope`: это баг, а не состояние сети.
+- `preloadLikes()` глушит свои `YandexException`: при 401 сессия всё равно станет `Expired` через `tokenRejections`.
 
 ## `DeviceAuth`
 

@@ -1,5 +1,6 @@
 package io.github.kickoman.qiyaa.yandex
 
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -11,7 +12,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 
-class Library(val api: YandexApi) {
+class Library(val api: YandexApi) : AccountGateway {
     private val mutableAccount = MutableStateFlow(Account())
     val account: StateFlow<Account> = mutableAccount.asStateFlow()
 
@@ -22,11 +23,25 @@ class Library(val api: YandexApi) {
 
     fun isLiked(trackId: String): Boolean = trackId in mutableLikedIds.value
 
-    suspend fun connectAccount(): Account {
+    override var token: String
+        get() = api.token
+        set(value) {
+            api.token = value
+        }
+
+    override val tokenRejections: Flow<HttpException> get() = api.tokenRejections
+
+    override suspend fun connectAccount(): Account {
         val account = api.accountStatus()
         mutableAccount.value = account
         return account
     }
+
+    override suspend fun preloadLikes() {
+        likedTrackIds()
+    }
+
+    override fun forget() = logout()
 
     fun logout() {
         mutableAccount.value = Account()
@@ -167,7 +182,11 @@ class Library(val api: YandexApi) {
         mutableLikedIds.update { it - trackId }
     }
 
-    private fun userPath(rest: String) = "/users/${mutableAccount.value.uid}/$rest"
+    private fun userPath(rest: String): String {
+        val uid = mutableAccount.value.uid
+        if (uid.isEmpty()) throw NotSignedInException("/users/{uid}/$rest")
+        return "/users/$uid/$rest"
+    }
 
     private fun unwrap(item: JsonObject, key: String): JsonObject = item[key] as? JsonObject ?: item
 
