@@ -12,7 +12,7 @@ grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   #
 | `Media3Engine.kt` | `Media3Engine` — `queue.PlayerEngine` поверх `Player`; пересылает события листенера в `QueueController` |
 | `QueueForwardingPlayer.kt` | `QueueForwardingPlayer` — плеер, которого видит `MediaSession`: «вперёд» и «назад» уходят в `QueueController` |
 | `NotificationButtons.kt` | `NotificationButtons` — команды сессии «лайк» и «дизлайк» и их кнопки в уведомлении |
-| `PlaybackFailures.kt` | `PlaybackFailures.classify` — `queue.FailureKind` по коду `PlaybackException` и причине |
+| `PlaybackFailures.kt` | `PlaybackFailures.classify` — `queue.FailureKind` по коду `PlaybackException` и причине; `errorKind` — `yandex.ErrorKind` для пользователя |
 | `MediaItems.kt` | `MediaItems` — `Track` ↔ `MediaItem` |
 | `TrackResolver.kt` | `TrackResolver` — `qiyaa://track/{id}` → подписанная ссылка |
 | `EqualizerProcessor.kt` | `EqualizerProcessor` — PCM16 → float → EQ → баланс → PCM16 |
@@ -98,7 +98,7 @@ class Media3Engine(player: Player, controller: QueueController) : PlayerEngine {
 | `onShuffleModeEnabledChanged(on)` | `onShuffleChanged(on)` |
 | `onRepeatModeChanged(mode)` | `onRepeatChanged(mode != REPEAT_MODE_OFF)`; `repeatEnabled = true` — это `REPEAT_MODE_ALL` (повтора одного трека нет, TR-06) |
 | `onIsPlayingChanged(playing)` | `onPlayingChanged(playing)` |
-| `onPlayerError(error)` | `onFailure(PlaybackFailures.classify(error.errorCode, error.cause), error.cause?.message ?: error.errorCodeName)` |
+| `onPlayerError(error)` | `Log.w("QiYaa", …, error)`, затем `onFailure(PlaybackFailures.classify(error.errorCode, error.cause), PlaybackFailures.errorKind(error.errorCode, error.cause))` |
 
 `playOrder()` обходит `currentTimeline` через `getFirstWindowIndex`/`getNextWindowIndex(…, REPEAT_MODE_OFF, shuffle)`.
 
@@ -115,6 +115,8 @@ class Media3Engine(player: Player, controller: QueueController) : PlayerEngine {
 | `TRACK` | всё остальное: 2004 (статус хранилища), `HttpException` 4xx/5xx от API, `MalformedResponseException`, парсинг 3xxx, декодер 4xxx |
 
 Что делать с каждым видом, решает `queue/ErrorPolicy` (см. `queue/README.md`).
+
+`PlaybackFailures.errorKind` говорит, что показать: `SESSION` → `TokenRejected`, `NETWORK` → `NoNetwork`, `TRACK` → `ServerError(status)`, если в цепочке есть `HttpException` или `HttpDataSource.InvalidResponseCodeException` хранилища, иначе `TrackUnplayable` (нет вариантов, декодер, парсинг). Подробности ошибки — только в logcat.
 
 **Traps:**
 - ExoPlayer сам повторяет сетевые ошибки загрузчика (около 3 попыток с паузой до 5 с) до `onPlayerError`, поэтому пауза наступает через несколько секунд после пропажи сети, а не сразу. Пока в буфере есть звук, трек доигрывает.

@@ -1,5 +1,6 @@
 package io.github.kickoman.qiyaa.playback
 
+import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -37,8 +38,11 @@ class Media3Engine(private val player: Player, private val controller: QueueCont
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                val kind = PlaybackFailures.classify(error.errorCode, error.cause)
-                controller.onFailure(kind, error.cause?.message ?: error.errorCodeName)
+                Log.w(LOG_TAG, "Playback failed: ${error.errorCodeName}", error)
+                controller.onFailure(
+                    PlaybackFailures.classify(error.errorCode, error.cause),
+                    PlaybackFailures.errorKind(error.errorCode, error.cause),
+                )
             }
         }
 
@@ -124,4 +128,8 @@ class Media3Engine(private val player: Player, private val controller: QueueCont
     override fun play() = player.play()
 
     override fun stop() = player.stop()
+
+    private companion object {
+        const val LOG_TAG = "QiYaa"
+    }
 }

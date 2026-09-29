@@ -15,6 +15,7 @@ class QueueHarness(scope: TestScope, attached: Boolean = true, val store: FakeQu
     private var playIds = 0
     val source = FakeMusicSource()
     val network = MutableStateFlow(true)
+    val logged = ArrayList<String>()
     val controller =
         QueueController(
             source = source,
@@ -24,6 +25,7 @@ class QueueHarness(scope: TestScope, attached: Boolean = true, val store: FakeQu
             newPlayId = { "play-${++playIds}" },
             clock = { scope.testScheduler.currentTime },
             store = store,
+            logFailure = { stage, failed -> logged += "$stage ${failed.message}" },
         )
     val engine = FakeEngine(controller).also { if (attached) controller.attach(it) }
     val events = ArrayList<QueueEvent>()

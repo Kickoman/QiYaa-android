@@ -19,6 +19,11 @@ class NetworkException(method: String, path: String, cause: IOException) :
 class MalformedResponseException(method: String, path: String, detail: String) :
     YandexException("$method $path: $detail")
 
-class AuthException(message: String) : YandexException(message)
+open class AuthException(message: String) : YandexException(message)
+
+class OAuthException(val status: Int, val method: String, val path: String, val reason: String) :
+    AuthException("HTTP $status on $method $path: $reason")
+
+class CodeExpiredException : AuthException("The device code expired, start again")
 
 class NotSignedInException(path: String) : YandexException("$path needs a signed-in account")

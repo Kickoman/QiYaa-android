@@ -3,6 +3,7 @@ package io.github.kickoman.qiyaa.queue
 import io.github.kickoman.qiyaa.queue.QueueEvent.Stage
 import io.github.kickoman.qiyaa.support.QueueHarness
 import io.github.kickoman.qiyaa.support.QueueHarness.Companion.tracks
+import io.github.kickoman.qiyaa.yandex.ErrorKind
 import io.github.kickoman.qiyaa.yandex.WaveBatch
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -66,8 +67,8 @@ class QueueErrorsTest {
         runCurrent()
         assertEquals(
             listOf(
-                QueueEvent.Failed(Stage.PLAYBACK, "boom"),
-                QueueEvent.Failed(Stage.PLAYBACK, "boom"),
+                QueueEvent.Failed(Stage.PLAYBACK, ErrorKind.TrackUnplayable),
+                QueueEvent.Failed(Stage.PLAYBACK, ErrorKind.TrackUnplayable),
                 QueueEvent.StoppedAfterFailures(3),
             ),
             harness.events,
@@ -116,7 +117,7 @@ class QueueErrorsTest {
             harness.engine.commands.clear()
             harness.engine.fail(FailureKind.TRACK)
             runCurrent()
-            assertEquals(listOf(QueueEvent.Failed(Stage.PLAYBACK, "boom")), harness.events)
+            assertEquals(listOf(QueueEvent.Failed(Stage.PLAYBACK, ErrorKind.TrackUnplayable)), harness.events)
             assertEquals(emptyList<String>(), harness.engine.commands)
             reply.complete(WaveBatch("S1", "B2", tracks("m1")))
             runCurrent()
@@ -138,10 +139,10 @@ class QueueErrorsTest {
     @Test
     fun `a rejected token holds the queue in place`() = runTest {
         val harness = loaded(this, "a", "b")
-        harness.engine.fail(FailureKind.SESSION)
+        harness.engine.fail(FailureKind.SESSION, ErrorKind.TokenRejected)
         runCurrent()
         assertEquals(0, harness.engine.currentIndex)
-        assertEquals(listOf(QueueEvent.Failed(Stage.PLAYBACK, "boom")), harness.events)
+        assertEquals(listOf(QueueEvent.Failed(Stage.PLAYBACK, ErrorKind.TokenRejected)), harness.events)
     }
 
     private fun loaded(scope: TestScope, vararg ids: String): QueueHarness {

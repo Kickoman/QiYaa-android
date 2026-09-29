@@ -44,6 +44,7 @@ import io.github.kickoman.qiyaa.ui.components.PathIcon
 import io.github.kickoman.qiyaa.ui.components.QiText
 import io.github.kickoman.qiyaa.ui.components.ScreenHeader
 import io.github.kickoman.qiyaa.ui.components.tap
+import io.github.kickoman.qiyaa.ui.render
 import io.github.kickoman.qiyaa.ui.theme.HintStyle
 import io.github.kickoman.qiyaa.ui.theme.LabelStyle
 import io.github.kickoman.qiyaa.ui.theme.Qi
@@ -178,7 +179,7 @@ fun LibraryScreen(viewModel: AppViewModel, player: PlayerViewModel) {
         }
         libraryUi.error?.let { error ->
             QiText(
-                stringResource(R.string.library_error, error),
+                stringResource(R.string.library_error, error.render().uppercase()),
                 mono(10.sp, 400, 1.sp),
                 Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
                 color = colors.error,

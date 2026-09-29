@@ -1,13 +1,10 @@
 package io.github.kickoman.qiyaa.playback
 
 import androidx.media3.common.PlaybackException
+import androidx.media3.datasource.HttpDataSource
 import io.github.kickoman.qiyaa.queue.FailureKind
+import io.github.kickoman.qiyaa.yandex.ErrorKind
 import io.github.kickoman.qiyaa.yandex.HttpException
-import io.github.kickoman.qiyaa.yandex.NetworkException
-import java.net.ConnectException
-import java.net.NoRouteToHostException
-import java.net.SocketTimeoutException
-import java.net.UnknownHostException
 
 object PlaybackFailures {
     private val NETWORK_CODES =
@@ -17,27 +14,25 @@ object PlaybackFailures {
         )
 
     fun classify(errorCode: Int, cause: Throwable?): FailureKind {
-        val chain = causes(cause)
+        val chain = ErrorKind.causes(cause)
         return when {
             chain.any { it is HttpException && it.isTokenRejected } -> FailureKind.SESSION
-            errorCode in NETWORK_CODES || chain.any(::isNetworkFailure) -> FailureKind.NETWORK
+            errorCode in NETWORK_CODES || chain.any(ErrorKind::isNetworkFailure) -> FailureKind.NETWORK
             else -> FailureKind.TRACK
         }
     }
 
-    private fun isNetworkFailure(failure: Throwable): Boolean = failure is NetworkException ||
-        failure is UnknownHostException ||
-        failure is ConnectException ||
-        failure is SocketTimeoutException ||
-        failure is NoRouteToHostException
+    fun errorKind(errorCode: Int, cause: Throwable?): ErrorKind = when (classify(errorCode, cause)) {
+        FailureKind.SESSION -> ErrorKind.TokenRejected
+        FailureKind.NETWORK -> ErrorKind.NoNetwork
+        FailureKind.TRACK -> httpStatus(cause)?.let(ErrorKind::ServerError) ?: ErrorKind.TrackUnplayable
+    }
 
-    private fun causes(first: Throwable?): List<Throwable> {
-        val chain = ArrayList<Throwable>()
-        var current = first
-        while (current != null && current !in chain) {
-            chain += current
-            current = current.cause
+    private fun httpStatus(cause: Throwable?): Int? = ErrorKind.causes(cause).firstNotNullOfOrNull {
+        when (it) {
+            is HttpException -> it.status
+            is HttpDataSource.InvalidResponseCodeException -> it.responseCode
+            else -> null
         }
-        return chain
     }
 }

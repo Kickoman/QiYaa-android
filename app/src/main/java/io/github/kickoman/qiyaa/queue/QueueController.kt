@@ -1,6 +1,7 @@
 package io.github.kickoman.qiyaa.queue
 
 import io.github.kickoman.qiyaa.queue.QueueEvent.Stage
+import io.github.kickoman.qiyaa.yandex.ErrorKind
 import io.github.kickoman.qiyaa.yandex.Track
 import io.github.kickoman.qiyaa.yandex.WaveBatch
 import io.github.kickoman.qiyaa.yandex.WaveContext
@@ -43,6 +44,7 @@ class QueueController(
     private val newPlayId: () -> String = { UUID.randomUUID().toString() },
     clock: () -> Long = { System.nanoTime() / NANOS_PER_MILLI },
     private val store: QueueStore? = null,
+    private val logFailure: (Stage, Throwable) -> Unit = { _, _ -> },
 ) {
     private val mutableState = MutableStateFlow(QueueState())
     val state: StateFlow<QueueState> = mutableState.asStateFlow()
@@ -228,7 +230,7 @@ class QueueController(
         if (!isPlaying) save()
     }
 
-    fun onFailure(kind: FailureKind, message: String) {
+    fun onFailure(kind: FailureKind, error: ErrorKind) {
         val current = engine ?: return
         when (
             ErrorPolicy.decide(
@@ -239,17 +241,17 @@ class QueueController(
             )
         ) {
             ErrorAction.WaitForNetwork -> waitForNetwork(current)
-            ErrorAction.Hold -> emit(QueueEvent.Failed(Stage.PLAYBACK, message))
+            ErrorAction.Hold -> emit(QueueEvent.Failed(Stage.PLAYBACK, error))
             ErrorAction.SkipToNext -> {
                 consecutiveTrackFailures++
-                emit(QueueEvent.Failed(Stage.PLAYBACK, message))
+                emit(QueueEvent.Failed(Stage.PLAYBACK, error))
                 current.skipToNext()
                 current.prepare()
                 current.play()
             }
             ErrorAction.WaitForMore -> {
                 consecutiveTrackFailures++
-                emit(QueueEvent.Failed(Stage.PLAYBACK, message))
+                emit(QueueEvent.Failed(Stage.PLAYBACK, error))
                 continueAtEnd = true
                 maybeLoadMore(current)
             }
@@ -281,7 +283,7 @@ class QueueController(
                     try {
                         withContext(io) { loader() }
                     } catch (failed: Exception) {
-                        if (isLatest(ticket)) emit(QueueEvent.Failed(Stage.SOURCE, describe(failed)))
+                        if (isLatest(ticket)) fail(Stage.SOURCE, failed)
                         return@launch
                     }
                 if (!isLatest(ticket)) return@launch
@@ -304,7 +306,7 @@ class QueueController(
                     try {
                         withContext(io) { source.startWave(seeds) }
                     } catch (failed: Exception) {
-                        if (isLatest(ticket)) emit(QueueEvent.Failed(Stage.WAVE, describe(failed)))
+                        if (isLatest(ticket)) fail(Stage.WAVE, failed)
                         return@launch
                     }
                 if (!isLatest(ticket)) return@launch
@@ -355,7 +357,7 @@ class QueueController(
                     setQueue(tracks, name, isWave = false, autoplay = true, sourceId = null)
                     emit(QueueEvent.SourceLoaded(name, mutableState.value.tracks.size))
                 } catch (failed: Exception) {
-                    if (isLatest(ticket)) emit(QueueEvent.Failed(Stage.SEARCH, describe(failed)))
+                    if (isLatest(ticket)) fail(Stage.SEARCH, failed)
                 }
             }
     }
@@ -449,7 +451,7 @@ class QueueController(
                 withContext(io) { source.setLiked(track.id, !liked) }
                 emit(QueueEvent.LikeChanged(liked = !liked))
             } catch (failed: Exception) {
-                emit(QueueEvent.Failed(Stage.LIKE, describe(failed)))
+                fail(Stage.LIKE, failed)
             }
         }
     }
@@ -460,7 +462,7 @@ class QueueController(
                 withContext(io) { source.dislike(track.id) }
                 emit(QueueEvent.DislikedAndSkipped)
             } catch (failed: Exception) {
-                emit(QueueEvent.Failed(Stage.LIKE, describe(failed)))
+                fail(Stage.LIKE, failed)
             }
         }
         next()
@@ -504,7 +506,10 @@ class QueueController(
         mutableEvents.tryEmit(event)
     }
 
-    private fun describe(failed: Exception): String = failed.message ?: failed.javaClass.simpleName
+    private fun fail(stage: Stage, failed: Exception) {
+        logFailure(stage, failed)
+        emit(QueueEvent.Failed(stage, ErrorKind.of(failed)))
+    }
 
     private fun newSourceRequest(): Long = ++sourceTicket
 
@@ -596,10 +601,11 @@ class QueueController(
                         withContext(io) { source.moreWave(session, recent) }
                     }
                 } catch (failed: Exception) {
+                    logFailure(Stage.WAVE_MORE, failed)
                     if (generation ==
                         queueGeneration
                     ) {
-                        emit(QueueEvent.Failed(Stage.WAVE_MORE, describe(failed)))
+                        emit(QueueEvent.Failed(Stage.WAVE_MORE, ErrorKind.of(failed)))
                     }
                     null
                 }

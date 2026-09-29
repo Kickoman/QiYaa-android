@@ -31,6 +31,7 @@ import io.github.kickoman.qiyaa.ui.LibrarySection
 import io.github.kickoman.qiyaa.ui.components.Chip
 import io.github.kickoman.qiyaa.ui.components.QiText
 import io.github.kickoman.qiyaa.ui.components.tap
+import io.github.kickoman.qiyaa.ui.render
 import io.github.kickoman.qiyaa.ui.sourceId
 import io.github.kickoman.qiyaa.ui.theme.CaptionStyle
 import io.github.kickoman.qiyaa.ui.theme.HintStyle
@@ -198,7 +199,7 @@ fun LibrarySectionScreen(viewModel: AppViewModel, section: LibrarySection) {
             when {
                 error != null && !loaded ->
                     QiText(
-                        stringResource(R.string.library_error, error),
+                        stringResource(R.string.library_error, error.render().uppercase()),
                         HintStyle,
                         Modifier.padding(top = 14.dp),
                         color = colors.error,

@@ -1,18 +1,20 @@
 package io.github.kickoman.qiyaa.ui
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.appGraph
 import io.github.kickoman.qiyaa.queue.QueueController
-import io.github.kickoman.qiyaa.yandex.AuthException
+import io.github.kickoman.qiyaa.yandex.ErrorKind
 import io.github.kickoman.qiyaa.yandex.NamedRef
 import io.github.kickoman.qiyaa.yandex.PlaylistRef
 import io.github.kickoman.qiyaa.yandex.SessionState
 import io.github.kickoman.qiyaa.yandex.Station
 import io.github.kickoman.qiyaa.yandex.TokenNormalizer
 import io.github.kickoman.qiyaa.yandex.WheelWave
+import io.github.kickoman.qiyaa.yandex.YandexException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -34,7 +36,7 @@ sealed interface LoginStatus {
 
     data object SigningIn : LoginStatus
 
-    data class Failed(val message: String) : LoginStatus
+    data class Failed(val error: ErrorKind) : LoginStatus
 }
 
 data class LoginUi(
@@ -55,7 +57,7 @@ data class LibraryUi(
     val loading: Boolean = false,
     val wheel: List<WheelWave>? = null,
     val wheelMatchesCurrent: Boolean = false,
-    val error: String? = null,
+    val error: ErrorKind? = null,
     val searchText: String = "",
 ) {
     val isComplete: Boolean
@@ -138,7 +140,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 mutableLibraryUi.update { it.copy(wheel = waves) }
             } catch (failed: Exception) {
-                mutableLibraryUi.update { it.copy(error = describe(failed)) }
+                mutableLibraryUi.update { it.copy(error = kindOf("Wheel of waves", failed)) }
             }
         }
     }
@@ -164,8 +166,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     val token = auth.waitForToken(code)
                     mutableLogin.update { it.copy(status = LoginStatus.SigningIn) }
                     applyToken(token)
-                } catch (failed: AuthException) {
-                    mutableLogin.update { it.copy(status = LoginStatus.Failed(describe(failed))) }
+                } catch (failed: YandexException) {
+                    mutableLogin.update {
+                        it.copy(status = LoginStatus.Failed(kindOf("Device sign-in", failed)))
+                    }
                 }
             }
     }
@@ -213,7 +217,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 if (likedIds.value.isEmpty()) preloadLikes()
             } catch (failed: Exception) {
-                mutableLibraryUi.update { it.copy(loading = false, error = describe(failed)) }
+                mutableLibraryUi.update { it.copy(loading = false, error = kindOf("Library lists", failed)) }
             }
         }
     }
@@ -295,8 +299,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             go(Screen.LIBRARY)
             say(string(R.string.login_signed_in, account.login.ifEmpty { account.displayName }))
         } catch (failed: Exception) {
-            mutableLogin.update { it.copy(status = LoginStatus.Failed(describe(failed)), tokenError = false) }
-            say(string(R.string.login_error, describe(failed)))
+            val error = kindOf("Sign-in", failed)
+            mutableLogin.update { it.copy(status = LoginStatus.Failed(error), tokenError = false) }
+            say(string(R.string.login_error, error.render(getApplication())))
         }
     }
 
@@ -310,7 +315,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun describe(failed: Exception): String = failed.message ?: failed.javaClass.simpleName
+    private fun kindOf(what: String, failed: Exception): ErrorKind {
+        Log.w(LOG_TAG, "$what failed", failed)
+        return ErrorKind.of(failed)
+    }
 
     private fun string(id: Int, vararg args: Any): String = getApplication<Application>().getString(id, *args)
 

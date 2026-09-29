@@ -2,6 +2,7 @@ package io.github.kickoman.qiyaa.ui
 
 import android.app.Application
 import android.content.ComponentName
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
@@ -239,12 +240,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 try {
                     future.get()
                 } catch (failed: Exception) {
-                    notify(
-                        string(
-                            R.string.player_service_unavailable,
-                            failed.message ?: failed.javaClass.simpleName,
-                        ),
-                    )
+                    Log.w(LOG_TAG, "The player service did not connect", failed)
+                    notify(string(R.string.player_service_unavailable))
                     return@addListener
                 }
             controller = connected

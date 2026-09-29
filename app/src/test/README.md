@@ -17,7 +17,7 @@ JUnit 4 без эмулятора: `./gradlew testDebugUnitTest`. Сетевые
 
 Путь к `spec/` передаёт Gradle: системное свойство `qiyaa.spec.dir` в `app/build.gradle.kts`, а файлы спеки объявлены входами задачи тестов, так что правка спеки перезапускает тесты. Без `git submodule update --init` тесты падают с подсказкой.
 
-Расхождение с десктопом не подгоняется: тест пишется по спеке, помечается `@Ignore("Known divergence Kickoman/QiYaa-android#N: …")`, и на расхождение заводится задача. Сейчас так помечены #33 (статус в ошибке OAuth) и #34 (`bestType` = `other`).
+Расхождение с десктопом не подгоняется: тест пишется по спеке, помечается `@Ignore("Known divergence Kickoman/QiYaa-android#N: …")`, и на расхождение заводится задача. Сейчас так помечен #34 (`bestType` = `other`).
 
 **Traps:**
 - Тела ошибок из фикстур одних эндпоинтов используются как подставные для других: спека разрешает любой фикстуре ошибки стоять за любой эндпоинт.
@@ -28,7 +28,8 @@ JUnit 4 без эмулятора: `./gradlew testDebugUnitTest`. Сетевые
 | Файл | Проверяет |
 |---|---|
 | `yandex/YandexApiTest.kt` | каждый эндпоинт `Library`/`YandexApi` на фикстурах спеки: результат разбора против `expected/`, заголовки, формы, все формы ошибок (401, 500 без тела, 404, 503 строкой), чанки по 250, `tokenRejections`, отказ `/users/…` без аккаунта |
-| `yandex/DeviceAuthTest.kt` | фикстуры `oauth-*`: код устройства, `authorization_pending` → опрос до токена, `error_description`; истечение кода |
+| `yandex/DeviceAuthTest.kt` | фикстуры `oauth-*`: код устройства, `authorization_pending` → опрос до токена, `OAuthException` со статусом и `error_description`; сеть при входе — `NetworkException`; истечение кода — `CodeExpiredException` |
+| `yandex/ErrorKindTest.kt` | вид ошибки по типу исключения и цепочке причин: сеть, отклонённый токен, статус сервера, битый ответ, отказ входа, истёкший код, прочее |
 | `yandex/TokenNormalizerTest.kt` | токен из строки, JSON, URL, `OAuth ` |
 | `yandex/TrackParsingTest.kt` | все фикстуры `tracks/*` против `expected/`, `formatSeconds` |
 | `yandex/TrackUrlTest.kt` | фикстуры `tracks-download-info/*` (варианты и выбор) и `storage-download-info/*` (разбор и подписанная ссылка, XML → невалидно); эталонный md5 из Yaamp, `idString` |
@@ -36,11 +37,11 @@ JUnit 4 без эмулятора: `./gradlew testDebugUnitTest`. Сетевые
 | `yandex/WaveFeedbackTest.kt` | TRK-03…11 на уровне `Library.waveFeedback`: поля событий, тело сессии и `batchId`, запасной путь через станцию при 4xx и запоминание сессии, без станции — ничего, 5xx и сеть не повторяются |
 | `yandex/SessionTest.kt` | состояния сессии на фейковом `AccountGateway` и виртуальном времени: офлайн-старт, backoff 2…60 с, сброс по возврату сети, 401 и `AuthException` → `Expired`, `tokenRejections`, `signIn`/`signOut` |
 | `playback/QueueForwardingPlayerTest.kt` | каждое событие `Player.Listener` доходит до слушателя сессии так же, как через обычный `ForwardingPlayer` (плеер — `java.lang.reflect.Proxy`, аргументы — пустые значения Media3); снятый слушатель снимается с плеера |
-| `playback/PlaybackFailuresTest.kt` | вид ошибки воспроизведения: коды 2001/2002, `NetworkException` (в том числе обёрнутый), `UnknownHost`, 401 → сессия, 2004/404/нет вариантов/декодер → трек |
+| `playback/PlaybackFailuresTest.kt` | вид ошибки воспроизведения: коды 2001/2002, `NetworkException` (в том числе обёрнутый), `UnknownHost`, 401 → сессия, 2004/404/нет вариантов/декодер → трек; вид ошибки для пользователя (404 → `ServerError(404)`, нет вариантов и декодер → `TrackUnplayable`). Статус хранилища (`InvalidResponseCodeException`) на JVM не проверяется: `DataSpec` требует настоящий `android.net.Uri` |
 | `queue/ErrorPolicyTest.kt` | `decide` по всем веткам (лимит 3 подряд, последний трек); `awaitRetry`: возврат в момент появления сети, паузы 2…60 с при живой сети |
 | `queue/PlayOrderTest.kt` | остаток после текущего трека по порядку воспроизведения, в том числе перемешанному |
 | `queue/WaveModeRuleTest.kt` | режим (shuffle, повтор) выключен в волне, выбор пользователя запоминается и возвращается для обычных очередей |
-| `queue/QueueSourcesTest.kt` | SRC-01…12: побеждает последний источник, недоступные треки, пустой источник и источник только из недоступных, маршруты поиска |
+| `queue/QueueSourcesTest.kt` | SRC-01…12: побеждает последний источник, недоступные треки, пустой источник и источник только из недоступных, маршруты поиска; упавший источник даёт вид ошибки, а исключение уходит в лог (SRC-04) |
 | `queue/QueueWaveTest.kt` | WAVE-01…08, 10…12: старт, догрузка с последними 5 id, один запрос за раз, поколения, продолжение после конца, shuffle и повтор в волне; пустая первая порция (WAVE-03), молчаливый ответ для заменённой очереди (WAVE-07), «вперёд» в конце после неудачи (WAVE-09); сид текущей волны для колеса волн |
 | `queue/QueueErrorsTest.kt` | ERR-01…07: пауза без сети и возврат, повторы 2/4/8 с, пропуск битого трека и стоп на третьем, сброс счётчика; битый последний трек волны ждёт догрузку (ERR-07) |
 | `queue/QueueEditingTest.kt` | удаление выбранных, выбрать всё, очистка, лайк, дизлайк (TR-07); лайк и дизлайк текущего трека из уведомления, без движка и в пустой очереди — ничего |
@@ -56,6 +57,7 @@ JUnit 4 без эмулятора: `./gradlew testDebugUnitTest`. Сетевые
 | `audio/VisualizerTapTest.kt` | порядок чтения, моно → стерео, проверка ёмкости |
 | `audio/Pcm16Test.kt` | шкала и клиппинг |
 | `data/VisualizerModeTest.kt` | сохранённые значения `VisualizerMode` и `AccentTheme` |
+| `ui/ErrorTextTest.kt` | у каждого вида ошибки своя строка, `ServerError` передаёт статус |
 | `ui/FormatTest.kt` | `formatTime`, `balanceLabel`, `formatReadout`, `formatDb` |
 
 Не тестируются на JVM: `AppViewModel`, `PlayerViewModel`, `PlaybackService`, `Media3Engine` (зависят от Android/Media3; `Media3Engine` только переводит вызовы, логика — в `QueueController`, который тестируется с `support/FakeEngine`). Их поведение описано в `playback/README.md` и `ui/README.md`; изменения там проверяются вручную по чек-листу из корневого `README.md`.

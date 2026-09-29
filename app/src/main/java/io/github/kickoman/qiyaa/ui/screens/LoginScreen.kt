@@ -47,6 +47,7 @@ import io.github.kickoman.qiyaa.ui.components.ActionButton
 import io.github.kickoman.qiyaa.ui.components.LedDot
 import io.github.kickoman.qiyaa.ui.components.QiText
 import io.github.kickoman.qiyaa.ui.components.tap
+import io.github.kickoman.qiyaa.ui.render
 import io.github.kickoman.qiyaa.ui.theme.HintStyle
 import io.github.kickoman.qiyaa.ui.theme.LabelStyle
 import io.github.kickoman.qiyaa.ui.theme.Qi
@@ -135,7 +136,7 @@ fun LoginScreen(viewModel: AppViewModel) {
                     LoginStatus.SigningIn -> stringResource(R.string.login_status_signing_in)
                     is LoginStatus.Failed -> stringResource(
                         R.string.login_status_failed,
-                        current.message.uppercase(),
+                        current.error.render().uppercase(),
                     )
                 }
             QiText(status, HintStyle, color = colors.dim)

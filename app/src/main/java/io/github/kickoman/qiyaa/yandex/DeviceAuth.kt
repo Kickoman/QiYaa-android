@@ -24,17 +24,25 @@ class DeviceAuth(
     )
 
     suspend fun requestCode(): Code {
-        val response = post(
-            "/device/code",
+        val (status, response) = post(
+            DEVICE_CODE_PATH,
             listOf(
                 "client_id" to CLIENT_ID,
                 "device_name" to "QiYaa ($deviceName)",
             ),
         )
+        if (status >= HTTP_ERROR) {
+            throw OAuthException(
+                status,
+                "POST",
+                DEVICE_CODE_PATH,
+                errorDescription(response, "no description"),
+            )
+        }
         val deviceCode = response.string("device_code")
         val userCode = response.string("user_code")
         if (deviceCode.isEmpty() || userCode.isEmpty()) {
-            throw AuthException(errorDescription(response, "POST /device/code returned no device_code"))
+            throw MalformedResponseException("POST", DEVICE_CODE_PATH, "no device_code or user_code")
         }
         val verificationUrl =
             response.string("verification_url").takeIf {
@@ -56,10 +64,10 @@ class DeviceAuth(
         var intervalMs = code.intervalMs
         while (true) {
             delay(intervalMs)
-            if (clock() > code.deadlineMs) throw AuthException("Code expired, start again")
-            val response =
+            if (clock() > code.deadlineMs) throw CodeExpiredException()
+            val (status, response) =
                 post(
-                    "/token",
+                    TOKEN_PATH,
                     listOf(
                         "grant_type" to "device_code",
                         "code" to code.deviceCode,
@@ -72,23 +80,28 @@ class DeviceAuth(
             when (val error = response.string("error")) {
                 "authorization_pending" -> {}
                 "slow_down" -> intervalMs += SLOW_DOWN_STEP_MS
-                else -> throw AuthException(errorDescription(response, error.ifEmpty { "sign-in failed" }))
+                else -> throw OAuthException(
+                    status,
+                    "POST",
+                    TOKEN_PATH,
+                    errorDescription(response, error.ifEmpty { "no token in the reply" }),
+                )
             }
         }
     }
 
-    private suspend fun post(path: String, form: List<Pair<String, String>>): JsonObject =
+    private suspend fun post(path: String, form: List<Pair<String, String>>): Pair<Int, JsonObject> =
         withContext(Dispatchers.IO) {
             val body = FormBody.Builder()
             for ((key, value) in form) body.add(key, value)
             val request = Request.Builder().url(baseUrl + path).post(body.build()).build()
-            val text =
+            val (status, text) =
                 try {
-                    client.newCall(request).execute().use { it.body?.string().orEmpty() }
+                    client.newCall(request).execute().use { it.code to it.body?.string().orEmpty() }
                 } catch (failed: IOException) {
-                    throw AuthException("POST $path failed: ${failed.message ?: failed.javaClass.simpleName}")
+                    throw NetworkException("POST", path, failed)
                 }
-            parseJsonObjectOrNull(text) ?: JsonObject(emptyMap())
+            status to (parseJsonObjectOrNull(text) ?: JsonObject(emptyMap()))
         }
 
     private fun errorDescription(response: JsonObject, fallback: String): String =
@@ -96,6 +109,9 @@ class DeviceAuth(
 
     companion object {
         const val CLIENT_ID = "23cabbbdc6cd418abb4b39c32c41195d"
+        const val DEVICE_CODE_PATH = "/device/code"
+        const val TOKEN_PATH = "/token"
+        private const val HTTP_ERROR = 400
         const val CLIENT_SECRET = "53bc75238f0c4d08a118e51fe9203300"
         const val BROWSER_LOGIN_URL =
             "https://oauth.yandex.ru/authorize?response_type=token&client_id=$CLIENT_ID"
