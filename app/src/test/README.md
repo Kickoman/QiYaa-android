@@ -60,6 +60,7 @@ JUnit 4 без эмулятора: `./gradlew testDebugUnitTest`. Сетевые
 | `audio/Pcm16Test.kt` | шкала и клиппинг |
 | `data/VisualizerModeTest.kt` | сохранённые значения `VisualizerMode` и `AccentTheme` |
 | `ui/ListLoaderTest.kt` | загрузка списка: `Loading` → `Loaded`, ошибка с видом и записью в лог и повтор, без повторного запроса для загруженного и загружающегося, `force` отбрасывает старый ответ, `reset` игнорирует поздний ответ, списки не ждут друг друга |
+| `ui/ScreenTest.kt` | «Назад» с вкладок EQ, Плейлист и Библиотека ведёт на «Плеер», с «Плеера» и входа — системное |
 | `ui/ErrorTextTest.kt` | у каждого вида ошибки своя строка, `ServerError` передаёт статус |
 | `ui/FormatTest.kt` | `formatTime`, `balanceLabel`, `formatReadout`, `formatDb` |
 

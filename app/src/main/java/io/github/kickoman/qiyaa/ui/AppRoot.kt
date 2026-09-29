@@ -1,5 +1,6 @@
 package io.github.kickoman.qiyaa.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -68,6 +69,8 @@ fun AppRoot(app: AppViewModel = viewModel(), player: PlayerViewModel = viewModel
         val presetsOpen by player.presetsOpen.collectAsStateWithLifecycle()
         val playerUi by player.ui.collectAsStateWithLifecycle()
         val sessionState by app.sessionState.collectAsStateWithLifecycle()
+        val backTarget = screen.backTarget
+        BackHandler(enabled = backTarget != null) { backTarget?.let(app::go) }
 
         Box(Modifier.fillMaxSize().background(colors.background)) {
             Column(
@@ -99,7 +102,10 @@ fun AppRoot(app: AppViewModel = viewModel(), player: PlayerViewModel = viewModel
                 if (screen != Screen.LOGIN) TabBar(screen, app::go)
             }
 
-            if (presetsOpen) PresetsSheet(player)
+            if (presetsOpen) {
+                BackHandler { player.closePresets() }
+                PresetsSheet(player)
+            }
 
             toast?.let { message ->
                 Box(
