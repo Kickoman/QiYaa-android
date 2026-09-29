@@ -21,6 +21,7 @@ grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   #
 | `CurrentBitrate.kt` | `CurrentBitrate` — битрейт по треку; в `AudioBus` попадает битрейт текущего трека |
 | `EqualizerProcessor.kt` | `EqualizerProcessor` — PCM16 → float → EQ → баланс → PCM16 |
 | `VisualizerTapProcessor.kt` | `VisualizerTapProcessor` — копия PCM в `VisualizerTap`, звук не меняет |
+| `TimedAudioSink.kt` | `TimedAudioSink` — `ForwardingAudioSink`: метки времени входных буферов и звучащая позиция для `VisualizerTap` |
 
 Зависит от `queue`, `yandex`, `audio`, `data` и корневого `appGraph` (сервис — точка входа Android и получает граф через `Context.appGraph`).
 
@@ -145,6 +146,10 @@ class TrackUrlCache(clock: () -> Long, ttlMs: Long = TTL_MS, capacity: Int = CAP
 `ExpiredLinkDataSource` оборачивает `ResolvingDataSource` и повторяет открытие один раз, только для `HttpDataSource.InvalidResponseCodeException` 403/410 у `qiyaa://`-трека; второй отказ уходит в ExoPlayer как обычно (трековая ошибка, `queue/ErrorPolicy`). Все методы `DataSource` пересылаются явно: `getResponseHeaders` — default-метод Java, и делегирование Kotlin `by` его бы не переслало (см. ловушку `TransportCommandsListener`).
 
 **Битрейт.** `TrackResolver` сообщает битрейт выбранного варианта в `CurrentBitrate.onResolved(id, kbps)`, а сервис — смену текущего трека (`onMediaItemTransition` → `currentTrackId` → `onCurrentChanged`). В `AudioBus.bitrateKbps` попадает битрейт текущего трека: предзагрузка следующего за ~50 с до конца его не меняет, показание меняется ровно на переходе; пока ссылка текущего трека не подписана — 0 (`--K`). Битрейты помнятся для последних 64 треков. Исключения `yandex` — `IOException`, поэтому ExoPlayer превращает их в `PlaybackException`, а не падает (см. `yandex/README.md`).
+
+## `TimedAudioSink`
+
+`buildAudioSink` оборачивает `DefaultAudioSink` в `TimedAudioSink(sink, audioBus.visualizerTap)`. `handleBuffer(buffer, presentationTimeUs, …)` сначала сообщает кольцу `announceInput(presentationTimeUs)`: процессоры вызываются внутри этого же `handleBuffer`, и отвод пишет кадры буфера с его временем. `getCurrentPositionUs`, который рендерер ExoPlayer спрашивает, пока играет, отдаёт звучащую позицию в тех же единицах и уже с учётом задержки `AudioTrack` и Bluetooth; `TimedAudioSink` передаёт её в `reportPlaying` с `System.nanoTime()`. Раз в 5 с пишет в logcat `Visualizer: the newest written audio sounds in N ms`.
 
 ## Процессоры
 

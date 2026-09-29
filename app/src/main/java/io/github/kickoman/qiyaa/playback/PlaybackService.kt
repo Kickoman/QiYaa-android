@@ -55,16 +55,19 @@ class PlaybackService : MediaSessionService() {
                     context: Context,
                     enableFloatOutput: Boolean,
                     enableAudioTrackPlaybackParams: Boolean,
-                ): AudioSink = DefaultAudioSink.Builder(context)
-                    .setAudioProcessors(
-                        arrayOf(
-                            EqualizerProcessor(graph.audioBus),
-                            VisualizerTapProcessor(graph.audioBus),
-                        ),
-                    )
-                    .setEnableFloatOutput(false)
-                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                    .build()
+                ): AudioSink = TimedAudioSink(
+                    DefaultAudioSink.Builder(context)
+                        .setAudioProcessors(
+                            arrayOf(
+                                EqualizerProcessor(graph.audioBus),
+                                VisualizerTapProcessor(graph.audioBus),
+                            ),
+                        )
+                        .setEnableFloatOutput(false)
+                        .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                        .build(),
+                    graph.audioBus.visualizerTap,
+                )
             }
         val links =
             TrackUrlCache(clock = SystemClock::elapsedRealtime) { id ->
