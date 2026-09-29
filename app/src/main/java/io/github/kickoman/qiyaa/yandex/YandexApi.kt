@@ -40,8 +40,17 @@ class YandexApi(private val client: OkHttpClient, val baseUrl: String = "https:/
         return execute("POST", path, request(url(path)).post(body.build()).build())
     }
 
-    suspend fun postJson(path: String, body: JsonObject): JsonElement =
-        execute("POST", path, request(url(path)).post(body.toString().toRequestBody(JSON_TYPE)).build())
+    suspend fun postJson(
+        path: String,
+        body: JsonObject,
+        query: Map<String, String> = emptyMap(),
+    ): JsonElement = execute(
+        "POST",
+        path,
+        request(url(path, query)).post(body.toString().toRequestBody(JSON_TYPE)).build(),
+    )
+
+    fun timestampNow(): String = ISO_MILLIS.format(Instant.now().atOffset(ZoneOffset.UTC))
 
     suspend fun getText(fullUrl: String): String = withContext(Dispatchers.IO) {
         val request = request(fullUrl.toHttpUrl()).get().build()
@@ -109,7 +118,7 @@ class YandexApi(private val client: OkHttpClient, val baseUrl: String = "https:/
     }
 
     suspend fun reportPlayStarted(account: Account, track: Track, playId: String) {
-        val now = ISO_MILLIS.format(Instant.now().atOffset(ZoneOffset.UTC))
+        val now = timestampNow()
         postForm(
             "/play-audio",
             listOf(

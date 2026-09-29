@@ -6,13 +6,18 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import io.github.kickoman.qiyaa.queue.PlayerEngine
 import io.github.kickoman.qiyaa.queue.QueueController
+import io.github.kickoman.qiyaa.queue.Transition
 import io.github.kickoman.qiyaa.yandex.Track
 
 class Media3Engine(private val player: Player, private val controller: QueueController) : PlayerEngine {
     private val listener =
         object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                controller.onItemChanged(mediaItem?.let(MediaItems::toTrack))
+                controller.onItemChanged(
+                    mediaItem?.let(MediaItems::toTrack),
+                    transitionOf(reason),
+                    player.isPlaying,
+                )
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -36,6 +41,13 @@ class Media3Engine(private val player: Player, private val controller: QueueCont
                 controller.onFailure(kind, error.cause?.message ?: error.errorCodeName)
             }
         }
+
+    private fun transitionOf(reason: Int): Transition = when (reason) {
+        Player.MEDIA_ITEM_TRANSITION_REASON_AUTO -> Transition.AUTO
+        Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT -> Transition.REPEAT
+        Player.MEDIA_ITEM_TRANSITION_REASON_SEEK -> Transition.SEEK
+        else -> Transition.NEW_QUEUE
+    }
 
     override val itemCount: Int get() = player.mediaItemCount
     override val currentIndex: Int get() = player.currentMediaItemIndex

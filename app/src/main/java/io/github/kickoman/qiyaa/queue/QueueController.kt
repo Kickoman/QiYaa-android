@@ -3,10 +3,13 @@ package io.github.kickoman.qiyaa.queue
 import io.github.kickoman.qiyaa.queue.QueueEvent.Stage
 import io.github.kickoman.qiyaa.yandex.Track
 import io.github.kickoman.qiyaa.yandex.WaveBatch
+import io.github.kickoman.qiyaa.yandex.WaveContext
+import io.github.kickoman.qiyaa.yandex.WaveEvent
 import java.util.UUID
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,6 +38,7 @@ class QueueController(
     private val scope: CoroutineScope,
     private val io: CoroutineContext,
     private val newPlayId: () -> String = { UUID.randomUUID().toString() },
+    clock: () -> Long = { System.nanoTime() / NANOS_PER_MILLI },
 ) {
     private val mutableState = MutableStateFlow(QueueState())
     val state: StateFlow<QueueState> = mutableState.asStateFlow()
@@ -50,7 +54,23 @@ class QueueController(
     private var queueGeneration = 0L
     private var sourceTicket = 0L
     private var loadJob: Job? = null
-    private val playTracker = PlayTracker()
+    private val playTracker = PlayTracker(clock)
+    private var waveStationId = ""
+    private val waveContexts = HashMap<String, WaveContext>()
+    private var openWaveContext: WaveContext? = null
+    private val feedback = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+
+    init {
+        scope.launch(io) {
+            for (send in feedback) {
+                try {
+                    send()
+                } catch (ignored: Exception) {
+                    // Feedback is best-effort (TRK-11); a failure must not stop the ones after it.
+                }
+            }
+        }
+    }
     private var consecutiveTrackFailures = 0
     private var networkRetryAttempt = 0
     private var retryJob: Job? = null
@@ -73,6 +93,7 @@ class QueueController(
 
     fun detach(engine: PlayerEngine) {
         if (this.engine !== engine) return
+        playTracker.closeAsSkip()?.let(::onClosed)
         if (mutableState.value.tracks.isNotEmpty()) {
             restorePoint =
                 RestorePoint(engine.currentIndex, engine.positionMs.coerceAtLeast(0), playWhenReady = false)
@@ -109,17 +130,45 @@ class QueueController(
 
     private fun restart(current: PlayerEngine) {
         current.seekToPosition(0)
-        playTracker.onRestart()
+        apply(playTracker.onRestart())
     }
 
-    fun onItemChanged(track: Track?) {
+    private fun apply(change: PlayTracker.Change) {
+        change.closed?.let(::onClosed)
+        change.started?.let(::onStarted)
+    }
+
+    private fun onStarted(track: Track) {
+        reportPlay(track)
+        val context = waveContexts[track.id]
+        openWaveContext = context
+        if (context != null) sendFeedback(context, WaveEvent.TRACK_STARTED, track, 0.0)
+    }
+
+    private fun onClosed(closed: PlayTracker.Closed) {
+        val context = openWaveContext ?: return
+        openWaveContext = null
+        val event = if (closed.finished) WaveEvent.TRACK_FINISHED else WaveEvent.SKIP
+        sendFeedback(context, event, closed.track, closed.playedSeconds)
+    }
+
+    private fun sendFeedback(context: WaveContext, event: WaveEvent, track: Track?, playedSeconds: Double) {
+        feedback.trySend { source.waveFeedback(context, event, track, playedSeconds) }
+    }
+
+    private fun registerBatch(sessionId: String, batch: WaveBatch) {
+        val context = WaveContext(sessionId, waveStationId, batch.batchId)
+        for (track in batch.tracks) if (track.available) waveContexts[track.id] = context
+    }
+
+    fun onItemChanged(track: Track?, transition: Transition, isPlaying: Boolean) {
         val current = engine ?: return
-        playTracker.onItemChanged(track)
+        apply(playTracker.onItemChanged(track, transition, isPlaying))
         maybeLoadMore(current)
     }
 
     fun onEnded() {
-        playTracker.onRestart()
+        apply(playTracker.onEnded())
         val current = engine ?: return
         maybeLoadMore(current)
     }
@@ -138,7 +187,7 @@ class QueueController(
 
     fun onPlayingChanged(isPlaying: Boolean) {
         if (isPlaying) resetFailures()
-        playTracker.onPlayingChanged(isPlaying)?.let(::reportPlay)
+        playTracker.onPlayingChanged(isPlaying)?.let(::onStarted)
     }
 
     fun onFailure(kind: FailureKind, message: String) {
@@ -226,6 +275,15 @@ class QueueController(
                     return@launch
                 }
                 waveSessionId = batch.sessionId
+                waveStationId = seeds.first()
+                waveContexts.clear()
+                registerBatch(batch.sessionId, batch)
+                sendFeedback(
+                    WaveContext(batch.sessionId, waveStationId, batch.batchId),
+                    WaveEvent.RADIO_STARTED,
+                    null,
+                    0.0,
+                )
                 setQueue(batch.tracks, title, isWave = true, autoplay = true, sourceId = sourceId)
                 emit(QueueEvent.WaveStarted(title))
             }
@@ -265,11 +323,15 @@ class QueueController(
 
     fun setQueue(tracks: List<Track>, title: String, isWave: Boolean, autoplay: Boolean, sourceId: String?) {
         val current = engine
+        playTracker.closeAsSkip()?.let(::onClosed)
         queueGeneration++
         resetFailures()
         continueAtEnd = false
         val playable = tracks.filter { it.available }
-        if (!isWave) waveSessionId = null
+        if (!isWave) {
+            waveSessionId = null
+            waveContexts.clear()
+        }
         mutableState.value =
             QueueState(tracks = playable, title = title, isWave = isWave, activeSourceId = sourceId)
         if (current == null) {
@@ -290,6 +352,7 @@ class QueueController(
     }
 
     fun clear() {
+        playTracker.closeAsSkip()?.let(::onClosed)
         queueGeneration++
         resetFailures()
         continueAtEnd = false
@@ -303,6 +366,7 @@ class QueueController(
 
     fun removeIndices(indices: Set<Int>) {
         if (indices.isEmpty()) return
+        if (engine?.currentIndex in indices) playTracker.closeAsSkip()?.let(::onClosed)
         val sorted = indices.filter { it in mutableState.value.tracks.indices }.sortedDescending()
         engine?.let { current -> for (index in sorted) current.removeAt(index) }
         mutableState.update { state ->
@@ -353,12 +417,7 @@ class QueueController(
                 emit(QueueEvent.Failed(Stage.LIKE, describe(failed)))
             }
         }
-        val current = engine ?: return
-        if (current.hasNext()) {
-            current.skipToNext()
-        } else if (!mutableState.value.isWave) {
-            current.stop()
-        }
+        next()
     }
 
     private fun waitForNetwork(current: PlayerEngine) {
@@ -426,6 +485,7 @@ class QueueController(
             val resume = continueAtEnd
             continueAtEnd = false
             if (batch == null || batch.tracks.none { it.available }) return@launch
+            registerBatch(batch.sessionId.ifEmpty { session }, batch)
             appendTracks(batch.tracks)
             val afterAppend = engine ?: return@launch
             if (wasEnded || afterAppend.isEnded || resume) {
@@ -441,6 +501,7 @@ class QueueController(
         const val LOAD_MORE_WHEN_LEFT = 2
         const val WAVE_HISTORY = 5
         const val RESTART_AFTER_MS = 3_000L
+        private const val NANOS_PER_MILLI = 1_000_000L
         private const val EVENT_BUFFER = 8
     }
 }

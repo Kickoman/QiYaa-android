@@ -12,7 +12,7 @@ grep -rlnE '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiy
 |---|---|
 | `Errors.kt` | `YandexException` и пять наследников |
 | `JsonFields.kt` | мягкий доступ к JSON: `objectOrEmpty`, `arrayOrEmpty`, `string`, `int`, `long`, `boolean`, `scalarString`, `idString`, `parseJsonObjectOrNull` |
-| `Models.kt` | `Account`, `Track`, `NamedRef`, `PlaylistRef`, `Station`, `WaveBatch`, `SearchResult`, `DownloadVariant`, `DownloadInfo`, `ResolvedUrl` |
+| `Models.kt` | `Account`, `Track`, `NamedRef`, `PlaylistRef`, `Station`, `WaveBatch`, `SearchResult`, `DownloadVariant`, `DownloadInfo`, `ResolvedUrl`, `WaveEvent`, `WaveContext` |
 | `YandexApi.kt` | `YandexApi` — транспорт (OkHttp), конверт, `accountStatus`, `tracks`, `resolveTrackUrl`, `reportPlayStarted` |
 | `TrackParsing.kt` | `TrackParsing` — `JsonElement` → `Track` |
 | `TrackUrl.kt` | `TrackUrl` — выбор варианта и подпись ссылки на mp3 |
@@ -47,7 +47,8 @@ class YandexApi(client: OkHttpClient, val baseUrl: String = "https://api.music.y
     val tokenRejections: SharedFlow<HttpException>               // 401/403 от API на запросе с токеном
     suspend fun getJson(path: String, query: Map<String, String> = emptyMap()): JsonElement
     suspend fun postForm(path: String, form: List<Pair<String, String>>): JsonElement
-    suspend fun postJson(path: String, body: JsonObject): JsonElement
+    suspend fun postJson(path: String, body: JsonObject, query: Map<String, String> = emptyMap()): JsonElement
+    fun timestampNow(): String                                   // UTC, yyyy-MM-dd'T'HH:mm:ss.SSS'Z' 
     suspend fun getText(fullUrl: String): String                 // без конверта, для download-info
     suspend fun accountStatus(): Account
     suspend fun tracks(ids: List<String>): List<Track>           // POST /tracks/, до 250 id за раз
@@ -121,6 +122,7 @@ class Library(val api: YandexApi) : AccountGateway {
     suspend fun startWave(seeds: List<String>): WaveBatch;  suspend fun moreWave(sessionId: String, queue: List<String>): WaveBatch
     suspend fun search(text: String): SearchResult
     suspend fun setLiked(trackId: String, liked: Boolean);  suspend fun dislike(trackId: String)
+    suspend fun waveFeedback(context: WaveContext, event: WaveEvent, track: Track?, playedSeconds: Double)
     companion object { fun parseWaveBatch(result: JsonElement): WaveBatch; fun stationGroupKey(type: String): String }
 }
 ```
@@ -149,6 +151,24 @@ class Library(val api: YandexApi) : AccountGateway {
 - `likedIds` заполняется только `likedTrackIds()`/`likedTracks()` и правится `setLiked`/`dislike`; `connectAccount` его не трогает — предзагрузку делает `Session` при переходе в `Online`.
 - `moreWave` возвращает `sessionId` из запроса, если сервер его не прислал.
 - `startWave` без `radioSessionId` — `MalformedResponseException`, а не пустая волна.
+
+### Обратная связь волны
+
+```kotlin
+enum class WaveEvent(val wireName: String) { RADIO_STARTED("radioStarted"), TRACK_STARTED("trackStarted"), TRACK_FINISHED("trackFinished"), SKIP("skip") }
+data class WaveContext(val sessionId: String, val stationId: String, val batchId: String)
+```
+
+`waveFeedback` — порт `Library::waveFeedback` десктопа (сценарии `spec/player/tracking.md`, TRK-03…11). Событие — `{"type", "timestamp"}`; у `radioStarted` ещё `"from": "web-main-rup-radio-main"`, у трековых — `"trackId": "<id>:<albumId>"` или `"<id>"`, у `trackFinished` и `skip` — `"totalPlayedSeconds"`, округлённые до 0,1.
+
+| Путь | Тело | Когда |
+|---|---|---|
+| `POST /rotor/session/<sessionId>/feedback` | `{"event": {…}, "batchId": "…"}` (пустой `batchId` не отправляется) | обычно (TRK-09) |
+| `POST /rotor/station/<stationId>/feedback?batch-id=<batchId>` | голое событие | после ответа 4xx от сессии; сессия запоминается, и дальше её события идут сразу сюда (TRK-10). Без `stationId` ничего не отправляется |
+
+5xx, таймауты и сетевые ошибки глушатся и не повторяются (TRK-11): фидбек — best-effort.
+
+**Traps:** запоминание «сессия идёт через станцию» — в памяти `Library` (`ConcurrentHashMap.newKeySet`), до перезапуска процесса. 401 от сессии тоже 4xx: событие уйдёт на станцию, а `tokenRejections` сообщит `Session` об отклонённом токене.
 
 ## `Session`
 

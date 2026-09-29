@@ -4,11 +4,14 @@ import io.github.kickoman.qiyaa.queue.MusicSource
 import io.github.kickoman.qiyaa.yandex.SearchResult
 import io.github.kickoman.qiyaa.yandex.Track
 import io.github.kickoman.qiyaa.yandex.WaveBatch
+import io.github.kickoman.qiyaa.yandex.WaveContext
+import io.github.kickoman.qiyaa.yandex.WaveEvent
 
 class FakeMusicSource : MusicSource {
     val calls = ArrayList<String>()
     val liked = HashSet<String>()
     val reports = ArrayList<Pair<String, String>>()
+    val feedback = ArrayList<String>()
 
     var onStartWave: suspend (List<String>) -> WaveBatch = { error("unexpected startWave $it") }
     var onMoreWave: suspend (
@@ -54,6 +57,16 @@ class FakeMusicSource : MusicSource {
     override suspend fun dislike(trackId: String) {
         calls += "dislike $trackId"
         liked -= trackId
+    }
+
+    override suspend fun waveFeedback(
+        context: WaveContext,
+        event: WaveEvent,
+        track: Track?,
+        playedSeconds: Double,
+    ) {
+        val where = "${context.sessionId}/${context.stationId}/${context.batchId}"
+        feedback += "${event.wireName} $where ${track?.id ?: "-"} ${Math.round(playedSeconds * 10) / 10.0}"
     }
 
     override suspend fun reportPlayStarted(track: Track, playId: String) {

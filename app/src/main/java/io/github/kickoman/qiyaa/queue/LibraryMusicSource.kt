@@ -4,6 +4,8 @@ import io.github.kickoman.qiyaa.yandex.Library
 import io.github.kickoman.qiyaa.yandex.SearchResult
 import io.github.kickoman.qiyaa.yandex.Track
 import io.github.kickoman.qiyaa.yandex.WaveBatch
+import io.github.kickoman.qiyaa.yandex.WaveContext
+import io.github.kickoman.qiyaa.yandex.WaveEvent
 
 class LibraryMusicSource(private val library: Library) : MusicSource {
     override suspend fun startWave(seeds: List<String>): WaveBatch = library.startWave(seeds)
@@ -22,6 +24,13 @@ class LibraryMusicSource(private val library: Library) : MusicSource {
     override suspend fun setLiked(trackId: String, liked: Boolean) = library.setLiked(trackId, liked)
 
     override suspend fun dislike(trackId: String) = library.dislike(trackId)
+
+    override suspend fun waveFeedback(
+        context: WaveContext,
+        event: WaveEvent,
+        track: Track?,
+        playedSeconds: Double,
+    ) = library.waveFeedback(context, event, track, playedSeconds)
 
     override suspend fun reportPlayStarted(track: Track, playId: String) {
         val account = library.account.value

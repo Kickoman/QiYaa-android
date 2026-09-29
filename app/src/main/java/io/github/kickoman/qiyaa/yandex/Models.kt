@@ -56,3 +56,12 @@ data class DownloadVariant(
 data class DownloadInfo(val host: String, val path: String, val timestamp: String, val secret: String)
 
 data class ResolvedUrl(val url: String, val bitrateKbps: Int)
+
+enum class WaveEvent(val wireName: String) {
+    RADIO_STARTED("radioStarted"),
+    TRACK_STARTED("trackStarted"),
+    TRACK_FINISHED("trackFinished"),
+    SKIP("skip"),
+}
+
+data class WaveContext(val sessionId: String, val stationId: String, val batchId: String)

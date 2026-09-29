@@ -3,6 +3,8 @@ package io.github.kickoman.qiyaa.queue
 import io.github.kickoman.qiyaa.yandex.SearchResult
 import io.github.kickoman.qiyaa.yandex.Track
 import io.github.kickoman.qiyaa.yandex.WaveBatch
+import io.github.kickoman.qiyaa.yandex.WaveContext
+import io.github.kickoman.qiyaa.yandex.WaveEvent
 
 interface MusicSource {
     suspend fun startWave(seeds: List<String>): WaveBatch
@@ -22,4 +24,6 @@ interface MusicSource {
     suspend fun dislike(trackId: String)
 
     suspend fun reportPlayStarted(track: Track, playId: String)
+
+    suspend fun waveFeedback(context: WaveContext, event: WaveEvent, track: Track?, playedSeconds: Double)
 }
