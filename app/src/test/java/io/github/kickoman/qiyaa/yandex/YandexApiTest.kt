@@ -115,6 +115,21 @@ class YandexApiTest {
         }
 
     @Test
+    fun `similar tracks of a playlist come from its recommendations and match the spec`() = runBlocking {
+        route(
+            "GET",
+            "/users/42/playlists/1003/recommendations",
+            Spec.fixture("users-playlists-recommendations", "ok"),
+        )
+        val tracks = library.playlistRecommendations(PlaylistRef("42", "1003", "Дорога", 2))
+        assertEquals(
+            SpecJson.expectedTracks(Spec.expected("users-playlists-recommendations", "ok")),
+            SpecJson.tracks(tracks),
+        )
+        assertEquals(null, requests["/tracks/"])
+    }
+
+    @Test
     fun `a playlist with embedded tracks parses them directly`() = runBlocking {
         route("GET", "/users/42/playlists/1003", Spec.fixture("users-playlists", "embedded-tracks"))
         val tracks = library.playlistTracks(PlaylistRef("42", "1003", "Дорога", 2))

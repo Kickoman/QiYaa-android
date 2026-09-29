@@ -117,6 +117,7 @@ class Library(val api: YandexApi) : AccountGateway {
     suspend fun likedTrackIds(): List<String>;  suspend fun likedTracks(): List<Track>
     suspend fun userPlaylists(): List<PlaylistRef>;  suspend fun playlistTracks(playlist: PlaylistRef): List<Track>
     suspend fun personalPlaylists(): List<PlaylistRef>              // «Для вас»: GET /landing3?blocks=personalplaylists
+    suspend fun playlistRecommendations(playlist: PlaylistRef): List<Track>   // «Похожие треки»
     suspend fun likedArtists(): List<NamedRef>;  suspend fun artistTopTracks(artistId: String): List<Track>  // ≤ 100
     suspend fun likedAlbums(): List<NamedRef>;  suspend fun albumTracks(albumId: String): List<Track>
     suspend fun stations(): List<Station>                            // GET /rotor/stations/list?language=ru
@@ -136,6 +137,7 @@ class Library(val api: YandexApi) : AccountGateway {
 | GET | `/users/{uid}/playlists/list` | — → `uid`/`owner.uid`, `kind`, `title`, `trackCount` |
 | GET | `/landing3?blocks=personalplaylists` | — → `blocks[].entities[].data`: плейлист — вложенный `data`, если есть, иначе сам `data`; `uid`/`owner.uid`, `kind`, `title`, `trackCount` (нет — 0). Запись без владельца или без `kind` (например, `ready: false`) пропускается |
 | GET | `/users/{ownerUid}/playlists/{kind}` | — → `tracks[]` (вложенные `track` или только `id`) |
+| GET | `/users/{ownerUid}/playlists/{kind}/recommendations` | — → `tracks[]`, разбор тот же, что у плейлиста: трек без названия дозагружается по id через `POST /tracks/` |
 | GET | `/users/{uid}/likes/artists`, `/likes/albums` | элементы могут быть обёрнуты в `artist`/`album` |
 | GET | `/artists/{id}/track-ids-by-rating` | — → `tracks[]` |
 | POST | `/albums` | `album-ids=1,2` (подкасты пропускаются) |

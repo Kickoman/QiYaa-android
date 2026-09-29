@@ -156,4 +156,6 @@
     <string name="library_for_you">For you</string>
     <string name="library_sub_for_you">FOR YOU</string>
     <string name="library_group_for_you">MADE FOR YOU</string>
+    <string name="queue_similar_title">Similar: %1$s</string>
+    <string name="library_similar_hint">Hold a playlist to play similar tracks</string>
 </resources>

@@ -38,7 +38,12 @@ import io.github.kickoman.qiyaa.ui.theme.mono
 import io.github.kickoman.qiyaa.yandex.Library
 import io.github.kickoman.qiyaa.yandex.PlaylistRef
 
-private data class ChipItem(val id: String, val label: String, val onClick: () -> Unit)
+private data class ChipItem(
+    val id: String,
+    val label: String,
+    val onLongClick: (() -> Unit)? = null,
+    val onClick: () -> Unit,
+)
 
 private data class ChipGroup(val name: String, val items: List<ChipItem>)
 
@@ -191,6 +196,15 @@ fun LibrarySectionScreen(viewModel: AppViewModel, section: LibrarySection) {
                         color = colors.dimmer,
                     )
             }
+            val showsPlaylists = section == LibrarySection.PLAYLISTS || section == LibrarySection.FOR_YOU
+            if (showsPlaylists && loaded && groups.isNotEmpty()) {
+                QiText(
+                    stringResource(R.string.library_similar_hint),
+                    HintStyle,
+                    Modifier.padding(top = 14.dp),
+                    color = colors.dimmer,
+                )
+            }
             for (group in groups) {
                 Column(Modifier.padding(top = 14.dp)) {
                     Row(
@@ -208,6 +222,7 @@ fun LibrarySectionScreen(viewModel: AppViewModel, section: LibrarySection) {
                             Chip(
                                 item.label,
                                 active = item.id == queue.activeSourceId,
+                                onLongClick = item.onLongClick,
                                 onClick = item.onClick,
                             )
                         }
@@ -218,7 +233,10 @@ fun LibrarySectionScreen(viewModel: AppViewModel, section: LibrarySection) {
     }
 }
 
-private fun playlistChip(playlist: PlaylistRef, viewModel: AppViewModel): ChipItem =
-    ChipItem(playlist.sourceId, "${playlist.title} (${playlist.trackCount})") {
-        viewModel.playPlaylist(playlist)
-    }
+private fun playlistChip(playlist: PlaylistRef, viewModel: AppViewModel): ChipItem = ChipItem(
+    playlist.sourceId,
+    "${playlist.title} (${playlist.trackCount})",
+    onLongClick = { viewModel.playSimilar(playlist) },
+) {
+    viewModel.playPlaylist(playlist)
+}
