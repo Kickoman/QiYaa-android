@@ -9,7 +9,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 
@@ -74,6 +76,32 @@ class Library(val api: YandexApi) : AccountGateway {
         api.getJson(userPath("playlists/list")).arrayOrEmpty.mapNotNull {
             playlistRef(it.objectOrEmpty, needOwner = false)
         }
+
+    suspend fun wheelWaves(seeds: List<String>): List<WheelWave> {
+        val body = buildJsonObject {
+            put(
+                "context",
+                buildJsonObject {
+                    put("type", WHEEL_CONTEXT_WAVE)
+                    put("data", buildJsonObject { putJsonArray("seeds") { seeds.forEach { add(it) } } })
+                },
+            )
+            putJsonArray("feedbacks") {}
+        }
+        return api.postJson("/wheel/new", body, unwrapResult = false)
+            .objectOrEmpty["items"].arrayOrEmpty
+            .mapNotNull { element ->
+                val item = element.objectOrEmpty
+                if (item.string("type") != WHEEL_CONTEXT_WAVE) return@mapNotNull null
+                val wave = item["data"].objectOrEmpty["wave"].objectOrEmpty
+                val name = wave.string("name")
+                val waveSeeds = wave["seeds"].arrayOrEmpty.mapNotNull {
+                    (it as? JsonPrimitive)?.contentOrNull
+                }
+                if (name.isEmpty() || waveSeeds.isEmpty()) return@mapNotNull null
+                WheelWave(name, wave.string("description"), waveSeeds)
+            }
+    }
 
     suspend fun personalPlaylists(): List<PlaylistRef> =
         api.getJson("/landing3", mapOf("blocks" to LANDING_PERSONAL_PLAYLISTS))
@@ -265,6 +293,7 @@ class Library(val api: YandexApi) : AccountGateway {
         const val ARTIST_TOP_LIMIT = 100
         const val RADIO_FROM = "web-main-rup-radio-main"
         const val LANDING_PERSONAL_PLAYLISTS = "personalplaylists"
+        const val WHEEL_CONTEXT_WAVE = "WAVE"
         private val CLIENT_ERRORS = 400..499
 
         fun parseWaveBatch(result: JsonElement): WaveBatch {

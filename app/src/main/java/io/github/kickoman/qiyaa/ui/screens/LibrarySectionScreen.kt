@@ -1,6 +1,7 @@
 package io.github.kickoman.qiyaa.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,11 +14,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -35,12 +38,14 @@ import io.github.kickoman.qiyaa.ui.theme.LabelStyle
 import io.github.kickoman.qiyaa.ui.theme.Qi
 import io.github.kickoman.qiyaa.ui.theme.ReadoutStyle
 import io.github.kickoman.qiyaa.ui.theme.mono
+import io.github.kickoman.qiyaa.ui.theme.sans
 import io.github.kickoman.qiyaa.yandex.Library
 import io.github.kickoman.qiyaa.yandex.PlaylistRef
 
 private data class ChipItem(
     val id: String,
     val label: String,
+    val description: String? = null,
     val onLongClick: (() -> Unit)? = null,
     val onClick: () -> Unit,
 )
@@ -62,6 +67,7 @@ fun LibrarySectionScreen(viewModel: AppViewModel, section: LibrarySection) {
         stringResource(
             when (section) {
                 LibrarySection.FOR_YOU -> R.string.library_sub_for_you
+                LibrarySection.WHEEL -> R.string.library_sub_wheel
                 LibrarySection.STATIONS -> R.string.library_sub_stations
                 LibrarySection.PLAYLISTS -> R.string.library_sub_playlists
                 LibrarySection.ARTISTS -> R.string.library_sub_artists
@@ -107,6 +113,22 @@ fun LibrarySectionScreen(viewModel: AppViewModel, section: LibrarySection) {
                             },
                         )
                     }
+            }
+            LibrarySection.WHEEL -> {
+                val waves = libraryUi.wheel
+                loaded = waves != null
+                val items = waves.orEmpty().map { wave ->
+                    ChipItem(wave.seeds.first(), wave.name, description = wave.description) {
+                        viewModel.playWheelWave(wave)
+                    }
+                }
+                val name =
+                    if (libraryUi.wheelMatchesCurrent) {
+                        R.string.library_group_wheel_current
+                    } else {
+                        R.string.library_group_wheel_my
+                    }
+                listOf(ChipGroup(stringResource(name), items)).filter { it.items.isNotEmpty() }
             }
             LibrarySection.FOR_YOU -> {
                 val forYou = libraryUi.forYou
@@ -214,21 +236,46 @@ fun LibrarySectionScreen(viewModel: AppViewModel, section: LibrarySection) {
                         QiText(group.name, LabelStyle, color = colors.dim)
                         QiText("${group.items.size}", LabelStyle, color = colors.dim)
                     }
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
+                    if (group.items.any { it.description != null }) {
                         for (item in group.items) {
-                            Chip(
-                                item.label,
-                                active = item.id == queue.activeSourceId,
-                                onLongClick = item.onLongClick,
-                                onClick = item.onClick,
-                            )
+                            DescribedRow(item, active = item.id == queue.activeSourceId)
+                        }
+                    } else {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            for (item in group.items) {
+                                Chip(
+                                    item.label,
+                                    active = item.id == queue.activeSourceId,
+                                    onLongClick = item.onLongClick,
+                                    onClick = item.onClick,
+                                )
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun DescribedRow(item: ChipItem, active: Boolean) {
+    val colors = Qi.colors
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (active) colors.accentBackground else colors.surface)
+            .tap(onClick = item.onClick)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+    ) {
+        QiText(item.label, sans(15.sp, 500), color = if (active) colors.accent else colors.text)
+        if (!item.description.isNullOrEmpty()) {
+            QiText(item.description, HintStyle, Modifier.padding(top = 2.dp), color = colors.dim)
         }
     }
 }

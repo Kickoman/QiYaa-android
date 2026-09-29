@@ -158,4 +158,9 @@
     <string name="library_group_for_you">MADE FOR YOU</string>
     <string name="queue_similar_title">Similar: %1$s</string>
     <string name="library_similar_hint">Hold a playlist to play similar tracks</string>
+    <string name="library_wheel">Wheel of waves</string>
+    <string name="library_wheel_meta">MATCHED</string>
+    <string name="library_sub_wheel">WHEEL OF WAVES</string>
+    <string name="library_group_wheel_current">MATCHED TO THE CURRENT WAVE</string>
+    <string name="library_group_wheel_my">MATCHED TO MY WAVE</string>
 </resources>

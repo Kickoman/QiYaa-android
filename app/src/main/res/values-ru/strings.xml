@@ -143,4 +143,9 @@
     <string name="library_group_for_you">СОБРАНО ДЛЯ ВАС</string>
     <string name="queue_similar_title">Похожие: %1$s</string>
     <string name="library_similar_hint">Удерживайте плейлист, чтобы включить похожие треки</string>
+    <string name="library_wheel">Колесо волн</string>
+    <string name="library_wheel_meta">ПОДБОР</string>
+    <string name="library_sub_wheel">КОЛЕСО ВОЛН</string>
+    <string name="library_group_wheel_current">ПОД ТЕКУЩУЮ ВОЛНУ</string>
+    <string name="library_group_wheel_my">ПОД МОЮ ВОЛНУ</string>
 </resources>

@@ -130,6 +130,20 @@ class YandexApiTest {
     }
 
     @Test
+    fun `the wheel of waves takes named WAVE items with seeds from an unwrapped reply`() = runBlocking {
+        route("POST", "/wheel/new", Spec.fixture("wheel-new", "ok"))
+        assertEquals(
+            Spec.expected("wheel-new", "ok"),
+            SpecJson.waves(library.wheelWaves(listOf("user:onyourwave"))),
+        )
+        val body = bodies[requests["/wheel/new"]!!.single()]!!
+        assertEquals(
+            """{"context":{"type":"WAVE","data":{"seeds":["user:onyourwave"]}},"feedbacks":[]}""",
+            body,
+        )
+    }
+
+    @Test
     fun `a playlist with embedded tracks parses them directly`() = runBlocking {
         route("GET", "/users/42/playlists/1003", Spec.fixture("users-playlists", "embedded-tracks"))
         val tracks = library.playlistTracks(PlaylistRef("42", "1003", "Дорога", 2))

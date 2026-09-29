@@ -44,10 +44,12 @@ class YandexApi(private val client: OkHttpClient, val baseUrl: String = "https:/
         path: String,
         body: JsonObject,
         query: Map<String, String> = emptyMap(),
+        unwrapResult: Boolean = true,
     ): JsonElement = execute(
         "POST",
         path,
         request(url(path, query)).post(body.toString().toRequestBody(JSON_TYPE)).build(),
+        unwrapResult,
     )
 
     fun timestampNow(): String = ISO_MILLIS.format(Instant.now().atOffset(ZoneOffset.UTC))
@@ -154,27 +156,35 @@ class YandexApi(private val client: OkHttpClient, val baseUrl: String = "https:/
         return builder.build()
     }
 
-    private suspend fun execute(method: String, path: String, request: Request): JsonElement =
-        withContext(Dispatchers.IO) {
-            val (status, body, reason) =
-                try {
-                    client.newCall(request).execute().use { response ->
-                        Triple(response.code, response.body?.string().orEmpty(), response.message)
-                    }
-                } catch (failed: IOException) {
-                    throw NetworkException(method, path, failed)
+    private suspend fun execute(
+        method: String,
+        path: String,
+        request: Request,
+        unwrapResult: Boolean = true,
+    ): JsonElement = withContext(Dispatchers.IO) {
+        val (status, body, reason) =
+            try {
+                client.newCall(request).execute().use { response ->
+                    Triple(response.code, response.body?.string().orEmpty(), response.message)
                 }
-            val json = parseJsonObjectOrNull(body)
-            if (status >= 400) {
-                val failed = HttpException(status, method, path, errorMessage(json, reason))
-                if (failed.isTokenRejected && request.header("Authorization") != null) {
-                    mutableTokenRejections.tryEmit(failed)
-                }
-                throw failed
+            } catch (failed: IOException) {
+                throw NetworkException(method, path, failed)
             }
-            json?.get("result")
-                ?: throw MalformedResponseException(method, path, "no \"result\" in the response")
+        val json = parseJsonObjectOrNull(body)
+        if (status >= 400) {
+            val failed = HttpException(status, method, path, errorMessage(json, reason))
+            if (failed.isTokenRejected && request.header("Authorization") != null) {
+                mutableTokenRejections.tryEmit(failed)
+            }
+            throw failed
         }
+        val payload = if (unwrapResult) json?.get("result") else json
+        payload ?: throw MalformedResponseException(
+            method,
+            path,
+            if (unwrapResult) "no \"result\" in the response" else "the response is not a JSON object",
+        )
+    }
 
     private fun errorMessage(json: JsonObject?, reason: String): String {
         val message =

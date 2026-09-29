@@ -318,4 +318,17 @@ class QueueWaveTest {
         harness.source.calls.clear()
         return harness
     }
+
+    @Test
+    fun `the seed of the current wave is its station, and there is none for an ordinary queue`() = runTest {
+        val harness = QueueHarness(this)
+        assertEquals(null, harness.controller.currentWaveSeed())
+        harness.source.onStartWave = { WaveBatch("S1", "B1", tracks("w1", "w2", "w3")) }
+        harness.controller.playWave(listOf("genre:rock", "mood:energetic"), "Rock")
+        runCurrent()
+        assertEquals("genre:rock", harness.controller.currentWaveSeed())
+        harness.controller.loadSource("Liked") { tracks("a") }
+        runCurrent()
+        assertEquals(null, harness.controller.currentWaveSeed())
+    }
 }

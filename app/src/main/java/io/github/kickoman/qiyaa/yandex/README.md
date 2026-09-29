@@ -12,7 +12,7 @@ grep -rlnE '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiy
 |---|---|
 | `Errors.kt` | `YandexException` и пять наследников |
 | `JsonFields.kt` | мягкий доступ к JSON: `objectOrEmpty`, `arrayOrEmpty`, `string`, `int`, `long`, `boolean`, `scalarString`, `idString`, `parseJsonObjectOrNull` |
-| `Models.kt` | `Account`, `Track`, `NamedRef`, `PlaylistRef`, `Station`, `WaveBatch`, `SearchResult`, `DownloadVariant`, `DownloadInfo`, `ResolvedUrl`, `WaveEvent`, `WaveContext` |
+| `Models.kt` | `Account`, `Track`, `NamedRef`, `PlaylistRef`, `Station`, `WheelWave`, `WaveBatch`, `SearchResult`, `DownloadVariant`, `DownloadInfo`, `ResolvedUrl`, `WaveEvent`, `WaveContext` |
 | `YandexApi.kt` | `YandexApi` — транспорт (OkHttp), конверт, `accountStatus`, `tracks`, `resolveTrackUrl`, `reportPlayStarted` |
 | `TrackParsing.kt` | `TrackParsing` — `JsonElement` → `Track` |
 | `TrackUrl.kt` | `TrackUrl` — выбор варианта и подпись ссылки на mp3 |
@@ -47,7 +47,7 @@ class YandexApi(client: OkHttpClient, val baseUrl: String = "https://api.music.y
     val tokenRejections: SharedFlow<HttpException>               // 401/403 от API на запросе с токеном
     suspend fun getJson(path: String, query: Map<String, String> = emptyMap()): JsonElement
     suspend fun postForm(path: String, form: List<Pair<String, String>>): JsonElement
-    suspend fun postJson(path: String, body: JsonObject, query: Map<String, String> = emptyMap()): JsonElement
+    suspend fun postJson(path: String, body: JsonObject, query: Map<String, String> = emptyMap(), unwrapResult: Boolean = true): JsonElement
     fun timestampNow(): String                                   // UTC, yyyy-MM-dd'T'HH:mm:ss.SSS'Z' 
     suspend fun getText(fullUrl: String): String                 // без конверта, для download-info
     suspend fun accountStatus(): Account
@@ -60,7 +60,7 @@ class YandexApi(client: OkHttpClient, val baseUrl: String = "https://api.music.y
 
 Каждый запрос уходит с `Accept-Language: ru`. `Authorization: OAuth <token>` добавляется, только если токен не пуст и адрес запроса совпадает с `baseUrl` по схеме, хосту и порту (`api.music.yandex.net`, в тестах — mock-сервер). На другие хосты токен не уходит никогда: в первую очередь это `downloadInfoUrl`, чей хост приходит из ответа сервера. Все вызовы выполняются на `Dispatchers.IO`.
 
-Конверт: тело ответа — объект с полем `result`; оно и возвращается. При статусе ≥ 400 сообщение берётся из `error.message`, затем из строкового `error`, затем из HTTP reason phrase. Ответ 2xx без `result` — `MalformedResponseException`.
+Конверт: тело ответа — объект с полем `result`; оно и возвращается. При статусе ≥ 400 сообщение берётся из `error.message`, затем из строкового `error`, затем из HTTP reason phrase. Ответ 2xx без `result` — `MalformedResponseException`. Исключение — `POST /wheel/new`, который отвечает без конверта: `postJson(…, unwrapResult = false)` возвращает весь объект, а ответ, который не объект JSON, — тоже `MalformedResponseException`.
 
 `tokenRejections` получает каждое `HttpException` с `isTokenRejected`, если запрос ушёл с заголовком `Authorization`, до того как исключение брошено. Так `Session` узнаёт об отозванном токене на **любом** запросе, а не только при старте. Не эмитят: запросы без токена (вход), 5xx, `getText()` — у хранилища свой 403, не про токен. Поток — `MutableSharedFlow(extraBufferCapacity = 1)` с `tryEmit`: без подписчика событие теряется.
 
@@ -118,6 +118,7 @@ class Library(val api: YandexApi) : AccountGateway {
     suspend fun userPlaylists(): List<PlaylistRef>;  suspend fun playlistTracks(playlist: PlaylistRef): List<Track>
     suspend fun personalPlaylists(): List<PlaylistRef>              // «Для вас»: GET /landing3?blocks=personalplaylists
     suspend fun playlistRecommendations(playlist: PlaylistRef): List<Track>   // «Похожие треки»
+    suspend fun wheelWaves(seeds: List<String>): List<WheelWave>    // «Колесо волн»: POST /wheel/new
     suspend fun likedArtists(): List<NamedRef>;  suspend fun artistTopTracks(artistId: String): List<Track>  // ≤ 100
     suspend fun likedAlbums(): List<NamedRef>;  suspend fun albumTracks(albumId: String): List<Track>
     suspend fun stations(): List<Station>                            // GET /rotor/stations/list?language=ru
@@ -135,6 +136,7 @@ class Library(val api: YandexApi) : AccountGateway {
 |---|---|---|
 | GET | `/users/{uid}/likes/tracks` | — → `library.tracks[].id` |
 | GET | `/users/{uid}/playlists/list` | — → `uid`/`owner.uid`, `kind`, `title`, `trackCount` |
+| POST | `/wheel/new` | JSON `{"context":{"type":"WAVE","data":{"seeds":[…]}},"feedbacks":[]}` → без конверта `result`: `items[]` с `type == "WAVE"`, из `data.wave` — `name`, `description` (нет — `""`), `seeds`; элемент без имени или с пустыми `seeds` пропускается |
 | GET | `/landing3?blocks=personalplaylists` | — → `blocks[].entities[].data`: плейлист — вложенный `data`, если есть, иначе сам `data`; `uid`/`owner.uid`, `kind`, `title`, `trackCount` (нет — 0). Запись без владельца или без `kind` (например, `ready: false`) пропускается |
 | GET | `/users/{ownerUid}/playlists/{kind}` | — → `tracks[]` (вложенные `track` или только `id`) |
 | GET | `/users/{ownerUid}/playlists/{kind}/recommendations` | — → `tracks[]`, разбор тот же, что у плейлиста: трек без названия дозагружается по id через `POST /tracks/` |
