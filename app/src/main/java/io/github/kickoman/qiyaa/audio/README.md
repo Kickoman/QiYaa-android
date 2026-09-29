@@ -14,7 +14,7 @@ grep -rlnE '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiy
 | `EqPresets.kt` | `EqPreset`, `EqPresets` — 17 пресетов Winamp |
 | `Analyzer.kt` | `Analyzer` — окно Ханна + radix-2 FFT → dBFS |
 | `Spectrum.kt` | `Spectrum` — 19 логарифмических полос с пиками |
-| `VisualizerTap.kt` | `VisualizerTap` — lock-free кольцо последних кадров |
+| `VisualizerTap.kt` | `VisualizerTap` — lock-free кольцо последних кадров с метками времени звука |
 | `Pcm16.kt` | `Pcm16` — 16-bit PCM ↔ float |
 | `AudioBus.kt` | `AudioBus` — что процессоры публикуют для UI |
 
@@ -76,7 +76,33 @@ class Spectrum(val barCount: Int = 19) {
 
 ## `VisualizerTap`
 
-Кольцо на `capacityFrames` (степень двойки, по умолчанию 4096) стереокадров. Аудиопоток пишет `write(frames, frameCount, channels)` (моно дублируется в оба канала), UI читает `read(outLeft, outRight, frameCount)` — последние кадры, старые первыми. Курсор — `AtomicInteger`, данные не защищены: рваное чтение допускается по замыслу (это картинка, не звук). `read` с `frameCount > capacityFrames` — `IllegalArgumentException`.
+```kotlin
+class VisualizerTap(capacityFrames: Int = 131_072) {
+    var sampleRate: Int
+    fun announceInput(ptsUs: Long)                                  // метка времени следующего входного буфера
+    fun write(frames: FloatArray, frameCount: Int, channels: Int)   // аудиопоток; моно дублируется в оба канала
+    fun reportPlaying(ptsUs: Long, atNanos: Long)                   // какой момент звучит сейчас
+    fun readPlaying(outLeft, outRight, frameCount, nowNanos: Long)  // окно, которое кончается на звучащем кадре
+    fun read(outLeft, outRight, frameCount)                         // окно из самых свежих кадров
+    fun lagUs(nowNanos: Long): Long?                                // от звучащего кадра до самого свежего
+    fun clear()
+}
+```
+
+Кольцо на `capacityFrames` стереокадров (степень двойки; по умолчанию 131 072 — 2,7 с при 48 кГц, чтобы вместить задержку вывода вместе с окном FFT). Процессор копирует PCM **до** буфера `AudioTrack`, поэтому самые свежие кадры звучат позже на задержку вывода. Чтобы картинка шла вместе со звуком, у кольца есть метки: `announceInput` задаёт время звука первого кадра следующей записи, `write` запоминает пару «номер кадра — время» (до 1 024 меток) и продолжает время по числу кадров и `sampleRate`. `reportPlaying` сообщает, какой момент звучит, и `readPlaying` находит по меткам кадр, который звучит в `nowNanos`: от последнего отчёта позиция досчитывается по часам, но не больше чем на 0,5 с и не дальше самого свежего записанного кадра. Без меток и отчёта `readPlaying` ведёт себя как `read`. Время — в единицах ExoPlayer (`presentationTimeUs` входного буфера звукового выхода, со смещением рендерера), а не позиция трека: откуда оно берётся, см. `playback/README.md`, `TimedAudioSink`.
+
+Курсор — `AtomicLong`, данные и метки не защищены: рваное чтение допускается по замыслу (это картинка, не звук). `read`/`readPlaying` с `frameCount > capacityFrames` — `IllegalArgumentException`.
+
+**Traps:**
+- `clear()` (процессор на flush: перемотка, смена формата) забывает метки и отчёт. При смене формата на бесшовном переходе старый трек ещё звучит, а меток у него уже нет: до конца задержки видно начало нового трека.
+- Метку ставит первый вызов `write` после `announceInput`; процессоры Media3 перед нашими (обрезка тишины кодека) могут сдвинуть её на десятки миллисекунд.
+
+**Замер задержки.** Звуковой выход раз в 5 с пишет в logcat `Visualizer: the newest written audio sounds in N ms` — насколько раньше картинка шла бы без меток (`adb logcat -s QiYaa` во время воспроизведения). Число зависит от устройства и выхода, поэтому в коде оно не зашито: метки берут задержку у самого ExoPlayer. Замеры:
+
+| Устройство | Выход | N, мс | Сборка |
+|---|---|---|---|
+| — | проводные наушники | ещё не замерено | — |
+| — | Bluetooth | ещё не замерено | — |
 
 ## `Pcm16`
 

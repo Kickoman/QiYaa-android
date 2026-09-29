@@ -61,7 +61,7 @@ fun VisualizerStrip(
             return@LaunchedEffect
         }
         while (isActive) {
-            audioBus.visualizerTap.read(left, right, FFT_SIZE)
+            audioBus.visualizerTap.readPlaying(left, right, FFT_SIZE, System.nanoTime())
             for (i in 0 until FFT_SIZE) mono[i] = 0.5f * (left[i] + right[i])
             if (mode == VisualizerMode.SPECTRUM) {
                 analyzer.analyze(mono, spectrumDb)
