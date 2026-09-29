@@ -206,7 +206,7 @@ class Library(val api: YandexApi) : AccountGateway {
         val best = result["best"].objectOrEmpty
         val bestItem = best["result"].objectOrEmpty
         return SearchResult(
-            bestType = best.string("type"),
+            bestType = bestTypeOf(best.string("type")),
             bestId = idString(bestItem["id"]),
             bestName = if (bestItem.containsKey(
                     "name",
@@ -218,6 +218,11 @@ class Library(val api: YandexApi) : AccountGateway {
             },
             tracks = TrackParsing.parseTrackArray(result["tracks"].objectOrEmpty["results"]),
         )
+    }
+
+    private fun bestTypeOf(type: String): String = when {
+        type.isEmpty() || type in SEARCH_BEST_TYPES -> type
+        else -> SEARCH_BEST_OTHER
     }
 
     suspend fun setLiked(trackId: String, liked: Boolean) {
@@ -294,6 +299,8 @@ class Library(val api: YandexApi) : AccountGateway {
         const val RADIO_FROM = "web-main-rup-radio-main"
         const val LANDING_PERSONAL_PLAYLISTS = "personalplaylists"
         const val WHEEL_CONTEXT_WAVE = "WAVE"
+        const val SEARCH_BEST_OTHER = "other"
+        val SEARCH_BEST_TYPES = setOf("artist", "album", "track", "playlist")
         private val CLIENT_ERRORS = 400..499
 
         fun parseWaveBatch(result: JsonElement): WaveBatch {

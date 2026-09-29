@@ -12,7 +12,10 @@ object TrackParsing {
         val version = item.string("version")
         val title = item.string("title").let { if (version.isEmpty()) it else "$it ($version)" }
         val firstAlbum = item["albums"].arrayOrEmpty.firstOrNull()?.objectOrEmpty
-        val cover = item.string("coverUri").ifEmpty { firstAlbum?.string("coverUri").orEmpty() }
+        val cover =
+            firstAlbum?.string("coverUri").orEmpty()
+                .ifEmpty { item.string("coverUri") }
+                .ifEmpty { item.string("ogImage") }
         return Track(
             id = idString(item["id"]),
             title = title,
