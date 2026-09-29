@@ -28,9 +28,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.ui.AppViewModel
 import io.github.kickoman.qiyaa.ui.LibrarySection
+import io.github.kickoman.qiyaa.ui.ListState
 import io.github.kickoman.qiyaa.ui.components.Chip
 import io.github.kickoman.qiyaa.ui.components.QiText
 import io.github.kickoman.qiyaa.ui.components.tap
+import io.github.kickoman.qiyaa.ui.itemsOrEmpty
 import io.github.kickoman.qiyaa.ui.render
 import io.github.kickoman.qiyaa.ui.sourceId
 import io.github.kickoman.qiyaa.ui.theme.CaptionStyle
@@ -60,6 +62,7 @@ private val STATION_GROUP_ORDER = listOf("personal", "genre", "mood", "activity"
 fun LibrarySectionScreen(viewModel: AppViewModel, section: LibrarySection) {
     val colors = Qi.colors
     val libraryUi by viewModel.libraryUi.collectAsStateWithLifecycle()
+    val listState: ListState<*>
     val account by viewModel.account.collectAsStateWithLifecycle()
     val queue by viewModel.queue.state.collectAsStateWithLifecycle()
     BackHandler { viewModel.closeSection() }
@@ -86,13 +89,12 @@ fun LibrarySectionScreen(viewModel: AppViewModel, section: LibrarySection) {
             "author" to stringResource(R.string.library_group_author),
         )
 
-    val loaded: Boolean
     val groups: List<ChipGroup> =
         when (section) {
             LibrarySection.STATIONS -> {
-                val stations = libraryUi.stations
-                loaded = stations != null
-                stations.orEmpty()
+                val stations by viewModel.stations.state.collectAsStateWithLifecycle()
+                listState = stations
+                stations.itemsOrEmpty()
                     .groupBy { Library.stationGroupKey(it.type) }
                     .entries
                     .sortedBy { (key, _) ->
@@ -116,9 +118,9 @@ fun LibrarySectionScreen(viewModel: AppViewModel, section: LibrarySection) {
                     }
             }
             LibrarySection.WHEEL -> {
-                val waves = libraryUi.wheel
-                loaded = waves != null
-                val items = waves.orEmpty().map { wave ->
+                val waves by viewModel.wheel.state.collectAsStateWithLifecycle()
+                listState = waves
+                val items = waves.itemsOrEmpty().map { wave ->
                     ChipItem(wave.seeds.first(), wave.name, description = wave.description) {
                         viewModel.playWheelWave(wave)
                     }
@@ -132,15 +134,15 @@ fun LibrarySectionScreen(viewModel: AppViewModel, section: LibrarySection) {
                 listOf(ChipGroup(stringResource(name), items)).filter { it.items.isNotEmpty() }
             }
             LibrarySection.FOR_YOU -> {
-                val forYou = libraryUi.forYou
-                loaded = forYou != null
-                val items = forYou.orEmpty().map { playlistChip(it, viewModel) }
+                val forYou by viewModel.forYou.state.collectAsStateWithLifecycle()
+                listState = forYou
+                val items = forYou.itemsOrEmpty().map { playlistChip(it, viewModel) }
                 listOf(ChipGroup(stringResource(R.string.library_group_for_you), items))
             }
             LibrarySection.PLAYLISTS -> {
-                val playlists = libraryUi.playlists
-                loaded = playlists != null
-                val (mine, saved) = playlists.orEmpty().partition { it.ownerUid == account.uid }
+                val playlists by viewModel.playlists.state.collectAsStateWithLifecycle()
+                listState = playlists
+                val (mine, saved) = playlists.itemsOrEmpty().partition { it.ownerUid == account.uid }
                 listOf(
                     ChipGroup(
                         stringResource(R.string.library_group_mine),
@@ -157,17 +159,17 @@ fun LibrarySectionScreen(viewModel: AppViewModel, section: LibrarySection) {
                 ).filter { it.items.isNotEmpty() }
             }
             LibrarySection.ARTISTS -> {
-                val artists = libraryUi.artists
-                loaded = artists != null
-                val items = artists.orEmpty().map { artist ->
+                val artists by viewModel.artists.state.collectAsStateWithLifecycle()
+                listState = artists
+                val items = artists.itemsOrEmpty().map { artist ->
                     ChipItem("artist:${artist.id}", artist.name) { viewModel.playArtist(artist) }
                 }
                 listOf(ChipGroup(stringResource(R.string.library_group_liked_top), items))
             }
             LibrarySection.ALBUMS -> {
-                val albums = libraryUi.albums
-                loaded = albums != null
-                val items = albums.orEmpty().map { album ->
+                val albums by viewModel.albums.state.collectAsStateWithLifecycle()
+                listState = albums
+                val items = albums.itemsOrEmpty().map { album ->
                     ChipItem("album:${album.id}", album.name) { viewModel.playAlbum(album) }
                 }
                 listOf(ChipGroup(stringResource(R.string.library_group_liked), items))
@@ -195,15 +197,22 @@ fun LibrarySectionScreen(viewModel: AppViewModel, section: LibrarySection) {
                 .verticalScroll(rememberScrollState())
                 .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
         ) {
-            val error = libraryUi.error
+            val loaded = listState is ListState.Loaded
             when {
-                error != null && !loaded ->
-                    QiText(
-                        stringResource(R.string.library_error, error.render().uppercase()),
-                        HintStyle,
-                        Modifier.padding(top = 14.dp),
-                        color = colors.error,
-                    )
+                listState is ListState.Failed ->
+                    Column(Modifier.padding(top = 14.dp).tap { viewModel.loadSection(section) }) {
+                        QiText(
+                            stringResource(R.string.library_error, listState.error.render().uppercase()),
+                            HintStyle,
+                            color = colors.error,
+                        )
+                        QiText(
+                            stringResource(R.string.library_retry),
+                            HintStyle,
+                            Modifier.padding(top = 6.dp),
+                            color = colors.accent,
+                        )
+                    }
                 !loaded ->
                     QiText(
                         stringResource(R.string.library_loading),

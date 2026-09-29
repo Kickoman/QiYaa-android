@@ -37,6 +37,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.ui.AppViewModel
 import io.github.kickoman.qiyaa.ui.LibrarySection
+import io.github.kickoman.qiyaa.ui.ListState
 import io.github.kickoman.qiyaa.ui.PlayerViewModel
 import io.github.kickoman.qiyaa.ui.components.ActionButton
 import io.github.kickoman.qiyaa.ui.components.IconPaths
@@ -44,7 +45,6 @@ import io.github.kickoman.qiyaa.ui.components.PathIcon
 import io.github.kickoman.qiyaa.ui.components.QiText
 import io.github.kickoman.qiyaa.ui.components.ScreenHeader
 import io.github.kickoman.qiyaa.ui.components.tap
-import io.github.kickoman.qiyaa.ui.render
 import io.github.kickoman.qiyaa.ui.theme.HintStyle
 import io.github.kickoman.qiyaa.ui.theme.LabelStyle
 import io.github.kickoman.qiyaa.ui.theme.Qi
@@ -58,6 +58,10 @@ fun LibraryScreen(viewModel: AppViewModel, player: PlayerViewModel) {
     val account by viewModel.account.collectAsStateWithLifecycle()
     val liked by viewModel.likedIds.collectAsStateWithLifecycle()
     val libraryUi by viewModel.libraryUi.collectAsStateWithLifecycle()
+    val forYou by viewModel.forYou.state.collectAsStateWithLifecycle()
+    val playlists by viewModel.playlists.state.collectAsStateWithLifecycle()
+    val artists by viewModel.artists.state.collectAsStateWithLifecycle()
+    val albums by viewModel.albums.state.collectAsStateWithLifecycle()
     val playerUi by player.ui.collectAsStateWithLifecycle()
     val track = playerUi.current
 
@@ -143,8 +147,14 @@ fun LibraryScreen(viewModel: AppViewModel, player: PlayerViewModel) {
             QiText("∞", mono(20.sp, 400), color = colors.accent)
         }
 
-        val pending = if (libraryUi.loading) stringResource(R.string.library_loading) else "…"
-        fun countOrPending(items: List<Any>?): String = items?.size?.toString() ?: pending
+        val loadingText = stringResource(R.string.library_loading)
+        val failedText = stringResource(R.string.library_row_error)
+        fun countOrStatus(state: ListState<*>): String = when (state) {
+            ListState.Idle -> "…"
+            ListState.Loading -> loadingText
+            is ListState.Loaded -> state.items.size.toString()
+            is ListState.Failed -> failedText
+        }
         Column(
             Modifier
                 .padding(start = 16.dp, end = 16.dp, top = 10.dp)
@@ -153,20 +163,20 @@ fun LibraryScreen(viewModel: AppViewModel, player: PlayerViewModel) {
                 .background(colors.surface),
         ) {
             SourceRow(stringResource(R.string.library_liked), "${liked.size}") { viewModel.playLiked() }
-            SourceRow(stringResource(R.string.library_for_you), countOrPending(libraryUi.forYou)) {
+            SourceRow(stringResource(R.string.library_for_you), countOrStatus(forYou)) {
                 viewModel.openSection(LibrarySection.FOR_YOU)
             }
             SourceRow(stringResource(R.string.library_wheel), stringResource(R.string.library_wheel_meta)) {
                 viewModel.openSection(LibrarySection.WHEEL)
             }
-            SourceRow(stringResource(R.string.library_playlists), countOrPending(libraryUi.playlists)) {
+            SourceRow(stringResource(R.string.library_playlists), countOrStatus(playlists)) {
                 viewModel.openSection(LibrarySection.PLAYLISTS)
             }
             SourceRow(
                 stringResource(R.string.library_artists),
-                countOrPending(libraryUi.artists) + " · " + stringResource(R.string.library_top_tracks),
+                countOrStatus(artists) + " · " + stringResource(R.string.library_top_tracks),
             ) { viewModel.openSection(LibrarySection.ARTISTS) }
-            SourceRow(stringResource(R.string.library_albums), countOrPending(libraryUi.albums)) {
+            SourceRow(stringResource(R.string.library_albums), countOrStatus(albums)) {
                 viewModel.openSection(LibrarySection.ALBUMS)
             }
             SourceRow(
@@ -176,14 +186,6 @@ fun LibraryScreen(viewModel: AppViewModel, player: PlayerViewModel) {
             ) {
                 viewModel.openSection(LibrarySection.STATIONS)
             }
-        }
-        libraryUi.error?.let { error ->
-            QiText(
-                stringResource(R.string.library_error, error.render().uppercase()),
-                mono(10.sp, 400, 1.sp),
-                Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
-                color = colors.error,
-            )
         }
 
         val currentTitle = track?.title?.uppercase() ?: stringResource(R.string.library_none)

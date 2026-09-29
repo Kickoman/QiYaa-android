@@ -23,7 +23,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 enum class Screen { LOGIN, PLAYER, PLAYLIST, EQ, LIBRARY }
 
@@ -48,21 +47,7 @@ data class LoginUi(
     val notice: String? = null,
 )
 
-data class LibraryUi(
-    val forYou: List<PlaylistRef>? = null,
-    val playlists: List<PlaylistRef>? = null,
-    val artists: List<NamedRef>? = null,
-    val albums: List<NamedRef>? = null,
-    val stations: List<Station>? = null,
-    val loading: Boolean = false,
-    val wheel: List<WheelWave>? = null,
-    val wheelMatchesCurrent: Boolean = false,
-    val error: ErrorKind? = null,
-    val searchText: String = "",
-) {
-    val isComplete: Boolean
-        get() = forYou != null && playlists != null && artists != null && albums != null && stations != null
-}
+data class LibraryUi(val wheelMatchesCurrent: Boolean = false, val searchText: String = "")
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val graph = application.appGraph
@@ -90,6 +75,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private val mutableLibraryUi = MutableStateFlow(LibraryUi())
     val libraryUi: StateFlow<LibraryUi> = mutableLibraryUi.asStateFlow()
+
+    private var wheelSeed = QueueController.MY_WAVE_SEED
+    val forYou = listLoader("For you") { library.personalPlaylists() }
+    val playlists = listLoader("Playlists") { library.userPlaylists() }
+    val artists = listLoader("Artists") { library.likedArtists() }
+    val albums = listLoader("Albums") { library.likedAlbums() }
+    val stations = listLoader("Stations") { library.stations() }
+    val wheel = listLoader("Wheel of waves") { library.wheelWaves(listOf(wheelSeed)) }
+    private val lists: List<ListLoader<*>> get() = listOf(forYou, playlists, artists, albums, stations)
 
     val sessionState: StateFlow<SessionState> = session.state
     val account = library.account
@@ -126,23 +120,26 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openSection(section: LibrarySection) {
         mutableSection.value = section
-        if (section == LibrarySection.WHEEL) loadWheel() else loadLibraryLists()
+        loadSection(section)
+    }
+
+    fun loadSection(section: LibrarySection) {
+        if (!library.isLoggedIn) return
+        when (section) {
+            LibrarySection.WHEEL -> loadWheel()
+            LibrarySection.FOR_YOU -> forYou.load()
+            LibrarySection.STATIONS -> stations.load()
+            LibrarySection.PLAYLISTS -> playlists.load()
+            LibrarySection.ARTISTS -> artists.load()
+            LibrarySection.ALBUMS -> albums.load()
+        }
     }
 
     private fun loadWheel() {
-        if (!library.isLoggedIn) return
         val current = queue.currentWaveSeed()
-        mutableLibraryUi.update { it.copy(wheel = null, wheelMatchesCurrent = current != null, error = null) }
-        viewModelScope.launch {
-            try {
-                val waves = withContext(Dispatchers.IO) {
-                    library.wheelWaves(listOf(current ?: QueueController.MY_WAVE_SEED))
-                }
-                mutableLibraryUi.update { it.copy(wheel = waves) }
-            } catch (failed: Exception) {
-                mutableLibraryUi.update { it.copy(error = kindOf("Wheel of waves", failed)) }
-            }
-        }
+        wheelSeed = current ?: QueueController.MY_WAVE_SEED
+        mutableLibraryUi.update { it.copy(wheelMatchesCurrent = current != null) }
+        wheel.load(force = true)
     }
 
     fun closeSection() {
@@ -191,35 +188,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         leaveSession(notice = null)
     }
 
-    fun loadLibraryLists(force: Boolean = false) {
-        val current = mutableLibraryUi.value
-        if (!library.isLoggedIn || current.loading) return
-        if (!force && current.isComplete) return
-        mutableLibraryUi.update { it.copy(loading = true, error = null) }
-        viewModelScope.launch {
-            try {
-                withContext(Dispatchers.IO) {
-                    val forYou = library.personalPlaylists()
-                    val playlists = library.userPlaylists()
-                    val artists = library.likedArtists()
-                    val albums = library.likedAlbums()
-                    val stations = library.stations()
-                    mutableLibraryUi.update {
-                        it.copy(
-                            forYou = forYou,
-                            playlists = playlists,
-                            artists = artists,
-                            albums = albums,
-                            stations = stations,
-                            loading = false,
-                        )
-                    }
-                }
-                if (likedIds.value.isEmpty()) preloadLikes()
-            } catch (failed: Exception) {
-                mutableLibraryUi.update { it.copy(loading = false, error = kindOf("Library lists", failed)) }
-            }
-        }
+    fun loadLibraryLists() {
+        if (!library.isLoggedIn) return
+        for (list in lists) list.load()
+        if (likedIds.value.isEmpty()) preloadLikes()
     }
 
     fun setSearchText(text: String) = mutableLibraryUi.update { it.copy(searchText = text) }
@@ -285,6 +257,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         queue.clear()
         session.signOut()
         tokenStore.clear()
+        for (list in lists + wheel) list.reset()
         mutableLibraryUi.value = LibraryUi()
         mutableLogin.value = LoginUi(notice = notice)
         go(Screen.LOGIN)
@@ -314,6 +287,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+
+    private fun <T> listLoader(what: String, fetch: suspend () -> List<T>) =
+        ListLoader(viewModelScope, Dispatchers.IO, fetch) { failed -> Log.w(LOG_TAG, "$what failed", failed) }
 
     private fun kindOf(what: String, failed: Exception): ErrorKind {
         Log.w(LOG_TAG, "$what failed", failed)
