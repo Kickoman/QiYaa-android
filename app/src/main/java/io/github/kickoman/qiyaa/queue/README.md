@@ -21,6 +21,7 @@ grep -rln 'qiyaa\.\(playback\|ui\|data\)\.' app/src/main/java/io/github/kickoman
 | `ErrorPolicy.kt` | `ErrorAction`, `ErrorPolicy` — что делать с ошибкой; ожидание сети перед повтором |
 | `FailureKind.kt` | `FailureKind` — `NETWORK`, `SESSION`, `TRACK` (определяет `playback/PlaybackFailures`) |
 | `WaveModeRule.kt` | `WaveModeRule` — режим пользователя (shuffle, повтор), который в волне выключен и потом возвращается |
+| `PlayTracker.kt` | `PlayTracker` — когда трек «начался» (для `/play-audio`, а с #26 — и для фидбека волны) |
 | `PlayOrder.kt` | `PlayOrder.remainingAfter` — сколько треков после текущего в порядке воспроизведения |
 
 ## `QueueController`
@@ -37,7 +38,7 @@ class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: C
     fun search(text: String, title: String)
     fun setQueue(tracks, title, isWave, autoplay, sourceId);  fun appendTracks(tracks);  fun clear()
     fun removeIndices(indices: Set<Int>);  fun toggleSelected(index: Int);  fun selectAllOrNone()
-    fun next();  fun previous()   // транспорт: сюда приходят кнопки приложения, уведомление и гарнитура
+    fun next();  fun previous();  fun stop()   // транспорт: сюда приходят кнопки приложения, уведомление и гарнитура
     fun toggleLike(track: Track);  fun dislikeAndSkip(track: Track)
     fun requestMore()   // «вперёд» в конце волны: снова запросить догрузку и продолжить с первого нового трека
     // события движка
@@ -59,7 +60,7 @@ class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: C
 - **«Назад»** (`previous()`): после 3 с (`RESTART_AFTER_MS`) — в начало текущего трека (TR-02), иначе предыдущий трек, на первом с повтором — последний, без повтора — в начало (TR-01).
 - **Один хозяин плеера.** Движок может смениться (сервис пересоздан при живом процессе): `detach` запоминает трек и позицию, `attach` нового движка кладёт ту же очередь на паузе туда же, вместе с режимами shuffle и повтора. Очередь, выбранная без движка, применяется при `attach`; правка очереди без движка меняет только `state`. Подробнее — `playback/README.md`.
 - **Дизлайк** = запрос `dislike` + переход к следующему; в конечной очереди без следующего — стоп, в волне — ничего, ждём догрузку (TR-07).
-- **Отметка `/play-audio`** уходит на смену id текущего трека, best-effort, ошибки игнорируются.
+- **Отметка `/play-audio`** (TRK-01, TRK-02) уходит, когда трек **начался**: стал текущим и впервые после этого заиграл (`onPlayingChanged(true)`). Трек, который только стоит в очереди или у которого не получилась ссылка, не начинался. Новый старт с новым `play-id` — рестарт «назад» после 3 с, повтор очереди из одного трека, «плей» после «стоп» (`stop()`) или после конца трека. Пауза с продолжением и перемотка внутри трека — не новый старт. Отправка best-effort, ошибки игнорируются.
 
 `events` — `MutableSharedFlow(extraBufferCapacity = 8)` с `tryEmit`: без подписчика события теряются, это нормально для тостов.
 
@@ -69,7 +70,6 @@ class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: C
 
 | Гэп | Сейчас | Сценарии | Задача |
 |---|---|---|---|
-| A2 | `/play-audio` уходит на смену элемента, в том числе без автозапуска, и не повторяется для того же трека | TRK-01, TRK-02 | #27 |
 
 
 ## `ErrorPolicy`
