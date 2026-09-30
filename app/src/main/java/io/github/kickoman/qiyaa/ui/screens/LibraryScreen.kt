@@ -35,6 +35,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.kickoman.qiyaa.R
+import io.github.kickoman.qiyaa.jam.ParticipantKind
+import io.github.kickoman.qiyaa.playback.JamHostPhase
+import io.github.kickoman.qiyaa.playback.JamHostState
 import io.github.kickoman.qiyaa.ui.AppViewModel
 import io.github.kickoman.qiyaa.ui.LibrarySection
 import io.github.kickoman.qiyaa.ui.ListState
@@ -52,7 +55,13 @@ import io.github.kickoman.qiyaa.ui.theme.mono
 import io.github.kickoman.qiyaa.ui.theme.sans
 
 @Composable
-fun LibraryScreen(viewModel: AppViewModel, player: PlayerViewModel) {
+fun LibraryScreen(
+    viewModel: AppViewModel,
+    player: PlayerViewModel,
+    jam: JamHostState,
+    onJam: () -> Unit,
+    onJamSearch: ((String) -> Unit)?,
+) {
     val colors = Qi.colors
     val context = LocalContext.current
     val account by viewModel.account.collectAsStateWithLifecycle()
@@ -100,7 +109,18 @@ fun LibraryScreen(viewModel: AppViewModel, player: PlayerViewModel) {
                 singleLine = true,
                 cursorBrush = SolidColor(colors.accent),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { viewModel.submitSearch() }),
+                keyboardActions = KeyboardActions(
+                    onSearch = {
+                        // HOST-21: during a jam, a search finds tracks for the jam instead of a new queue.
+                        if (onJamSearch !=
+                            null
+                        ) {
+                            onJamSearch(libraryUi.searchText)
+                        } else {
+                            viewModel.submitSearch()
+                        }
+                    },
+                ),
                 modifier = Modifier.weight(1f),
                 decorationBox = { inner ->
                     if (libraryUi.searchText.isEmpty()) {
@@ -162,6 +182,16 @@ fun LibraryScreen(viewModel: AppViewModel, player: PlayerViewModel) {
                 .clip(RoundedCornerShape(8.dp))
                 .background(colors.surface),
         ) {
+            val jamMeta =
+                when (jam.phase) {
+                    JamHostPhase.NONE -> stringResource(R.string.jam_library_off)
+                    JamHostPhase.CREATING -> "…"
+                    JamHostPhase.ACTIVE -> stringResource(
+                        R.string.jam_library_on,
+                        jam.room?.participants?.count { it.kind != ParticipantKind.HOST } ?: 0,
+                    )
+                }
+            SourceRow(stringResource(R.string.jam_library_row), jamMeta, onClick = onJam)
             SourceRow(stringResource(R.string.library_liked), "${liked.size}") { viewModel.playLiked() }
             SourceRow(stringResource(R.string.library_for_you), countOrStatus(forYou)) {
                 viewModel.openSection(LibrarySection.FOR_YOU)

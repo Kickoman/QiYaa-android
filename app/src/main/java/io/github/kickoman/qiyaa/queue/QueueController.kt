@@ -805,7 +805,8 @@ class QueueController(
             val slots = state.jamSlots.orEmpty().toMutableList().apply {
                 addAll(index, entries.map { it.second })
             }
-            state.copy(tracks = tracks, jamSlots = slots)
+            val selected = state.selected.map { if (it >= index) it + entries.size else it }.toSet()
+            state.copy(tracks = tracks, jamSlots = slots, selected = selected)
         }
         current.insertTracks(index, entries.map { it.first })
     }
@@ -815,6 +816,15 @@ class QueueController(
             state.copy(
                 tracks = state.tracks.filterIndexed { i, _ -> i != index },
                 jamSlots = state.jamSlots?.filterIndexed { i, _ -> i != index },
+                selected = state.selected.filter { it != index }.map {
+                    if (it >
+                        index
+                    ) {
+                        it - 1
+                    } else {
+                        it
+                    }
+                }.toSet(),
             )
         }
         current.removeAt(index)

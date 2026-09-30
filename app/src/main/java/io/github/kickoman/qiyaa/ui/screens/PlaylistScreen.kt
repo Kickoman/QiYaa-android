@@ -25,6 +25,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.kickoman.qiyaa.R
+import io.github.kickoman.qiyaa.queue.JamSlot
+import io.github.kickoman.qiyaa.ui.JamViewModel
 import io.github.kickoman.qiyaa.ui.PlayerViewModel
 import io.github.kickoman.qiyaa.ui.components.ActionButton
 import io.github.kickoman.qiyaa.ui.components.QiText
@@ -38,10 +40,14 @@ import io.github.kickoman.qiyaa.ui.theme.mono
 import io.github.kickoman.qiyaa.ui.theme.sans
 
 @Composable
-fun PlaylistScreen(viewModel: PlayerViewModel, onAdd: () -> Unit) {
+fun PlaylistScreen(viewModel: PlayerViewModel, jam: JamViewModel, onAdd: () -> Unit) {
     val colors = Qi.colors
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val queue by viewModel.queue.state.collectAsStateWithLifecycle()
+    val jamState by jam.state.collectAsStateWithLifecycle()
+    // HOST-34: who added each jam item, by `addedBy` among the participants.
+    val names = jamState.room?.participants?.associate { it.publicId to it.name }.orEmpty()
+    val waveMark = stringResource(R.string.jam_wave_mark)
 
     Column(Modifier.fillMaxSize()) {
         ScreenHeader(stringResource(R.string.playlist_title)) {
@@ -99,14 +105,30 @@ fun PlaylistScreen(viewModel: PlayerViewModel, onAdd: () -> Unit) {
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                            QiText(
-                                track.artistLine,
-                                mono(11.sp, 400),
+                            val mark =
+                                when (val slot = queue.jamSlots?.getOrNull(index)) {
+                                    is JamSlot.Item -> names[slot.addedBy]?.let {
+                                        stringResource(R.string.jam_added_by, it)
+                                    }
+                                    JamSlot.Wave -> waveMark
+                                    else -> null
+                                }
+                            Row(
                                 Modifier.padding(top = 3.dp),
-                                color = colors.dim,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                QiText(
+                                    track.artistLine,
+                                    mono(11.sp, 400),
+                                    Modifier.weight(1f, fill = false),
+                                    color = colors.dim,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                if (mark != null) {
+                                    QiText(mark, mono(11.sp, 500), color = colors.accentDark, maxLines = 1)
+                                }
+                            }
                         }
                         QiText(formatTime(track.durationMs), mono(12.sp, 400), color = colors.dim)
                     }
@@ -170,7 +192,13 @@ fun PlaylistScreen(viewModel: PlayerViewModel, onAdd: () -> Unit) {
                 Modifier.weight(1f),
                 background = colors.surface2,
                 color = if (queue.selected.isEmpty()) colors.dimmer else colors.text,
-            ) { viewModel.queue.removeIndices(queue.selected) }
+            ) {
+                if (queue.jamSlots != null && jam.isActive) {
+                    jam.removeFromJam(queue.selected)
+                } else {
+                    viewModel.queue.removeIndices(queue.selected)
+                }
+            }
             val allSelected = queue.tracks.isNotEmpty() && queue.selected.size == queue.tracks.size
             ActionButton(
                 stringResource(if (allSelected) R.string.playlist_none else R.string.playlist_all),

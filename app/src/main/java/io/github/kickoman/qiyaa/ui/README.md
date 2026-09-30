@@ -1,12 +1,12 @@
 # `ui/` — Compose
 
-Четыре вкладки (Player · Playlist · EQ · Library), экран входа, мини-плеер и тосты, нарисованные вручную по дизайн-системе «Winamp-inspired mobile music player»: без Material-компонентов, без ripple, IBM Plex Mono для показаний и IBM Plex Sans для контента. Пакет только читает `StateFlow`-ы и вызывает методы view model. Он **не** содержит доменной логики: очередь — `playback/`, сеть — `yandex/`, DSP — `audio/`.
+Четыре вкладки (Player · Playlist · EQ · Library), экран входа, экраны джема, мини-плеер и тосты, нарисованные вручную по дизайн-системе «Winamp-inspired mobile music player»: без Material-компонентов, без ripple, IBM Plex Mono для показаний и IBM Plex Sans для контента. Пакет только читает `StateFlow`-ы и вызывает методы view model. Он **не** содержит доменной логики: очередь — `playback/`, сеть — `yandex/`, DSP — `audio/`.
 
 ```
 ui/
   AppRoot.kt, MainActivity.kt          корень Compose, вкладки, мини-плеер, тост
-  AppViewModel.kt, PlayerViewModel.kt  состояние экранов
-  QueueEventText.kt, Format.kt         рендер событий и чисел в строки
+  AppViewModel.kt, PlayerViewModel.kt, JamViewModel.kt  состояние экранов
+  QueueEventText.kt, JamEventText.kt, Format.kt         рендер событий и чисел в строки
   components/   QiText, кнопки, чипы, слайдеры, иконки
   screens/      по одному файлу на экран
   theme/        цвета, шрифты, стили текста
@@ -22,17 +22,21 @@ ui/
 | `AppViewModel.kt` | `Screen`, `LibrarySection`, `LoginStatus`, `LoginUi`, `LibraryUi`, `AppViewModel`, `PlaylistRef.sourceId` |
 | `ListLoader.kt` | `ListState` (`Idle`, `Loading`, `Loaded(items)`, `Failed(error)`), `ListLoader` — загрузка одного списка библиотеки со своей ошибкой и повтором |
 | `PlayerViewModel.kt` | `PlayerUi`, `PlayerViewModel`, `AccentTheme.labelId` |
+| `JamViewModel.kt` | `JamUi`, `JamViewModel` — хозяин джема для экранов: `playback/JamHost`, поиск треков для джема, настройки `jam/*` |
+| `JamEventText.kt` | `JamHostEvent.render(context)`, `refusedText(reason)` — отказы сервера и конец джема → строки |
 | `QueueEventText.kt` | `QueueEvent.render(context)` — событие очереди → строка из ресурсов |
 | `ErrorText.kt` | `ErrorKind.text()` — строка вида ошибки (`error_*`, у `ServerError` со статусом), `render(context)` и `@Composable render()`; `LOG_TAG = "QiYaa"` |
 | `Format.kt` | `formatTime`, `balanceLabel`, `formatReadout`, `formatDb` |
 | `components/Components.kt` | `QiText`, `Modifier.tap`, `ScreenHeader`, `ActionButton`, `IconActionButton`, `PillToggle`, `RoundButton`, `LedDot`, `Chip` |
 | `components/Sliders.kt` | `HorizontalSlider` (0…1), `VerticalFader` (дБ) |
 | `components/Icons.kt` | `IconPaths`, `PathIcon` — SVG-пути из макета (viewBox 24) |
+| `components/QrCode.kt` | `QrCodeImage` — QR (qrcodegen, коррекция M) тёмным по белому с полями в 4 модуля |
 | `screens/LoginScreen.kt` | `LoginScreen` |
 | `screens/PlayerScreen.kt` | `PlayerScreen`, `marqueeText`, `queueTitle` |
 | `screens/PlaylistScreen.kt` | `PlaylistScreen` |
 | `screens/EqScreen.kt` | `EqScreen`, `PresetsSheet` |
 | `screens/LibraryScreen.kt` | `LibraryScreen` |
+| `screens/JamScreen.kt` | `JamScreen`, `JamSettingsScreen`, `JamContinueDialog` |
 | `screens/LibrarySectionScreen.kt` | `LibrarySectionScreen` — «для вас» / станции / плейлисты / исполнители / альбомы чипами |
 | `theme/Color.kt` | `QiColors`, `accentColors`, `LocalQiColors` |
 | `theme/Theme.kt` | `Qi.colors`, `QiYaaTheme` |
@@ -60,6 +64,19 @@ ui/
 **«Назад».** `Screen.backTarget`: с вкладок EQ, Плейлист и Библиотека — на вкладку «Плеер» (`AppRoot`, `BackHandler`), с «Плеера» и экрана входа — системное поведение, то есть выход из приложения. Обработчики, объявленные позже, важнее: открытый раздел библиотеки сначала закрывается (`LibrarySectionScreen`), открытый лист пресетов EQ — тоже (`closePresets`), и только потом срабатывает переход на «Плеер».
 
 `PlaylistScreen` показывает строку `playlist_loading_more` только пока идёт догрузка (`QueueState.loadingMore`), а не всё время, пока играет волна.
+
+## Джем
+
+Экраны хозяина джема (Kickoman/QiYaa-android#62, сценарии HOST-20…35 в `spec/jam/host.md`). Логика — `playback/JamHost`; `JamViewModel` только передаёт действия и превращает `JamHostEvent` и свои отказы («нет связи», «не настроено») в тосты через `notices` → `AppViewModel.say`.
+
+- **Вход**: строка «Джем» в библиотеке (мета — «Начать» или «Идёт · N гостей»), а во время джема — тап по названию очереди на экране плеера (оно подсвечено акцентом). `Screen.JAM` → назад на «Плеер», `Screen.JAM_SETTINGS` → назад на «Джем».
+- **`JamScreen`** по фазе `JamHostState.phase`: `NONE` — имя хозяина (по умолчанию имя аккаунта, ≤ 24 символа), «Начать джем», при пустом сервере или ключе — подсказка и кнопка настроек; `CREATING` — «Подключаюсь…» и «Отмена»; `ACTIVE` — QR `joinUrl` на 72 % ширины, ссылка, «Поделиться ссылкой» (`ACTION_SEND` через системный выбор) и «Копировать», поиск треков для джема (`Library.searchTracks`, «Следом» = `playNext`, «В джем» = `add`), гости (онлайн, вид, сколько ждёт, «Убрать»), настройки комнаты (порядок, пропуск гостями, вход), «Новая ссылка», «Закончить джем» с подтверждением вторым нажатием за 3 с. Состояние связи — в шапке.
+- **Без связи** (HOST-25) «В джем», «Следом», «Убрать» и «Новая ссылка» приглушены, а любое действие с комнатой даёт тост `jam_no_connection`; над любым экраном — красная строка `jam_offline_strip`, тап ведёт на экран джема. Строка «нет сети» Яндекса важнее и показывается вместо неё.
+- **«Продолжить джем?»** (HOST-23) — `JamContinueDialog` поверх любого экрана, кроме входа, пока `storedSession`.
+- **Плейлист** (HOST-34): у элемента джема — «+ имя» того, кто добавил (`addedBy` по `room.participants`), у трека волны джема — «Волна джема». REM во время джема убирает выделенные элементы джема из очереди комнаты (`JamHost.remove`); они уйдут из плейлиста со следующим `state`. ADD ведёт на экран джема.
+- **Поиск в библиотеке во время джема** (HOST-21) ищет треки для джема и открывает экран джема, а не заменяет очередь. Выбор источника (плейлист, альбом, волна) очередь не заменяет: `QueueEvent.JamActive` → тост `queue_jam_active`.
+- «Выйти» заканчивает джем: гости ищут через аккаунт хозяина.
+- **`JamSettingsScreen`**: сервер, ключ хозяина (скрыт, «Показать»), «Учить волну джема» (`jam/waveFeedback`, HOST-16).
 
 ## Тема
 
@@ -106,7 +123,7 @@ class ListLoader<T>(scope: CoroutineScope, io: CoroutineContext, fetch: suspend 
 
 ## Строки
 
-Все тексты — `res/values/strings.xml` (английский) и `res/values-ru/strings.xml`; `queue_loaded` — `plurals`. Ключи `queue_*` рендерят `QueueEvent` (в том числе `queue_waiting_for_network` и plurals `queue_stopped_after_failures`), `theme_*` — подписи `AccentTheme`.
+Все тексты — `res/values/strings.xml` (английский) и `res/values-ru/strings.xml`; `queue_loaded` — `plurals`. Ключи `jam_*` — экраны джема; `jam_refused_*` — причины отказа сервера, неизвестная причина — `jam_refused_other`. Ключи `queue_*` рендерят `QueueEvent` (в том числе `queue_waiting_for_network` и plurals `queue_stopped_after_failures`), `theme_*` — подписи `AccentTheme`.
 
 ## Not here
 
