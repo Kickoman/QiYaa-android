@@ -94,8 +94,9 @@ Writing rules for READMEs:
   | `yandex` | Yandex Music HTTP API, OAuth, link signing | — (pure JVM) |
   | `audio` | DSP: equalizer, FFT, spectrum, visualizer ring, PCM | — (pure JVM) |
   | `data` | Persistence: settings and token | `audio` |
+  | `jam` | Jam client: protocol codec, connection, the host's stored session | — (pure JVM) |
   | `queue` | What plays next: sources, waves, error policy, shuffle rule | `yandex` (pure JVM) |
-  | `playback` | ExoPlayer, MediaSession, the Media3 adapter for `queue`, audio processors | `queue`, `yandex`, `audio`, `data` |
+  | `playback` | ExoPlayer, MediaSession, the Media3 adapter for `queue`, audio processors, the jam WebSocket transport | `queue`, `jam`, `yandex`, `audio`, `data` |
   | `ui` | Compose screens, view models, theme | everything above |
   | root | `AppGraph`, `QiYaaApp` (composition root), `NetworkMonitor` (platform signals) | everything |
 
@@ -104,7 +105,7 @@ Writing rules for READMEs:
   the JVM without Robolectric:
 
   ```bash
-  grep -rlnE '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiyaa/{yandex,audio,queue}/   # must print nothing
+  grep -rlnE '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiyaa/{yandex,audio,queue,jam}/   # must print nothing
   grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/{yandex,audio,data,queue,playback}/      # must print nothing
   ```
 

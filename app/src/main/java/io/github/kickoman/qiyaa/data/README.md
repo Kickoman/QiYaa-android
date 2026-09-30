@@ -7,6 +7,7 @@
 | `Settings.kt` | `Settings` — громкость, баланс, визуализатор, EQ, тема |
 | `TokenStore.kt` | `TokenStore` — токен |
 | `QueueFile.kt` | `QueueFile` — сохранённая очередь, файл `queue.json` |
+| `JamFile.kt` | `JamFile` — сессия хозяина джема, файл `jam.json` |
 | `AccentTheme.kt` | `AccentTheme` — три акцентные темы |
 | `VisualizerMode.kt` | `VisualizerMode` — спектр / осциллограф / выкл |
 
@@ -26,8 +27,12 @@
 | `equalizer/preamp` | float dB | 0 | часть `eq` |
 | `equalizer/bands` | string, 10 чисел через запятую с одним знаком (`"0.0,3.5,…"`) | плоские | часть `eq` |
 | `theme` | string (`AccentTheme.key`: `green`, `amber`, `ice`) | `amber` | `theme` |
+| `jam/server` | string, адрес сервера джема (`https://jam.example.org`) | `BuildConfig.JAM_URL` из Gradle-свойства `qiyaaJamUrl`, иначе `""` | `jamServer` |
+| `jam/hostKey` | string, ключ хозяина `qjk_…` (выдаёт `keys add` на сервере) | `""` | `jamHostKey` |
 
-Ключи и умолчания те же, что в десктопном QiYaa, где они применимы. `setEq(settings, presetName)` пишет четыре ключа одной транзакцией. Строка полос с числом элементов ≠ 10 или с нечисловыми значениями читается как плоский EQ.
+Ключи и умолчания те же, что в десктопном QiYaa, где они применимы. `jam/server` и `jam/hostKey`
+обрезаются по краям при записи; адрес по умолчанию передаёт `AppGraph` в конструктор, потому что
+`data` не видит `BuildConfig`. `setEq(settings, presetName)` пишет четыре ключа одной транзакцией. Строка полос с числом элементов ≠ 10 или с нечисловыми значениями читается как плоский EQ.
 
 **Traps:**
 - Значения зажимаются на записи (`setVolume`, `setBalance`), но не на чтении: чужое значение в файле уйдёт в поток как есть.
@@ -40,6 +45,11 @@
 ## `QueueFile`
 
 Файл `filesDir/queue.json` через `android.util.AtomicFile`: запись во временную копию и переименование, поэтому выгрузка процесса посреди записи оставляет прежний файл. `read()` возвращает `null`, если файла нет или он не читается; `write` бросает `IOException`. Содержимое — текст, формат которого знает только `queue/QueueSnapshotCodec` (см. `queue/README.md`); `AppGraph` оборачивает `QueueFile` в `queue.QueueStore`, потому что `data` не зависит от `queue`. Пишется с потока `Dispatchers.IO`.
+
+## `JamFile`
+
+Как `QueueFile`, только файл `filesDir/jam.json`, а `write(null)` удаляет его: джем закончился.
+Формат знает `jam/JamSessionCodec`; `AppGraph` оборачивает файл в `jam.JamStore`.
 
 ## `AccentTheme`, `VisualizerMode`
 
