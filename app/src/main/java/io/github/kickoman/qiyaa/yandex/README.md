@@ -154,6 +154,7 @@ class Library(val api: YandexApi) : AccountGateway {
     suspend fun stations(): List<Station>                            // GET /rotor/stations/list?language=ru
     suspend fun startWave(seeds: List<String>): WaveBatch;  suspend fun moreWave(sessionId: String, queue: List<String>): WaveBatch
     suspend fun search(text: String): SearchResult
+    suspend fun searchTracks(text: String): List<Track>             // только треки, для гостей джема (HOST-28)
     suspend fun setLiked(trackId: String, liked: Boolean);  suspend fun dislike(trackId: String)
     suspend fun waveFeedback(context: WaveContext, event: WaveEvent, track: Track?, playedSeconds: Double)
     companion object { fun parseWaveBatch(result: JsonElement): WaveBatch; fun stationGroupKey(type: String): String }
@@ -177,6 +178,7 @@ class Library(val api: YandexApi) : AccountGateway {
 | POST | `/rotor/session/new` | JSON `{seeds, includeTracksInResponse, includeWaveModel, interactive: true}` |
 | POST | `/rotor/session/{id}/tracks` | JSON `{queue: [последние id]}` |
 | GET | `/search` | `text`, `type=all`, `page=0` → `best.{type,result}`, `tracks.results`. `bestType` — `artist`, `album`, `track`, `playlist` как есть, любой другой тип — `other`, без `best` — `""` |
+| GET | `/search` | `searchTracks`: `text`, `type=track`, `page=0` → `tracks.results` |
 | POST | `/users/{uid}/likes/tracks/add-multiple`, `…/remove`, `…/dislikes/tracks/add-multiple` | `track-ids=<id>` |
 
 `stationGroupKey` сводит тип `user` к `personal`; остальные типы — ключ как есть. Порядок и названия групп задаёт `ui/screens/LibrarySectionScreen`.

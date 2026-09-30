@@ -106,8 +106,9 @@ class JamClient(
         return open.send(JamCodec.encode(message))
     }
 
-    fun started(itemId: String) {
-        if (!send(Started(itemId))) mutableOutbox.value = mutableOutbox.value + itemId
+    /** `sendNow = false` while the server has not accepted the connection's `create` or `resume` yet. */
+    fun started(itemId: String, sendNow: Boolean = true) {
+        if (!sendNow || !send(Started(itemId))) mutableOutbox.value = mutableOutbox.value + itemId
     }
 
     fun restoreOutbox(itemIds: List<String>) {

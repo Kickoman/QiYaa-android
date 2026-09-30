@@ -895,6 +895,9 @@ class QueueController(
         }
     }
 
+    /** `onPlayback` for what plays now, as the host needs after `resumed` (HOST-26). */
+    fun reportJamPlayback() = reportJam()
+
     private fun reportJam() {
         val run = jam ?: return
         val current = engine

@@ -45,6 +45,11 @@ class Settings(context: Context, defaultJamServer: String = "") {
     private val mutableJamHostKey = MutableStateFlow(preferences.getString(KEY_JAM_HOST_KEY, null).orEmpty())
     val jamHostKey: StateFlow<String> = mutableJamHostKey.asStateFlow()
 
+    private val mutableJamWaveFeedback = MutableStateFlow(preferences.getBoolean(KEY_JAM_WAVE_FEEDBACK, true))
+
+    /** HOST-16: rotor feedback to the jam wave's own session. */
+    val jamWaveFeedback: StateFlow<Boolean> = mutableJamWaveFeedback.asStateFlow()
+
     fun setVolume(value: Int) {
         mutableVolume.value = value.coerceIn(0, AudioBus.MAX_VOLUME)
         preferences.edit().putInt(KEY_VOLUME, mutableVolume.value).apply()
@@ -91,6 +96,11 @@ class Settings(context: Context, defaultJamServer: String = "") {
         preferences.edit().putString(KEY_JAM_HOST_KEY, mutableJamHostKey.value).apply()
     }
 
+    fun setJamWaveFeedback(value: Boolean) {
+        mutableJamWaveFeedback.value = value
+        preferences.edit().putBoolean(KEY_JAM_WAVE_FEEDBACK, value).apply()
+    }
+
     fun setTheme(theme: AccentTheme) {
         mutableTheme.value = theme
         preferences.edit().putString(KEY_THEME, theme.key).apply()
@@ -124,6 +134,7 @@ class Settings(context: Context, defaultJamServer: String = "") {
         const val KEY_THEME = "theme"
         const val KEY_JAM_SERVER = "jam/server"
         const val KEY_JAM_HOST_KEY = "jam/hostKey"
+        const val KEY_JAM_WAVE_FEEDBACK = "jam/waveFeedback"
         const val DEFAULT_VOLUME = 75
         const val DEFAULT_EQ_PRESET = "Flat"
     }

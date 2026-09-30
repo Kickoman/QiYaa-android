@@ -220,6 +220,13 @@ class Library(val api: YandexApi) : AccountGateway {
         )
     }
 
+    /** Tracks only, as a jam host searches for its guests (HOST-28). */
+    suspend fun searchTracks(text: String): List<Track> {
+        val query = mapOf("text" to text, "type" to "track", "page" to "0")
+        val result = api.getJson("/search", query).objectOrEmpty
+        return TrackParsing.parseTrackArray(result["tracks"].objectOrEmpty["results"])
+    }
+
     private fun bestTypeOf(type: String): String = when {
         type.isEmpty() || type in SEARCH_BEST_TYPES -> type
         else -> SEARCH_BEST_OTHER

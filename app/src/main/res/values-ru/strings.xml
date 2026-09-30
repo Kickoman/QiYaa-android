@@ -128,6 +128,7 @@
     <string name="login_expired">Сессия истекла. Войдите снова.</string>
     <string name="queue_waiting_for_network">Нет сети · продолжу, когда появится</string>
     <string name="queue_jam_active">Идёт джем: добавьте треки в джем</string>
+    <string name="jam_queue_title">Джем</string>
     <plurals name="queue_stopped_after_failures">
         <item quantity="one">%d трек подряд не играет · стоп</item>
         <item quantity="few">%d трека подряд не играют · стоп</item>

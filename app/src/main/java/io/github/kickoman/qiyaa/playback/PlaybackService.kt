@@ -96,6 +96,7 @@ class PlaybackService : MediaSessionService() {
             graph.settings.volume.collect { player.volume = AudioBus.volumeGain(it) }
         }
         engine = Media3Engine(player, graph.queue).also { it.attach() }
+        graph.jamHost.onServiceStarted()
 
         val builder =
             MediaSession.Builder(this, QueueForwardingPlayer(player, graph.queue))
@@ -140,6 +141,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        appGraph.jamHost.onServiceStopped()
         serviceScope.cancel()
         session?.let {
             engine?.detach()

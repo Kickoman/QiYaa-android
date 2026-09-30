@@ -1,5 +1,6 @@
 package io.github.kickoman.qiyaa.jam
 
+import io.github.kickoman.qiyaa.support.FakeJamTransport
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.TestScope
@@ -147,42 +148,10 @@ class JamClientTest {
         }
     }
 
-    private class FakeSocket(val url: String, val listener: JamSocketListener) : JamSocket {
-        val sent = mutableListOf<String>()
-        var closedWith: Int? = null
-
-        override fun send(text: String): Boolean {
-            if (closedWith != null) return false
-            sent += text
-            return true
-        }
-
-        override fun close(code: Int) {
-            closedWith = code
-        }
-
-        fun open() = listener.onOpen()
-
-        fun receive(text: String) = listener.onMessage(text)
-
-        fun drop() = listener.onClosed(1006)
-    }
-
-    private class FakeTransport : JamTransport {
-        val sockets = mutableListOf<FakeSocket>()
-        val last: FakeSocket get() = sockets.last()
-
-        override fun open(url: String, listener: JamSocketListener): JamSocket =
-            FakeSocket(url, listener).also {
-                sockets +=
-                    it
-            }
-    }
-
     private class Harness(
         val scope: TestScope,
         val client: JamClient,
-        val transport: FakeTransport,
+        val transport: FakeJamTransport,
         val handler: RecordingHandler,
         val connectivity: MutableStateFlow<Boolean>,
     ) {
@@ -195,7 +164,7 @@ class JamClientTest {
     }
 
     private fun TestScope.harness(): Harness {
-        val transport = FakeTransport()
+        val transport = FakeJamTransport()
         val handler = RecordingHandler()
         val connectivity = MutableStateFlow(true)
         val client =
