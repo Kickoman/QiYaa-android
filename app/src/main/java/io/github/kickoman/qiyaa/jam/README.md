@@ -3,7 +3,7 @@
 Связь с сервером джема (Kickoman/QiYaa-jam) по протоколу `spec/jam/protocol`: модель сообщений, их
 разбор с проверкой по схеме, соединение с рукопожатием и переподключением, `outbox` и хранение сессии
 хозяина. Пакет **не** знает, что играет плеер и как выглядит экран: хозяин джема в очереди — задача
-`queue/` (QiYaa-android#60), связь очереди, библиотеки и сервера — #61, экран — `ui/` (#62). Сокетов
+`queue/` (QiYaa-android#60), связь очереди, библиотеки и сервера — `playback/JamHost` (#61), экран — `ui/` (#62). Сокетов
 здесь тоже нет: транспорт — интерфейс `JamTransport`, в приложении — `playback/OkHttpJamTransport`.
 
 Чистая JVM, ничего не импортирует из других пакетов приложения:
@@ -70,7 +70,7 @@ class JamClient(transport: JamTransport, connectivity: Flow<Boolean>, scope: Cor
     val clockOffsetMs: Long;  fun serverNow(): Long
     fun start(url: String);  fun stop()
     fun send(message: ClientMessage): Boolean   // false — нет соединения после welcome
-    fun started(itemId: String)                 // отправить или отложить в outbox
+    fun started(itemId: String, sendNow: Boolean = true)   // отправить или отложить в outbox; false — роль ещё не принята
     fun restoreOutbox(itemIds: List<String>);  fun clearOutbox()
     companion object { val RECONNECT_DELAYS_MS; fun socketUrl(serverUrl: String): String }
 }

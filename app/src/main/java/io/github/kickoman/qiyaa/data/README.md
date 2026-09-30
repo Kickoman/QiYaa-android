@@ -29,6 +29,7 @@
 | `theme` | string (`AccentTheme.key`: `green`, `amber`, `ice`) | `amber` | `theme` |
 | `jam/server` | string, адрес сервера джема (`https://jam.example.org`) | `BuildConfig.JAM_URL` из Gradle-свойства `qiyaaJamUrl`, иначе `""` | `jamServer` |
 | `jam/hostKey` | string, ключ хозяина `qjk_…` (выдаёт `keys add` на сервере) | `""` | `jamHostKey` |
+| `jam/waveFeedback` | bool, фидбек ротора в сессию волны джема (HOST-16) | `true` | `jamWaveFeedback` |
 
 Ключи и умолчания те же, что в десктопном QiYaa, где они применимы. `jam/server` и `jam/hostKey`
 обрезаются по краям при записи; адрес по умолчанию передаёт `AppGraph` в конструктор, потому что

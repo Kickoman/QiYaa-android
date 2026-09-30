@@ -25,9 +25,20 @@ class OkHttpJamTransport(httpClient: OkHttpClient) : JamTransport {
                 listener.onClosed(code)
             }
         }
+        val request =
+            try {
+                Request.Builder().url(url).build()
+            } catch (malformed: IllegalArgumentException) {
+                closedOnce(ABNORMAL_CLOSE) // a server address that is not a URL: as a failed connection
+                return object : JamSocket {
+                    override fun send(text: String): Boolean = false
+
+                    override fun close(code: Int) = Unit
+                }
+            }
         val webSocket =
             client.newWebSocket(
-                Request.Builder().url(url).build(),
+                request,
                 object : WebSocketListener() {
                     override fun onOpen(webSocket: WebSocket, response: Response) = listener.onOpen()
 

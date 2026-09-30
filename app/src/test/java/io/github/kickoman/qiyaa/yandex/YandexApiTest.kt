@@ -270,6 +270,17 @@ class YandexApiTest {
         }
 
     @Test
+    fun `a track search asks for tracks only and parses them as the full search does`() = runBlocking {
+        route("GET", "/search", Spec.fixture("search", "best-track"))
+        val tracks = library.searchTracks("кино")
+        assertEquals(library.search("кино").tracks, tracks)
+        val url = requests.getValue("/search").first().requestUrl!!
+        assertEquals("кино", url.queryParameter("text"))
+        assertEquals("track", url.queryParameter("type"))
+        assertEquals("0", url.queryParameter("page"))
+    }
+
+    @Test
     fun `a best result of another type is reported as other`() = runBlocking {
         route("GET", "/search", Spec.fixture("search", "best-podcast"))
         val result = library.search("кино")

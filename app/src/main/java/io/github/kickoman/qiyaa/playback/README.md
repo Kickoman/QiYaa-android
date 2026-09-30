@@ -1,6 +1,6 @@
 # `playback/` — воспроизведение
 
-ExoPlayer внутри `MediaSessionService`, адаптер между ExoPlayer и очередью, классификация ошибок воспроизведения, ленивое разрешение ссылок и два аудиопроцессора, которые вставляют `audio/` в звуковой конвейер. Пакет **не** решает, что играть дальше (это `queue/`), **не** ходит в сеть сам (это `yandex/`), **не** считает DSP (это `audio/`) и **не** показывает текст.
+ExoPlayer внутри `MediaSessionService`, адаптер между ExoPlayer и очередью, хозяин джема, классификация ошибок воспроизведения, ленивое разрешение ссылок и два аудиопроцессора, которые вставляют `audio/` в звуковой конвейер. Пакет **не** решает, что играть дальше (это `queue/`), **не** ходит в сеть сам (это `yandex/`), **не** считает DSP (это `audio/`) и **не** показывает текст.
 
 ```bash
 grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   # ничего не печатает
@@ -22,9 +22,11 @@ grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   #
 | `EqualizerProcessor.kt` | `EqualizerProcessor` — PCM16 → float → EQ → баланс → PCM16 |
 | `VisualizerTapProcessor.kt` | `VisualizerTapProcessor` — копия PCM в `VisualizerTap`, звук не меняет |
 | `TimedAudioSink.kt` | `TimedAudioSink` — `ForwardingAudioSink`: метки времени входных буферов и звучащая позиция для `VisualizerTap` |
-| `OkHttpJamTransport.kt` | `OkHttpJamTransport` — `jam.JamTransport` на WebSocket OkHttp: без тайм-аута чтения, свой ping раз в 20 с, одно `onClosed` на сокет |
+| `OkHttpJamTransport.kt` | `OkHttpJamTransport` — `jam.JamTransport` на WebSocket OkHttp: без тайм-аута чтения, свой ping раз в 20 с, одно `onClosed` на сокет; адрес, который не URL, — как неудачное соединение |
+| `JamHost.kt` | `JamHost`, `JamHostState`, `JamHostEvent`, `JamCatalog`, `JamHostConfig` — хозяин джема: сервер, режим джема очереди и запросы гостей |
+| `JamTracks.kt` | `JamTracks` — `yandex.Track` ↔ `jam.JamTrack` с пределами протокола |
 
-Зависит от `queue`, `yandex`, `audio`, `data` и корневого `appGraph` (сервис — точка входа Android и получает граф через `Context.appGraph`).
+Зависит от `queue`, `jam`, `yandex`, `audio`, `data` и корневого `appGraph` (сервис — точка входа Android и получает граф через `Context.appGraph`).
 
 ## Конвейер
 
@@ -34,7 +36,7 @@ grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   #
 
 Собирает `ExoPlayer` с `DefaultRenderersFactory`, у которого `buildAudioSink` подменён на `DefaultAudioSink` с двумя процессорами и `enableFloatOutput = false` (процессоры принимают только `ENCODING_PCM_16BIT`). Атрибуты `USAGE_MEDIA`/`AUDIO_CONTENT_TYPE_MUSIC` с `handleAudioFocus = true`, `handleAudioBecomingNoisy`, `WAKE_MODE_NETWORK`, User-Agent `QiYaa/Android`. Громкость сервис берёт из `Settings.volume` и следит за ней сам (`serviceScope`, `AudioBus.volumeGain`), поэтому она применяется и без открытого экрана.volumeGain`. Тап по уведомлению открывает launcher-intent пакета (сервис не знает про `ui/`). Иконка уведомления — `R.drawable.ic_notification`.
 
-Сервис объявлен `exported="true"` с `tools:ignore="ExportedService"`: так требует Media3, чтобы система и гарнитуры могли привязаться к `MediaSessionService`. `onCreate` создаёт `Media3Engine(player, appGraph.queue)`, подключает его и отдаёт сессии `QueueForwardingPlayer(player, appGraph.queue)`; сессия получает `SessionCallback` (кнопки лайка и дизлайка, «играть» после выгрузки процесса); `onTaskRemoved` останавливает сервис, если ничего не играет; `onDestroy` отключает движок (контроллер запоминает, где остановились), освобождает плеер и сессию.
+Сервис объявлен `exported="true"` с `tools:ignore="ExportedService"`: так требует Media3, чтобы система и гарнитуры могли привязаться к `MediaSessionService`. `onCreate` создаёт `Media3Engine(player, appGraph.queue)`, подключает его и отдаёт сессии `QueueForwardingPlayer(player, appGraph.queue)`; сессия получает `SessionCallback` (кнопки лайка и дизлайка, «играть» после выгрузки процесса); `onTaskRemoved` останавливает сервис, если ничего не играет; `onDestroy` отключает движок (контроллер запоминает, где остановились), освобождает плеер и сессию. Оба сообщают `appGraph.jamHost` (`onServiceStarted`/`onServiceStopped`), см. `JamHost`.
 
 ## Один хозяин плеера
 
@@ -156,6 +158,42 @@ class TrackUrlCache(clock: () -> Long, ttlMs: Long = TTL_MS, capacity: Int = CAP
 
 Оба — `BaseAudioProcessor` и работают только с `ENCODING_PCM_16BIT`. На другой формат (float, 24 бит) `onConfigure` возвращает `AudioFormat.NOT_SET`: процессор выключается, и `DefaultAudioSink` его пропускает, а звук идёт без EQ и визуализации, но играет. Раньше они бросали `UnhandledAudioFormatException`, и падало всё воспроизведение. `enableFloatOutput = false` держит декодеры в PCM16, так что это страховка. `EqualizerProcessor.onConfigure` сообщает формат в `AudioBus.setFormat`. `queueInput`: пустой буфер возвращается сразу — `replaceOutputBuffer(0)` в Media3 1.4 отдаёт общий `EMPTY_BUFFER`, и `put(inputBuffer)` на нём бросает «The source buffer is this buffer». `onFlush`/`onReset` сбрасывают состояние EQ и очищают кольцо.
 
+## `JamHost`
+
+```kotlin
+class JamHost(transport: JamTransport, connectivity: Flow<Boolean>, queue: QueueController, catalog: JamCatalog, store: JamSessionStore,
+              config: () -> JamHostConfig, queueTitle: () -> String, scope: CoroutineScope, io: CoroutineContext, appVersion: String,
+              newId: () -> String = UUID, clock: () -> Long = System::currentTimeMillis, log: (String, Throwable?) -> Unit = …) : JamHandler, JamPlaybackListener {
+    val state: StateFlow<JamHostState>      // phase NONE/CREATING/ACTIVE, connection, connected, room, joinUrl, storedSession
+    val events: SharedFlow<JamHostEvent>    // Refused(reason), Ended(BY_HOST | BY_SERVER | EXPIRED | GONE)
+    fun create(hostName: String, settings: JamSettingsPatch? = null): Boolean;  fun cancelCreate()
+    fun continueStored();  fun discardStored()          // «Продолжить джем?» (HOST-23)
+    fun end()
+    fun add(track: Track): Boolean;  fun playNext(track: Track): Boolean
+    fun pin(itemId);  fun remove(itemId);  fun kick(publicId);  fun changeSettings(patch);  fun rotateLink()   // Boolean: false без связи
+    fun onServiceStarted();  fun onServiceStopped()
+}
+interface JamCatalog { suspend fun searchTracks(text: String): List<Track>; suspend fun tracks(ids: List<String>): List<Track> }
+data class JamHostConfig(serverUrl: String, hostKey: String, waveFeedback: Boolean)
+```
+
+Сценарии — `spec/jam/host.md`. `AppGraph` создаёт один `JamHost` на процесс (`scope` — `Dispatchers.Main.immediate`, `io` — `Dispatchers.IO`, `catalog` — `Library.searchTracks` и `tracksByIds`, хранилище — `data/JamFile`, настройки — `jam/server`, `jam/hostKey`, `jam/waveFeedback`).
+
+- **Сессия.** `create` проверяет имя, ключ и настройки тем же `JamCodec`, что и входящие сообщения: сообщение, которое сервер отвергнет и закроет соединение, не уходит вовсе (иначе переподключение слало бы его снова). После `welcome` — `create`, а если сессия уже есть — `resume` со снимком и `outbox`. `created` сохраняет `roomId`, `hostSecret`, `joinUrl` и включает режим джема очереди; `resumed` очищает `outbox` и отправляет `playing` (HOST-26). **Связь** (`connected`) — это принятый `create` или `resume` на текущем соединении, а не просто `welcome`: до неё `started` идёт в `outbox`, а `playing` и действия хозяина не отправляются (HOST-25).
+- **Хранение** (HOST-22). Сессия, последний `snapshot`, новая ссылка из `linkRotated` и каждое изменение `outbox` пишутся в `JamSessionStore` на `io` через `Channel.CONFLATED`.
+- **«Продолжить джем?»** (HOST-23). Сохранённая сессия видна как `state.storedSession`; вопрос задаёт UI. «Да» — режим джема очереди сразу, потом `resume`. «Нет» — хранилище очищается сразу, jam-слоты очереди снимаются, потом `resume` и `end` только чтобы гости увидели конец.
+- **Отказы.** `resume` с `room-not-found`, `bad-secret`, `bad-key` заканчивает джем здесь (HOST-24, `Ended(GONE)`); с другой причиной — `Refused` и новая попытка через 30 с (`RESUME_RETRY_MS`). Отказ `create` — `Refused` и никакой сессии. Отказ действия — `Refused(reason)`.
+- **`state`**: версия не больше последней на этом соединении пропускается, первая после переподключения берётся как есть. Очередь уходит в `QueueController.onJamQueue` с сидами и `seedsVersion`.
+- **Гости** (HOST-28…31). `searchRequest` — `Library.searchTracks` (`type=track`), доступные, до 20, `JamTracks.toJam`; ошибка — `failed`, 401/403 — `unauthorized` (сам вход покажет `yandex/Session`). `validateRequest` — `POST /tracks`: по ответу на каждый id по порядку, недоступный или пропавший — `track-unavailable`, упавший запрос — `failed` для всех. Оба запроса идут отдельными корутинами на `io` и не ждут плеер.
+- **`command{skip}`** — `QueueController.jamSkip` (HOST-18, HOST-19).
+- **Добавить** (HOST-20). `add` шлёт `add{track}`; трек попадает в хвост только со следующим `state`. `playNext` — `pin` для уже ждущего трека, иначе `add` и `pin`, когда элемент с этим треком от хозяина появится в `state`.
+- **Конец** (HOST-32). `end()` отправляет `end`, если есть связь, и в любом случае заканчивает локально: `QueueController.endJam`, хранилище очищается, соединение закрывается. `ended` от сервера — то же без `end`.
+- **Соединение живёт с `PlaybackService`**: `onCreate` сервиса зовёт `onServiceStarted` (идёт джем — `resume`), `onDestroy` — `onServiceStopped` (соединение закрывается, джем остаётся в памяти и на диске, комната ждёт хозяина час, REC-05). На переднем плане ради джема сервис не держим.
+
+## `JamTracks`
+
+`toJam(track)` — `null`, если трек не проходит протокол (id не `^[0-9A-Za-z_-]{1,64}$`, пустое название); управляющие символы → пробелы, название ≤ 150, исполнители ≤ 10 по ≤ 64 символа, длительность 0…24 ч. `coverUri` восстанавливается из `coverUrl`: без схемы, `400x400` в конце → `%%`; адрес без размера — без обложки. `fromJam` — обратно через `TrackParsing.coverUrl`.
+
 ## Not here
 
-- Что играть дальше, «вперёд»/«назад», источники, волна, политика ошибок, shuffle и повтор — `queue/`. Тексты тостов — `ui/QueueEventText.kt` и `res/values*/strings.xml`. Подпись ссылки — `yandex/TrackUrl`. `MediaController` со стороны UI — `ui/PlayerViewModel`.
+- Что играть дальше, «вперёд»/«назад», источники, волна, режим джема, политика ошибок, shuffle и повтор — `queue/`. Протокол, соединение и хранение сессии джема — `jam/`. Тексты тостов — `ui/QueueEventText.kt` и `res/values*/strings.xml`. Подпись ссылки — `yandex/TrackUrl`. `MediaController` со стороны UI — `ui/PlayerViewModel`.
