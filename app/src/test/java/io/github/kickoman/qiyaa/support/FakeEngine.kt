@@ -77,6 +77,12 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
         this.tracks += tracks
     }
 
+    override fun insertTracks(index: Int, tracks: List<Track>) {
+        commands += "insert $index ${tracks.map { it.id }}"
+        this.tracks.addAll(index, tracks)
+        if (index <= currentIndex && this.tracks.size > tracks.size) currentIndex += tracks.size
+    }
+
     override fun removeAt(index: Int) {
         commands += "remove $index"
         tracks.removeAt(index)

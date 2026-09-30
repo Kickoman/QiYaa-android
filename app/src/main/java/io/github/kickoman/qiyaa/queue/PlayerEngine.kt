@@ -20,6 +20,8 @@ interface PlayerEngine {
 
     fun appendTracks(tracks: List<Track>)
 
+    fun insertTracks(index: Int, tracks: List<Track>)
+
     fun removeAt(index: Int)
 
     fun clear()

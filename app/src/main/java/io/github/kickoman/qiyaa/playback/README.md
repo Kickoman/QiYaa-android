@@ -95,7 +95,7 @@ class Media3Engine(player: Player, controller: QueueController) : PlayerEngine {
 }
 ```
 
-Тонкий: ни одного решения, только перевод. Команды `PlayerEngine` → вызовы `Player` (`setTracks` = `setMediaItems(…, startIndex, startPositionMs)` + `prepare()` + `playWhenReady`; `clear` = `clearMediaItems`; `seekTo(i)` = `seekTo(i, 0)`; `seekToPosition` = `seekTo(ms)`; `skipToNext`/`skipToPrevious` = `seekToNext/PreviousMediaItem`). События `Player.Listener` → методы контроллера:
+Тонкий: ни одного решения, только перевод. Команды `PlayerEngine` → вызовы `Player` (`setTracks` = `setMediaItems(…, startIndex, startPositionMs)` + `prepare()` + `playWhenReady`; `appendTracks` = `addMediaItems(…)`; `insertTracks(i, …)` = `addMediaItems(i, …)`, текущий трек и буфер не трогаются; `removeAt` = `removeMediaItem`; `clear` = `clearMediaItems`; `seekTo(i)` = `seekTo(i, 0)`; `seekToPosition` = `seekTo(ms)`; `skipToNext`/`skipToPrevious` = `seekToNext/PreviousMediaItem`). События `Player.Listener` → методы контроллера:
 
 | Событие ExoPlayer | Вызов |
 |---|---|

@@ -1,6 +1,6 @@
 # `queue/` — очередь
 
-Что играть: источники (лайки, плейлист, альбом, артист, станция, волна, поиск), тикеты «побеждает последний запрос», поколения очереди, догрузка волны, выделение и правка очереди, лайки и дизлайк, отметка `/play-audio`, политика ошибок воспроизведения и правило shuffle. Порт очереди из `src/core/player.cpp` десктопной версии; поведение описано сценариями `spec/player/` (ID вида `SRC-06`, `WAVE-05`, `ERR-04`).
+Что играть: источники (лайки, плейлист, альбом, артист, станция, волна, поиск), режим джема, тикеты «побеждает последний запрос», поколения очереди, догрузка волны, выделение и правка очереди, лайки и дизлайк, отметка `/play-audio`, политика ошибок воспроизведения и правило shuffle. Порт очереди из `src/core/player.cpp` десктопной версии; поведение описано сценариями `spec/player/` (ID вида `SRC-06`, `WAVE-05`, `ERR-04`), режим джема — `spec/jam/host.md` (`HOST-01`…).
 
 Пакет **не** знает про ExoPlayer: плеер виден ему как интерфейс `PlayerEngine`, а адаптер к Media3 — `playback/Media3Engine`. Он **не** ходит в сеть сам: запросы идут через `MusicSource` (в приложении — `LibraryMusicSource` над `yandex/Library`). Он **не** показывает текст: всё для пользователя уходит `QueueEvent`, а строку собирает `ui/QueueEventText.kt`.
 
@@ -26,11 +26,12 @@ grep -rln 'qiyaa\.\(playback\|ui\|data\)\.' app/src/main/java/io/github/kickoman
 | `PlayOrder.kt` | `PlayOrder.remainingAfter` — сколько треков после текущего в порядке воспроизведения |
 | `QueueStore.kt` | `QueueStore` — куда сохранять очередь (в приложении — `data/QueueFile`) |
 | `QueueSnapshot.kt` | `QueueSnapshot`, `QueueSnapshotCodec` — сохранённая очередь и её JSON |
+| `JamPlayback.kt` | `JamSlot`, `JamEntry`, `JamPlayback`, `JamPlaybackListener`, `JamTail` — типы режима джема и правка хвоста по общему префиксу |
 
 ## `QueueController`
 
 ```kotlin
-data class QueueState(tracks: List<Track>, title: String, isWave: Boolean, loadingMore: Boolean, selected: Set<Int>, activeSourceId: String?)
+data class QueueState(tracks: List<Track>, title: String, isWave: Boolean, loadingMore: Boolean, selected: Set<Int>, activeSourceId: String?, jamSlots: List<JamSlot>? = null)
 
 class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: CoroutineScope, io: CoroutineContext, newPlayId: () -> String = UUID, clock: () -> Long = монотонные мс, store: QueueStore? = null, logFailure: (Stage, Throwable) -> Unit = {}) {
     val state: StateFlow<QueueState>;  val events: SharedFlow<QueueEvent>;  val engine: PlayerEngine?
@@ -50,7 +51,13 @@ class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: C
     // события движка
     fun onItemChanged(track: Track?, transition: Transition, isPlaying: Boolean);  fun onEnded();  fun onShuffleChanged(enabled: Boolean);  fun onRepeatChanged(enabled: Boolean)
     fun onPlayingChanged(isPlaying: Boolean);  fun onFailure(kind: FailureKind, error: ErrorKind)
-    companion object { MY_WAVE_SEED = "user:onyourwave"; LOAD_MORE_WHEN_LEFT = 2; WAVE_HISTORY = 5; RESTART_AFTER_MS = 3_000 }
+    // режим джема (см. ниже)
+    val isJamActive: Boolean
+    fun startJam(title: String, listener: JamPlaybackListener, waveFeedback: Boolean)
+    fun onJamQueue(entries: List<JamEntry>, seeds: List<String>, seedsVersion: Int)   // из каждого state сервера
+    fun jamSkip(itemId: String)   // command{skip}
+    fun endJam()
+    companion object { MY_WAVE_SEED = "user:onyourwave"; LOAD_MORE_WHEN_LEFT = 2; WAVE_HISTORY = 5; RESTART_AFTER_MS = 3_000; PLAYING_REPORT_MS = 10_000; JAM_WAVE_AHEAD = 2 }
 }
 ```
 
@@ -73,6 +80,20 @@ class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: C
 **Ошибки источников и лайков.** Упавший запрос даёт `QueueEvent.Failed(stage, error)`, где `error` — `yandex/ErrorKind.of(failed)`, а само исключение уходит в `logFailure(stage, failed)`; в приложении это `Log.w` из `AppGraph`. Текста исключения в событии нет. Ошибка воспроизведения приходит уже с видом: `onFailure(kind, error)` от `playback/PlaybackFailures`. Ошибка догрузки заменённой волны пишется в лог, но события не даёт (WAVE-07).
 
 `events` — `MutableSharedFlow(extraBufferCapacity = 8)` с `tryEmit`: без подписчика события теряются, это нормально для тостов.
+
+## Режим джема
+
+Пока идёт джем, очередь плеера — это текущий трек, **часть джема** (треки гостей в порядке сервера) и за ней **волна джема**. Сеть джема очередь не знает: `jam/`-сессия (Kickoman/QiYaa-android#61) зовёт `startJam`, передаёт очередь сервера через `onJamQueue` и получает в ответ `JamPlaybackListener`. Каждому треку плеера соответствует `JamSlot` в `state.jamSlots`: `Item(itemId, addedBy)` — трек гостя, `Wave` — трек волны джема, `Other` — трек, который играл до джема.
+
+- **Старт** (HOST-14). Текущий трек остаётся и играет дальше (сообщается как `wave`), остальная очередь удаляется. Контексты обычной волны сбрасываются, shuffle и повтор выключаются (как в волне), выбор пользователя запоминается. Если очередь восстановлена из файла вместе со слотами, она берётся как есть.
+- **Часть джема** (HOST-01…04). `onJamQueue` сравнивает часть джема с очередью сервера: общий префикс остаётся на месте (`JamTail.edit`), остальное заменяется через `removeAt` и `insertTracks`, поэтому следующий трек и его буфер не трогаются, если он не поменялся. Текущий элемент в хвост не попадает, даже если `state` ещё его перечисляет. Волна джема стоит за частью джема.
+- **Переходы** (HOST-05…08). Новый текущий элемент → `onItemStarted(itemId)`, затем `onPlayback`. `onPlayback` уходит также при паузе, продолжении, перемотке и каждые 10 с игры (`PLAYING_REPORT_MS`). Элемент, пришедший в остановленный или ждущий волну плеер, играет сразу. «Назад» в джеме всегда перезапускает текущий трек.
+- **Волна джема** (HOST-10…13). Когда впереди нет элементов и меньше двух треков волны (`JAM_WAVE_AHEAD`), контроллер делает `startWave(seeds)` по сидам последнего `state` (без сидов — `track:<id>` текущего трека) или `moreWave` своей сессии с последними 5 треками волны. Сессия помнит `seedsVersion`; если в `state` пришла другая версия, то, когда закончились элементы, отложенные треки старой сессии удаляются и стартует новая. Элемент, пришедший во время трека волны, встаёт перед оставшимися треками волны. Ничего не играло и сидов нет — плеер стоит, `onPlayback(IDLE)`.
+- **Ошибки** (HOST-09). Правила `ErrorPolicy` как в волне: сломанный последний трек ждёт волну джема и продолжает с её первого трека.
+- **Без обучения** (HOST-15, HOST-16). Для треков джема нет `/play-audio` и фидбека в «Мою волну» и станции. Фидбек ротора идёт только в сессию волны джема и только при `waveFeedback = true`.
+- **Запреты** (HOST-21). `loadSource`, `playWave`, `search`, `setQueue`, `appendTracks`, `clear`, `removeIndices` ничего не делают и отдают `QueueEvent.JamActive`. Лайк и дизлайк работают (HOST-17).
+- **Пропуск гостя** (HOST-18, HOST-19). `jamSkip(itemId)` = «вперёд», только если этот элемент — текущий.
+- **Конец** (HOST-32, HOST-33). `endJam` оставляет элементы как обычные треки, удаляет треки волны после текущего, снимает `jamSlots`, возвращает shuffle, повтор и отметки `/play-audio`.
 
 ## Известные расхождения со спекой
 
@@ -111,11 +132,13 @@ object ErrorPolicy {
  "tracks":[{"id":"1","title":"Кукушка","artists":["Кино"],"albumId":"4053","durationMs":398000,"available":true,"coverUrl":"https://…","batchId":"B1"}]}
 ```
 
+В джеме добавляются `"jam":true` и у треков `jamItemId`, `jamAddedBy` (элемент) или `"jamWave":true` (волна джема); без них трек — `Other`. Вне джема этих полей нет.
+
 `shuffle` и `repeat` — выбор пользователя (`WaveModeRule.wanted`), а не режим плеера в волне. `sourceId`, `coverUrl` могут отсутствовать; `batchId`, `waveSessionId`, `waveStationId` пусты вне волны. `decode` зажимает `index` в границы треков, неизвестные поля пропускает, при другой `version` возвращает null.
 
 ## Тесты
 
-`app/src/test/.../queue/`: `QueueSourcesTest`, `QueueWaveTest`, `QueueErrorsTest`, `QueueEditingTest` гоняют контроллер с `support/FakeEngine` (плейлист, курсор, конец, порядок shuffle, синхронные колбэки — как ExoPlayer, без повтора) и `support/FakeMusicSource` (ответы — лямбды, в том числе отложенные `CompletableDeferred`). Имена тестов начинаются с ID сценария.
+`app/src/test/.../queue/`: `QueueSourcesTest`, `QueueWaveTest`, `QueueErrorsTest`, `QueueEditingTest`, `QueueJamTest` гоняют контроллер с `support/FakeEngine` (плейлист, курсор, конец, порядок shuffle, синхронные колбэки — как ExoPlayer, без повтора) и `support/FakeMusicSource` (ответы — лямбды, в том числе отложенные `CompletableDeferred`). Имена тестов начинаются с ID сценария.
 
 **Traps:**
 - Секунды прослушивания считаются по часам `clock` только между `onPlayingChanged(true)` и `(false)` открытого трека; перемотка времени не добавляет. В тестах часы — виртуальное время `runTest`.
