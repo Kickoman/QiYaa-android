@@ -17,6 +17,7 @@ data class QueueSnapshot(
     val positionMs: Long,
     val shuffle: Boolean,
     val repeat: Boolean,
+    val jamSlots: List<JamSlot>? = null,
 )
 
 object QueueSnapshotCodec {
@@ -37,6 +38,7 @@ object QueueSnapshotCodec {
             positionMs = snapshot.positionMs,
             shuffle = snapshot.shuffle,
             repeat = snapshot.repeat,
+            jam = snapshot.jamSlots != null,
             tracks =
             snapshot.tracks.mapIndexed { i, track ->
                 TrackEntry(
@@ -48,6 +50,9 @@ object QueueSnapshotCodec {
                     available = track.available,
                     coverUrl = track.coverUrl,
                     batchId = snapshot.batchIds.getOrElse(i) { "" },
+                    jamItemId = (snapshot.jamSlots?.getOrNull(i) as? JamSlot.Item)?.itemId.orEmpty(),
+                    jamAddedBy = (snapshot.jamSlots?.getOrNull(i) as? JamSlot.Item)?.addedBy.orEmpty(),
+                    jamWave = snapshot.jamSlots?.getOrNull(i) == JamSlot.Wave,
                 )
             },
         ),
@@ -79,7 +84,14 @@ object QueueSnapshotCodec {
             positionMs = file.positionMs.coerceAtLeast(0),
             shuffle = file.shuffle,
             repeat = file.repeat,
+            jamSlots = if (file.jam) file.tracks.map(::slotOf) else null,
         )
+    }
+
+    private fun slotOf(entry: TrackEntry): JamSlot = when {
+        entry.jamItemId.isNotEmpty() -> JamSlot.Item(entry.jamItemId, entry.jamAddedBy)
+        entry.jamWave -> JamSlot.Wave
+        else -> JamSlot.Other
     }
 
     @Serializable
@@ -94,6 +106,7 @@ object QueueSnapshotCodec {
         val positionMs: Long,
         val shuffle: Boolean,
         val repeat: Boolean,
+        val jam: Boolean = false,
         val tracks: List<TrackEntry>,
     )
 
@@ -107,5 +120,8 @@ object QueueSnapshotCodec {
         val available: Boolean = true,
         val coverUrl: String? = null,
         val batchId: String = "",
+        val jamItemId: String = "",
+        val jamAddedBy: String = "",
+        val jamWave: Boolean = false,
     )
 }

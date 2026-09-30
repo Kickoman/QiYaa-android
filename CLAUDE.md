@@ -95,7 +95,7 @@ Writing rules for READMEs:
   | `audio` | DSP: equalizer, FFT, spectrum, visualizer ring, PCM | — (pure JVM) |
   | `data` | Persistence: settings and token | `audio` |
   | `jam` | Jam client: protocol codec, connection, the host's stored session | — (pure JVM) |
-  | `queue` | What plays next: sources, waves, error policy, shuffle rule | `yandex` (pure JVM) |
+  | `queue` | What plays next: sources, waves, the jam mode, error policy, shuffle rule | `yandex` (pure JVM) |
   | `playback` | ExoPlayer, MediaSession, the Media3 adapter for `queue`, audio processors, the jam WebSocket transport | `queue`, `jam`, `yandex`, `audio`, `data` |
   | `ui` | Compose screens, view models, theme | everything above |
   | root | `AppGraph`, `QiYaaApp` (composition root), `NetworkMonitor` (platform signals) | everything |

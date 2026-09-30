@@ -109,6 +109,9 @@ class Media3Engine(private val player: Player, private val controller: QueueCont
 
     override fun appendTracks(tracks: List<Track>) = player.addMediaItems(tracks.map(MediaItems::toMediaItem))
 
+    override fun insertTracks(index: Int, tracks: List<Track>) =
+        player.addMediaItems(index, tracks.map(MediaItems::toMediaItem))
+
     override fun removeAt(index: Int) = player.removeMediaItem(index)
 
     override fun clear() = player.clearMediaItems()
