@@ -35,12 +35,16 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.kickoman.qiyaa.R
+import io.github.kickoman.qiyaa.playback.JamHostPhase
 import io.github.kickoman.qiyaa.ui.components.IconPaths
 import io.github.kickoman.qiyaa.ui.components.LedDot
 import io.github.kickoman.qiyaa.ui.components.PathIcon
 import io.github.kickoman.qiyaa.ui.components.QiText
 import io.github.kickoman.qiyaa.ui.components.tap
 import io.github.kickoman.qiyaa.ui.screens.EqScreen
+import io.github.kickoman.qiyaa.ui.screens.JamContinueDialog
+import io.github.kickoman.qiyaa.ui.screens.JamScreen
+import io.github.kickoman.qiyaa.ui.screens.JamSettingsScreen
 import io.github.kickoman.qiyaa.ui.screens.LibraryScreen
 import io.github.kickoman.qiyaa.ui.screens.LibrarySectionScreen
 import io.github.kickoman.qiyaa.ui.screens.LoginScreen
@@ -58,9 +62,14 @@ private val MiniPlayerStyle = mono(12.sp, 500, 0.5.sp)
 private val TabStyle = mono(10.sp, 500, 1.5.sp)
 
 @Composable
-fun AppRoot(app: AppViewModel = viewModel(), player: PlayerViewModel = viewModel()) {
+fun AppRoot(
+    app: AppViewModel = viewModel(),
+    player: PlayerViewModel = viewModel(),
+    jam: JamViewModel = viewModel(),
+) {
     val theme by app.settings.theme.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { player.notices.collect(app::say) }
+    LaunchedEffect(Unit) { jam.notices.collect(app::say) }
     QiYaaTheme(theme) {
         val colors = Qi.colors
         val screen by app.screen.collectAsStateWithLifecycle()
@@ -69,6 +78,8 @@ fun AppRoot(app: AppViewModel = viewModel(), player: PlayerViewModel = viewModel
         val presetsOpen by player.presetsOpen.collectAsStateWithLifecycle()
         val playerUi by player.ui.collectAsStateWithLifecycle()
         val sessionState by app.sessionState.collectAsStateWithLifecycle()
+        val jamState by jam.state.collectAsStateWithLifecycle()
+        val jamOn = jamState.phase == JamHostPhase.ACTIVE
         val backTarget = screen.backTarget
         BackHandler(enabled = backTarget != null) { backTarget?.let(app::go) }
 
@@ -79,15 +90,34 @@ fun AppRoot(app: AppViewModel = viewModel(), player: PlayerViewModel = viewModel
                     .windowInsetsPadding(WindowInsets.systemBars)
                     .imePadding(),
             ) {
-                if (screen != Screen.LOGIN && sessionState == SessionState.Offline) OfflineStrip()
+                if (screen != Screen.LOGIN && sessionState == SessionState.Offline) {
+                    OfflineStrip(stringResource(R.string.session_offline))
+                } else if (screen != Screen.LOGIN && jamOn && !jamState.connected) {
+                    OfflineStrip(stringResource(R.string.jam_offline_strip), onClick = { app.go(Screen.JAM) })
+                }
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     when (screen) {
                         Screen.LOGIN -> LoginScreen(app)
-                        Screen.PLAYER -> PlayerScreen(player)
-                        Screen.PLAYLIST -> PlaylistScreen(player, onAdd = { app.go(Screen.LIBRARY) })
+                        Screen.PLAYER -> PlayerScreen(player, onJam = { app.go(Screen.JAM) }.takeIf { jamOn })
+                        Screen.PLAYLIST -> PlaylistScreen(
+                            player,
+                            jam,
+                            onAdd = { app.go(if (jamOn) Screen.JAM else Screen.LIBRARY) },
+                        )
                         Screen.EQ -> EqScreen(player)
                         Screen.LIBRARY -> section?.let { LibrarySectionScreen(app, it) }
-                            ?: LibraryScreen(app, player)
+                            ?: LibraryScreen(
+                                app,
+                                player,
+                                jamState,
+                                onJam = { app.go(Screen.JAM) },
+                                onJamSearch = { text: String ->
+                                    jam.search(text)
+                                    app.go(Screen.JAM)
+                                }.takeIf { jamOn },
+                            )
+                        Screen.JAM -> JamScreen(jam, onSettings = { app.go(Screen.JAM_SETTINGS) })
+                        Screen.JAM_SETTINGS -> JamSettingsScreen(jam, onDone = { app.go(Screen.JAM) })
                     }
                 }
                 val track = playerUi.current
@@ -100,6 +130,10 @@ fun AppRoot(app: AppViewModel = viewModel(), player: PlayerViewModel = viewModel
                     )
                 }
                 if (screen != Screen.LOGIN) TabBar(screen, app::go)
+            }
+
+            if (screen != Screen.LOGIN && jamState.storedSession) {
+                JamContinueDialog(onContinue = jam::continueStored, onEnd = jam::discardStored)
             }
 
             if (presetsOpen) {
@@ -134,18 +168,19 @@ fun AppRoot(app: AppViewModel = viewModel(), player: PlayerViewModel = viewModel
 }
 
 @Composable
-private fun OfflineStrip() {
+private fun OfflineStrip(text: String, onClick: (() -> Unit)? = null) {
     val colors = Qi.colors
     Row(
         Modifier
             .fillMaxWidth()
             .background(colors.deep)
+            .tap(enabled = onClick != null) { onClick?.invoke() }
             .padding(horizontal = 16.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         LedDot(colors.error)
-        QiText(stringResource(R.string.session_offline), ReadoutStyle, color = colors.error, maxLines = 1)
+        QiText(text, ReadoutStyle, color = colors.error, maxLines = 1)
     }
 }
 

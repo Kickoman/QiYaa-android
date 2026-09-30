@@ -76,6 +76,18 @@ class QueueJamTest {
     }
 
     @Test
+    fun `the selection stays on the tracks that stay when the jam part changes`() = runTest {
+        val h = QueueHarness(this)
+        h.startJam()
+        h.state(item("i1", "A"), item("i2", "B"), item("i3", "C"), item("i4", "D"))
+        h.controller.toggleSelected(1)
+        h.controller.toggleSelected(3)
+        h.state(item("i2", "B"), item("i5", "E"))
+        assertEquals(listOf("A", "B", "E"), h.engine.ids())
+        assertEquals(setOf(1), h.controller.state.value.selected)
+    }
+
+    @Test
     fun `HOST-04 the current item is never put into the tail again`() = runTest {
         val h = QueueHarness(this)
         h.startJam()

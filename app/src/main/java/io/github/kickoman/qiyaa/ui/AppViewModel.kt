@@ -24,12 +24,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-enum class Screen { LOGIN, PLAYER, PLAYLIST, EQ, LIBRARY }
+enum class Screen { LOGIN, PLAYER, PLAYLIST, EQ, LIBRARY, JAM, JAM_SETTINGS }
 
 val Screen.backTarget: Screen?
     get() = when (this) {
         Screen.LOGIN, Screen.PLAYER -> null
-        Screen.PLAYLIST, Screen.EQ, Screen.LIBRARY -> Screen.PLAYER
+        Screen.PLAYLIST, Screen.EQ, Screen.LIBRARY, Screen.JAM -> Screen.PLAYER
+        Screen.JAM_SETTINGS -> Screen.JAM
     }
 
 enum class LibrarySection { FOR_YOU, WHEEL, STATIONS, PLAYLISTS, ARTISTS, ALBUMS }
@@ -260,6 +261,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun leaveSession(notice: String?) {
+        graph.jamHost.end() // guests search through this account: no account, no jam
         queue.clear()
         session.signOut()
         tokenStore.clear()

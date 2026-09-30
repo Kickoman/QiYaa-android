@@ -65,7 +65,7 @@ fun queueTitle(title: String, isWave: Boolean): String =
     title.ifEmpty { stringResource(R.string.player_no_queue) }.uppercase() + if (isWave) " ∞" else ""
 
 @Composable
-fun PlayerScreen(viewModel: PlayerViewModel) {
+fun PlayerScreen(viewModel: PlayerViewModel, onJam: (() -> Unit)? = null) {
     val colors = Qi.colors
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val queue by viewModel.queue.state.collectAsStateWithLifecycle()
@@ -104,7 +104,8 @@ fun PlayerScreen(viewModel: PlayerViewModel) {
             QiText(
                 "$positionLabel · ${queueTitle(queue.title, queue.isWave)}",
                 QueueLabelStyle,
-                color = colors.muted,
+                Modifier.tap(enabled = onJam != null) { onJam?.invoke() },
+                color = if (onJam != null) colors.accent else colors.muted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )

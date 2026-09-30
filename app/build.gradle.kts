@@ -121,6 +121,7 @@ dependencies {
     implementation(libs.media3.datasource.okhttp)
     implementation(libs.okhttp)
     implementation(libs.coil.compose)
+    implementation(libs.qrcodegen)
 
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)

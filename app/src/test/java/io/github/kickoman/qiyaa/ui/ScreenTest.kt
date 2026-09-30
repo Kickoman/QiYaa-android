@@ -12,6 +12,12 @@ class ScreenTest {
     }
 
     @Test
+    fun `Back from the jam goes to the player, and from the jam server settings to the jam`() {
+        assertEquals(Screen.PLAYER, Screen.JAM.backTarget)
+        assertEquals(Screen.JAM, Screen.JAM_SETTINGS.backTarget)
+    }
+
+    @Test
     fun `Back from the player or the sign-in screen is left to the system and closes the app`() {
         assertEquals(null, Screen.PLAYER.backTarget)
         assertEquals(null, Screen.LOGIN.backTarget)
