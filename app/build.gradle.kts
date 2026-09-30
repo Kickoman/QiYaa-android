@@ -39,6 +39,8 @@ android {
         versionCode = releaseVersion?.let { (major, minor, patch) -> major * 10_000 + minor * 100 + patch }
             ?: 1
         versionName = releaseVersion?.joinToString(".") ?: "0.0.0-dev"
+        val jamUrl = providers.gradleProperty("qiyaaJamUrl").orNull.orEmpty()
+        buildConfigField("String", "JAM_URL", "\"$jamUrl\"")
     }
 
     signingConfigs {
@@ -65,6 +67,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     packaging {
         resources.excludes += setOf("META-INF/AL2.0", "META-INF/LGPL2.1")
@@ -94,7 +97,7 @@ ktlint {
 tasks.withType<Test>().configureEach {
     val specDir = rootProject.file("spec")
     systemProperty("qiyaa.spec.dir", specDir.absolutePath)
-    inputs.files(fileTree(specDir) { include("fixtures/**", "expected/**", "dsp/**", "player/**") })
+    inputs.files(fileTree(specDir) { include("fixtures/**", "expected/**", "dsp/**", "player/**", "jam/**") })
         .withPropertyName("spec")
         .withPathSensitivity(PathSensitivity.RELATIVE)
 }

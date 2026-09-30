@@ -32,7 +32,7 @@ class AppGraph(val context: Context) {
             .writeTimeout(HTTP_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .build()
 
-    val settings = Settings(context)
+    val settings = Settings(context, defaultJamServer = BuildConfig.JAM_URL)
     val tokenStore = TokenStore(context)
     val api = YandexApi(httpClient).also { it.token = tokenStore.load() }
     val library = Library(api)

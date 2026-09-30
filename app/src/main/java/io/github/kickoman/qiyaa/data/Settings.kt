@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-class Settings(context: Context) {
+class Settings(context: Context, defaultJamServer: String = "") {
     private val preferences: SharedPreferences = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
     private val mutableVolume = MutableStateFlow(preferences.getInt(KEY_VOLUME, DEFAULT_VOLUME))
@@ -37,6 +37,13 @@ class Settings(context: Context) {
 
     private val mutableTheme = MutableStateFlow(AccentTheme.fromKey(preferences.getString(KEY_THEME, null)))
     val theme: StateFlow<AccentTheme> = mutableTheme.asStateFlow()
+
+    private val mutableJamServer =
+        MutableStateFlow(preferences.getString(KEY_JAM_SERVER, null) ?: defaultJamServer)
+    val jamServer: StateFlow<String> = mutableJamServer.asStateFlow()
+
+    private val mutableJamHostKey = MutableStateFlow(preferences.getString(KEY_JAM_HOST_KEY, null).orEmpty())
+    val jamHostKey: StateFlow<String> = mutableJamHostKey.asStateFlow()
 
     fun setVolume(value: Int) {
         mutableVolume.value = value.coerceIn(0, AudioBus.MAX_VOLUME)
@@ -74,6 +81,16 @@ class Settings(context: Context) {
             .apply()
     }
 
+    fun setJamServer(url: String) {
+        mutableJamServer.value = url.trim()
+        preferences.edit().putString(KEY_JAM_SERVER, mutableJamServer.value).apply()
+    }
+
+    fun setJamHostKey(key: String) {
+        mutableJamHostKey.value = key.trim()
+        preferences.edit().putString(KEY_JAM_HOST_KEY, mutableJamHostKey.value).apply()
+    }
+
     fun setTheme(theme: AccentTheme) {
         mutableTheme.value = theme
         preferences.edit().putString(KEY_THEME, theme.key).apply()
@@ -105,6 +122,8 @@ class Settings(context: Context) {
         const val KEY_EQ_PREAMP = "equalizer/preamp"
         const val KEY_EQ_BANDS = "equalizer/bands"
         const val KEY_THEME = "theme"
+        const val KEY_JAM_SERVER = "jam/server"
+        const val KEY_JAM_HOST_KEY = "jam/hostKey"
         const val DEFAULT_VOLUME = 75
         const val DEFAULT_EQ_PRESET = "Flat"
     }

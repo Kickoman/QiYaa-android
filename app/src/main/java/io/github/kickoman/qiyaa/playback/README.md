@@ -22,6 +22,7 @@ grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   #
 | `EqualizerProcessor.kt` | `EqualizerProcessor` — PCM16 → float → EQ → баланс → PCM16 |
 | `VisualizerTapProcessor.kt` | `VisualizerTapProcessor` — копия PCM в `VisualizerTap`, звук не меняет |
 | `TimedAudioSink.kt` | `TimedAudioSink` — `ForwardingAudioSink`: метки времени входных буферов и звучащая позиция для `VisualizerTap` |
+| `OkHttpJamTransport.kt` | `OkHttpJamTransport` — `jam.JamTransport` на WebSocket OkHttp: без тайм-аута чтения, свой ping раз в 20 с, одно `onClosed` на сокет |
 
 Зависит от `queue`, `yandex`, `audio`, `data` и корневого `appGraph` (сервис — точка входа Android и получает граф через `Context.appGraph`).
 
