@@ -74,7 +74,7 @@ class JamHostTest {
         assertEquals(JamHostPhase.CREATING, h.host.state.value.phase)
         h.open()
         assertEquals("wss://jam.example.org/ws", h.transport.last.url)
-        assertEquals(listOf(Create("r1", HOST_KEY, "Маша")), h.sent())
+        assertEquals(listOf(Create("r1", "Маша")), h.sent())
         h.receive(Created("r1", ROOM, HOST_SECRET, JOIN_SECRET, JOIN_URL, HOST_ID))
         assertEquals(JamSession(ROOM, HOST_SECRET, JOIN_URL, null, emptyList()), h.stored())
         val state = h.host.state.value
@@ -86,12 +86,10 @@ class JamHostTest {
     }
 
     @Test
-    fun `create refuses a missing server, a malformed host key and a blank name`() = runTest {
+    fun `create refuses a missing server and a blank name`() = runTest {
         val h = Harness(this)
         assertFalse(h.host.create("   "))
-        h.config = h.config.copy(hostKey = "qjk_short")
-        assertFalse(h.host.create("Маша"))
-        h.config = h.config.copy(serverUrl = "", hostKey = HOST_KEY)
+        h.config = h.config.copy(serverUrl = "")
         assertFalse(h.host.create("Маша"))
         runCurrent()
         assertTrue(h.transport.sockets.isEmpty())
@@ -103,8 +101,8 @@ class JamHostTest {
         val h = Harness(this)
         h.host.create("Маша")
         h.open()
-        h.receive(Rejected("r1", "bad-key"))
-        assertEquals(listOf<JamHostEvent>(JamHostEvent.Refused("bad-key")), h.events)
+        h.receive(Rejected("r1", "rate-limited"))
+        assertEquals(listOf<JamHostEvent>(JamHostEvent.Refused("rate-limited")), h.events)
         assertEquals(JamHostPhase.NONE, h.host.state.value.phase)
         assertEquals(JamStatus.STOPPED, h.host.state.value.connection)
         assertFalse(h.queue.controller.isJamActive)
@@ -150,7 +148,7 @@ class JamHostTest {
             h.open()
             assertEquals(
                 listOf(
-                    Resume("r2", ROOM, HOST_SECRET, HOST_KEY, JsonNull, listOf(OutboxEntry(itemId = "i2"))),
+                    Resume("r2", ROOM, HOST_SECRET, JsonNull, listOf(OutboxEntry(itemId = "i2"))),
                 ),
                 h.sent(),
             )
@@ -188,7 +186,7 @@ class JamHostTest {
             h.open()
             assertEquals(
                 listOf(
-                    Resume("r1", ROOM, HOST_SECRET, HOST_KEY, snapshot, listOf(OutboxEntry(itemId = "i7"))),
+                    Resume("r1", ROOM, HOST_SECRET, snapshot, listOf(OutboxEntry(itemId = "i7"))),
                 ),
                 h.sent(),
             )
@@ -205,7 +203,7 @@ class JamHostTest {
         assertNull(h.store.text)
         assertFalse(h.queue.controller.isJamActive)
         h.open()
-        assertEquals(listOf(Resume("r1", ROOM, HOST_SECRET, HOST_KEY, JsonNull, emptyList())), h.sent())
+        assertEquals(listOf(Resume("r1", ROOM, HOST_SECRET, JsonNull, emptyList())), h.sent())
         h.receive(Resumed("r1", restored = false))
         assertEquals(End("r2"), h.sent().last())
         h.receive(Ack("r2"))
@@ -369,7 +367,7 @@ class JamHostTest {
         val transport = FakeJamTransport()
         val catalog = FakeCatalog()
         val store = MemoryStore(stored?.let(JamSessionCodec::encode))
-        var config = JamHostConfig("https://jam.example.org", HOST_KEY, waveFeedback = true)
+        var config = JamHostConfig("https://jam.example.org", waveFeedback = true)
         val events = ArrayList<JamHostEvent>()
         private var ids = 0
         val host =
@@ -448,7 +446,6 @@ class JamHostTest {
         const val HOST_SECRET = "R0CuY0ewFywBJU_1W65a_1GZ9ERuf21kPUAYWz9HUUU"
         const val JOIN_SECRET = "WDkyFgMr5iV3hKwManPvsg"
         const val JOIN_URL = "https://jam.example.org/j/$ROOM#$JOIN_SECRET"
-        val HOST_KEY = "qjk_" + "A".repeat(43)
 
         private val examples = File(Spec.root, "jam/protocol/examples")
 

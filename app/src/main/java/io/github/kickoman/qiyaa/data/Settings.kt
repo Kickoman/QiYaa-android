@@ -10,7 +10,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 class Settings(context: Context, defaultJamServer: String = "") {
-    private val preferences: SharedPreferences = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+    private val preferences: SharedPreferences =
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).also { stored ->
+            if (stored.contains(KEY_OLD_JAM_HOST_KEY)) stored.edit().remove(KEY_OLD_JAM_HOST_KEY).apply()
+        }
 
     private val mutableVolume = MutableStateFlow(preferences.getInt(KEY_VOLUME, DEFAULT_VOLUME))
     val volume: StateFlow<Int> = mutableVolume.asStateFlow()
@@ -41,9 +44,6 @@ class Settings(context: Context, defaultJamServer: String = "") {
     private val mutableJamServer =
         MutableStateFlow(preferences.getString(KEY_JAM_SERVER, null) ?: defaultJamServer)
     val jamServer: StateFlow<String> = mutableJamServer.asStateFlow()
-
-    private val mutableJamHostKey = MutableStateFlow(preferences.getString(KEY_JAM_HOST_KEY, null).orEmpty())
-    val jamHostKey: StateFlow<String> = mutableJamHostKey.asStateFlow()
 
     private val mutableJamWaveFeedback = MutableStateFlow(preferences.getBoolean(KEY_JAM_WAVE_FEEDBACK, true))
 
@@ -91,11 +91,6 @@ class Settings(context: Context, defaultJamServer: String = "") {
         preferences.edit().putString(KEY_JAM_SERVER, mutableJamServer.value).apply()
     }
 
-    fun setJamHostKey(key: String) {
-        mutableJamHostKey.value = key.trim()
-        preferences.edit().putString(KEY_JAM_HOST_KEY, mutableJamHostKey.value).apply()
-    }
-
     fun setJamWaveFeedback(value: Boolean) {
         mutableJamWaveFeedback.value = value
         preferences.edit().putBoolean(KEY_JAM_WAVE_FEEDBACK, value).apply()
@@ -133,7 +128,9 @@ class Settings(context: Context, defaultJamServer: String = "") {
         const val KEY_EQ_BANDS = "equalizer/bands"
         const val KEY_THEME = "theme"
         const val KEY_JAM_SERVER = "jam/server"
-        const val KEY_JAM_HOST_KEY = "jam/hostKey"
+
+        /** Removed on start: jams need no host key since 2026-10-01 (0.2.3 stored one). */
+        const val KEY_OLD_JAM_HOST_KEY = "jam/hostKey"
         const val KEY_JAM_WAVE_FEEDBACK = "jam/waveFeedback"
         const val DEFAULT_VOLUME = 75
         const val DEFAULT_EQ_PRESET = "Flat"

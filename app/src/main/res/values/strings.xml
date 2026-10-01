@@ -158,8 +158,8 @@
     <string name="jam_start">Start the jam</string>
     <string name="jam_connecting">Connecting to the jam server…</string>
     <string name="jam_cancel">Cancel</string>
-    <string name="jam_not_configured">Set the jam server and your host key first</string>
-    <string name="jam_cannot_start">Cannot start: check your name, the server and the host key</string>
+    <string name="jam_not_configured">Set the jam server first</string>
+    <string name="jam_cannot_start">Cannot start: check your name and the server</string>
     <string name="jam_share">Share link</string>
     <string name="jam_copy">Copy</string>
     <string name="jam_copied">Link copied</string>
@@ -200,10 +200,6 @@
     <string name="jam_continue_no">End it</string>
     <string name="jam_server">Server</string>
     <string name="jam_server_hint">https://jam.example.org</string>
-    <string name="jam_host_key">Host key</string>
-    <string name="jam_host_key_note">The key comes from whoever runs the jam server.</string>
-    <string name="jam_show">Show</string>
-    <string name="jam_hide">Hide</string>
     <string name="jam_wave_feedback">Teach the jam wave</string>
     <string name="jam_wave_feedback_note">When the guests\' queue is empty, the jam wave plays. On: it learns from skips during the jam, and only there. Off: no feedback at all.</string>
     <string name="jam_done">Done</string>
@@ -216,7 +212,6 @@
     <string name="jam_ended_by_server">The jam was ended</string>
     <string name="jam_ended_expired">The jam expired while you were away</string>
     <string name="jam_ended_gone">The jam is over: the server no longer has it</string>
-    <string name="jam_refused_bad_key">The jam server does not accept this host key</string>
     <string name="jam_refused_server_full">The jam server is full, try later</string>
     <string name="jam_refused_rate_limited">Too many requests, try a bit later</string>
     <string name="jam_refused_update_required">Update QiYaa to use this jam server</string>

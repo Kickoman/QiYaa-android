@@ -74,7 +74,7 @@ interface JamCatalog {
     suspend fun tracks(ids: List<String>): List<Track>
 }
 
-data class JamHostConfig(val serverUrl: String, val hostKey: String, val waveFeedback: Boolean)
+data class JamHostConfig(val serverUrl: String, val waveFeedback: Boolean)
 
 enum class JamHostPhase { NONE, CREATING, ACTIVE }
 
@@ -158,16 +158,16 @@ class JamHost(
     }
 
     /**
-     * Starts a new jam; false when one is on, the server is not set, or the name, the host key or the
-     * settings do not pass the protocol (the server would close the connection, and the retry would
-     * send the same again).
+     * Starts a new jam; false when one is on, the server is not set, or the name or the settings do
+     * not pass the protocol (the server would close the connection, and the retry would send the same
+     * again).
      */
     fun create(hostName: String, settings: JamSettingsPatch? = null): Boolean {
         if (session != null || creating != null) return false
         val name = hostName.trim().take(MAX_NAME).trim()
         val server = config()
         if (server.serverUrl.isBlank()) return false
-        val probe = Create("probe", server.hostKey, name, settings)
+        val probe = Create("probe", name, settings)
         if (JamCodec.decodeClient(JamCodec.encode(probe)) !is Decoded.Message) return false
         stopDiscarding()
         creating = CreateRequest(name, settings)
@@ -202,7 +202,7 @@ class JamHost(
         write(null)
         queue.endJam()
         val server = config()
-        if (server.serverUrl.isNotBlank() && server.hostKey.isNotBlank()) {
+        if (server.serverUrl.isNotBlank()) {
             discarding = old
             connect(server.serverUrl)
         }
@@ -260,17 +260,16 @@ class JamHost(
     override fun onWelcome() {
         connected = false
         lastVersion = -1
-        val key = config().hostKey
         val active = session
         val old = discarding
         val create = creating
         when {
-            active != null -> sendResume(active, client.outbox.value, key)
-            old != null -> sendResume(old, old.outbox, key)
+            active != null -> sendResume(active, client.outbox.value)
+            old != null -> sendResume(old, old.outbox)
             create != null -> {
                 val id = newId()
                 requestId = id
-                client.send(Create(id, key, create.hostName, create.settings))
+                client.send(Create(id, create.hostName, create.settings))
             }
         }
         publish()
@@ -326,7 +325,7 @@ class JamHost(
 
     private fun request(build: (String) -> ClientMessage): Boolean = connected && client.send(build(newId()))
 
-    private fun sendResume(resumed: JamSession, outbox: List<String>, key: String) {
+    private fun sendResume(resumed: JamSession, outbox: List<String>) {
         val id = newId()
         requestId = id
         client.send(
@@ -334,7 +333,6 @@ class JamHost(
                 id = id,
                 roomId = resumed.roomId,
                 hostSecret = resumed.hostSecret,
-                hostKey = key,
                 snapshot = resumed.snapshot ?: JsonNull,
                 outbox = outbox.takeLast(MAX_OUTBOX).map { OutboxEntry(itemId = it) },
             ),
@@ -558,6 +556,6 @@ class JamHost(
         const val SEARCH_RESULTS = 20
         const val RESUME_RETRY_MS = 30_000L
         private const val EVENT_BUFFER = 8
-        val GONE_REASONS = setOf("room-not-found", "bad-secret", "bad-key")
+        val GONE_REASONS = setOf("room-not-found", "bad-secret")
     }
 }

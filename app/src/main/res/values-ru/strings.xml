@@ -141,8 +141,8 @@
     <string name="jam_start">Начать джем</string>
     <string name="jam_connecting">Подключаюсь к серверу джема…</string>
     <string name="jam_cancel">Отмена</string>
-    <string name="jam_not_configured">Сначала укажите сервер джема и ключ хозяина</string>
-    <string name="jam_cannot_start">Не получается начать: проверьте имя, сервер и ключ хозяина</string>
+    <string name="jam_not_configured">Сначала укажите сервер джема</string>
+    <string name="jam_cannot_start">Не получается начать: проверьте имя и сервер</string>
     <string name="jam_share">Поделиться ссылкой</string>
     <string name="jam_copy">Копировать</string>
     <string name="jam_copied">Ссылка скопирована</string>
@@ -183,10 +183,6 @@
     <string name="jam_continue_no">Закончить</string>
     <string name="jam_server">Сервер</string>
     <string name="jam_server_hint">https://jam.example.org</string>
-    <string name="jam_host_key">Ключ хозяина</string>
-    <string name="jam_host_key_note">Ключ выдаёт тот, кто держит сервер джема.</string>
-    <string name="jam_show">Показать</string>
-    <string name="jam_hide">Скрыть</string>
     <string name="jam_wave_feedback">Учить волну джема</string>
     <string name="jam_wave_feedback_note">Когда очередь гостей пуста, играет волна джема. Да: она учится на пропусках во время джема и только там. Нет: никакого фидбека.</string>
     <string name="jam_done">Готово</string>
@@ -199,7 +195,6 @@
     <string name="jam_ended_by_server">Джем закончили</string>
     <string name="jam_ended_expired">Джем закрылся, пока вас не было</string>
     <string name="jam_ended_gone">Джем закончен: сервер его больше не знает</string>
-    <string name="jam_refused_bad_key">Сервер джема не принимает этот ключ хозяина</string>
     <string name="jam_refused_server_full">Сервер джема переполнен, попробуйте позже</string>
     <string name="jam_refused_rate_limited">Слишком много запросов, подождите немного</string>
     <string name="jam_refused_update_required">Обновите QiYaa, чтобы работать с этим сервером джема</string>
