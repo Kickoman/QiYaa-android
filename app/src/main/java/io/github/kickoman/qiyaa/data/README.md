@@ -27,7 +27,7 @@
 | `equalizer/preamp` | float dB | 0 | часть `eq` |
 | `equalizer/bands` | string, 10 чисел через запятую с одним знаком (`"0.0,3.5,…"`) | плоские | часть `eq` |
 | `theme` | string (`AccentTheme.key`: `green`, `amber`, `ice`) | `amber` | `theme` |
-| `jam/server` | string, адрес сервера джема (`https://jam.example.org`) | `BuildConfig.JAM_URL` из Gradle-свойства `qiyaaJamUrl`, иначе `""` | `jamServer` |
+| `jam/server` | string, адрес сервера джема (`https://jam.example.org`) | `BuildConfig.JAM_URL` из Gradle-свойства `qiyaaJamUrl`: `https://qiyaa.kanstancin.net` в `gradle.properties`, сборка может передать другое (`-PqiyaaJamUrl=…`) | `jamServer` |
 | `jam/hostKey` | string, ключ хозяина `qjk_…` (выдаёт `keys add` на сервере) | `""` | `jamHostKey` |
 | `jam/waveFeedback` | bool, фидбек ротора в сессию волны джема (HOST-16) | `true` | `jamWaveFeedback` |
 
