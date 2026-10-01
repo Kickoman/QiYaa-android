@@ -28,11 +28,10 @@
 | `equalizer/bands` | string, 10 чисел через запятую с одним знаком (`"0.0,3.5,…"`) | плоские | часть `eq` |
 | `theme` | string (`AccentTheme.key`: `green`, `amber`, `ice`) | `amber` | `theme` |
 | `jam/server` | string, адрес сервера джема (`https://jam.example.org`) | `BuildConfig.JAM_URL` из Gradle-свойства `qiyaaJamUrl`: `https://qiyaa.kanstancin.net` в `gradle.properties`, сборка может передать другое (`-PqiyaaJamUrl=…`) | `jamServer` |
-| `jam/hostKey` | string, ключ хозяина `qjk_…` (выдаёт `keys add` на сервере) | `""` | `jamHostKey` |
 | `jam/waveFeedback` | bool, фидбек ротора в сессию волны джема (HOST-16) | `true` | `jamWaveFeedback` |
 
-Ключи и умолчания те же, что в десктопном QiYaa, где они применимы. `jam/server` и `jam/hostKey`
-обрезаются по краям при записи; адрес по умолчанию передаёт `AppGraph` в конструктор, потому что
+Ключи и умолчания те же, что в десктопном QiYaa, где они применимы. `jam/server`
+обрезается по краям при записи; ключ `jam/hostKey` из 0.2.3 (ключи хозяина отменены) `Settings` удаляет при создании; адрес по умолчанию передаёт `AppGraph` в конструктор, потому что
 `data` не видит `BuildConfig`. `setEq(settings, presetName)` пишет четыре ключа одной транзакцией. Строка полос с числом элементов ≠ 10 или с нечисловыми значениями читается как плоский EQ.
 
 **Traps:**

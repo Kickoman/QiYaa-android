@@ -182,12 +182,8 @@ data class Hello(val protocol: Int, val app: JamApp, val appVersion: String) : C
 
 @Serializable
 @SerialName("create")
-data class Create(
-    val id: String,
-    val hostKey: String,
-    val hostName: String,
-    val settings: JamSettingsPatch? = null,
-) : ClientMessage
+data class Create(val id: String, val hostName: String, val settings: JamSettingsPatch? = null) :
+    ClientMessage
 
 @Serializable
 @SerialName("resume")
@@ -195,7 +191,6 @@ data class Resume(
     val id: String,
     val roomId: String,
     val hostSecret: String,
-    val hostKey: String,
     val snapshot: JsonElement = JsonNull,
     val outbox: List<OutboxEntry>,
 ) : ClientMessage

@@ -58,7 +58,7 @@ class JamViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     val isConfigured: Boolean
-        get() = settings.jamServer.value.isNotBlank() && settings.jamHostKey.value.isNotBlank()
+        get() = settings.jamServer.value.isNotBlank()
 
     fun setHostName(name: String) = mutableUi.update { it.copy(hostName = name.take(JamHost.MAX_NAME)) }
 
@@ -127,8 +127,6 @@ class JamViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setServer(url: String) = settings.setJamServer(url)
-
-    fun setHostKey(key: String) = settings.setJamHostKey(key)
 
     fun setWaveFeedback(enabled: Boolean) = settings.setJamWaveFeedback(enabled)
 

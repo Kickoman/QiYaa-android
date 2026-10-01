@@ -36,8 +36,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -114,7 +112,6 @@ private fun StartJam(viewModel: JamViewModel, onSettings: () -> Unit) {
     val colors = Qi.colors
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val server by viewModel.settings.jamServer.collectAsStateWithLifecycle()
-    val key by viewModel.settings.jamHostKey.collectAsStateWithLifecycle()
     QiText(
         stringResource(R.string.jam_intro),
         sans(14.sp, 400, lineHeight = 20.sp),
@@ -129,7 +126,7 @@ private fun StartJam(viewModel: JamViewModel, onSettings: () -> Unit) {
         imeAction = ImeAction.Go,
         onAction = viewModel::start,
     )
-    if (server.isBlank() || key.isBlank()) {
+    if (server.isBlank()) {
         QiText(
             stringResource(R.string.jam_not_configured),
             HintStyle,
@@ -411,9 +408,7 @@ private fun RoomSettings(viewModel: JamViewModel, room: JamRoom, enabled: Boolea
 fun JamSettingsScreen(viewModel: JamViewModel, onDone: () -> Unit) {
     val colors = Qi.colors
     val server by viewModel.settings.jamServer.collectAsStateWithLifecycle()
-    val key by viewModel.settings.jamHostKey.collectAsStateWithLifecycle()
     val feedback by viewModel.settings.jamWaveFeedback.collectAsStateWithLifecycle()
-    var showKey by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         ScreenHeader(stringResource(R.string.jam_settings_title))
         SectionLabel(stringResource(R.string.jam_server))
@@ -423,28 +418,6 @@ fun JamSettingsScreen(viewModel: JamViewModel, onDone: () -> Unit) {
             hint = stringResource(R.string.jam_server_hint),
             keyboardType = KeyboardType.Uri,
         )
-        SectionLabel(stringResource(R.string.jam_host_key))
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(Modifier.weight(1f)) {
-                InsetField(
-                    value = key,
-                    onValueChange = viewModel::setHostKey,
-                    hint = "qjk_…",
-                    keyboardType = KeyboardType.Password,
-                    hidden = !showKey,
-                )
-            }
-            QiText(
-                stringResource(if (showKey) R.string.jam_hide else R.string.jam_show).uppercase(),
-                mono(11.sp, 500, 1.sp),
-                Modifier.padding(end = 16.dp).tap { showKey = !showKey },
-                color = colors.muted,
-            )
-        }
-        Note(stringResource(R.string.jam_host_key_note))
         SectionLabel(stringResource(R.string.jam_wave_feedback))
         Row(
             Modifier.padding(start = 16.dp, end = 16.dp).fillMaxWidth(),
@@ -572,7 +545,6 @@ private fun InsetField(
     hint: String,
     imeAction: ImeAction = ImeAction.Done,
     keyboardType: KeyboardType = KeyboardType.Text,
-    hidden: Boolean = false,
     onAction: () -> Unit = {},
 ) {
     val colors = Qi.colors
@@ -594,7 +566,6 @@ private fun InsetField(
             textStyle = style,
             singleLine = true,
             cursorBrush = SolidColor(colors.accent),
-            visualTransformation = if (hidden) PasswordVisualTransformation() else VisualTransformation.None,
             keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
             keyboardActions = KeyboardActions(onAny = { onAction() }),
             modifier = Modifier.weight(1f),

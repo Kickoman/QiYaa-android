@@ -73,11 +73,7 @@ class AppGraph(val context: Context) {
             catalog = library.asJamCatalog(),
             store = JamSessionStore(JamFile(context).asJamStore()),
             config = {
-                JamHostConfig(
-                    settings.jamServer.value,
-                    settings.jamHostKey.value,
-                    settings.jamWaveFeedback.value,
-                )
+                JamHostConfig(settings.jamServer.value, settings.jamWaveFeedback.value)
             },
             queueTitle = { context.getString(R.string.jam_queue_title) },
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),

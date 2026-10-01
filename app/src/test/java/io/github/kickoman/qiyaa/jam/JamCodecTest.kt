@@ -58,7 +58,7 @@ class JamCodecTest {
     @Test
     fun `resume without a snapshot is sent with an explicit null`() {
         val text = JamCodec.encode(
-            Resume("h2", "7k3m9q2x", "H".repeat(43), "qjk_" + "K".repeat(43), outbox = emptyList()),
+            Resume("h2", "7k3m9q2x", "H".repeat(43), outbox = emptyList()),
         )
         assertTrue(text, text.contains("\"snapshot\":null"))
         assertTrue(text, text.contains("\"outbox\":[]"))

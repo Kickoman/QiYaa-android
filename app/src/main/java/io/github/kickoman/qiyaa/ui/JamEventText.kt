@@ -18,7 +18,6 @@ fun JamHostEvent.render(context: Context): String = when (this) {
 
 /** A reason the app does not know is a general failure (protocol, "Reasons"). */
 fun refusedText(reason: String): Int = when (reason) {
-    "bad-key" -> R.string.jam_refused_bad_key
     "server-full" -> R.string.jam_refused_server_full
     "rate-limited" -> R.string.jam_refused_rate_limited
     "update-required" -> R.string.jam_refused_update_required

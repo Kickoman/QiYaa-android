@@ -29,7 +29,7 @@ object JamCodec {
 
     val REASONS: Set<String> =
         setOf(
-            "bad-key", "bad-secret", "room-not-found", "room-full", "join-closed", "kicked", "rate-limited",
+            "bad-secret", "room-not-found", "room-full", "join-closed", "kicked", "rate-limited",
             "queue-limit", "duplicate", "not-allowed", "stale", "unknown-track", "track-unavailable",
             "host-offline", "host-timeout", "host-error", "invalid-message", "update-required", "server-full",
         )
@@ -145,7 +145,6 @@ object JamCodec {
             }
             is Create -> {
                 pattern("id", message.id, requestId)
-                pattern("hostKey", message.hostKey, hostKey)
                 name("hostName", message.hostName)
                 message.settings?.let(::settingsPatch)
             }
@@ -153,7 +152,6 @@ object JamCodec {
                 pattern("id", message.id, requestId)
                 pattern("roomId", message.roomId, roomId)
                 pattern("hostSecret", message.hostSecret, hostSecret)
-                pattern("hostKey", message.hostKey, hostKey)
                 if (message.snapshot !is JsonNull) snapshot(message.snapshot)
                 require(message.outbox.size <= 500) { "outbox has ${message.outbox.size} events" }
                 message.outbox.forEach {
@@ -360,7 +358,6 @@ object JamCodec {
     private val catalogId = Regex("^[0-9A-Za-z_-]{1,64}$")
     private val joinSecret = Regex("^[A-Za-z0-9_-]{22}$")
     private val hostSecret = Regex("^[A-Za-z0-9_-]{43}$")
-    private val hostKey = Regex("^qjk_[A-Za-z0-9_-]{43}$")
     private val participantId = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
     private val appVersion = Regex("^[0-9A-Za-z.+_-]{1,32}$")
     private val seed = Regex("^track:[0-9A-Za-z_-]{1,64}$")
