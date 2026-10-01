@@ -4,7 +4,8 @@
 
 | Файл | Содержит |
 |---|---|
-| `Settings.kt` | `Settings` — громкость, баланс, визуализатор, EQ, тема |
+| `Settings.kt` | `Settings` — громкость, баланс, визуализатор, EQ, тема, язык |
+| `AppLanguage.kt` | `AppLanguage` — языки интерфейса: белорусский (по умолчанию), русский, английский |
 | `TokenStore.kt` | `TokenStore` — токен |
 | `QueueFile.kt` | `QueueFile` — сохранённая очередь, файл `queue.json` |
 | `JamFile.kt` | `JamFile` — сессия хозяина джема, файл `jam.json` |
@@ -29,10 +30,13 @@
 | `theme` | string (`AccentTheme.key`: `green`, `amber`, `ice`) | `amber` | `theme` |
 | `jam/server` | string, адрес сервера джема (`https://jam.example.org`) | `BuildConfig.JAM_URL` из Gradle-свойства `qiyaaJamUrl`: `https://qiyaa.kanstancin.net` в `gradle.properties`, сборка может передать другое (`-PqiyaaJamUrl=…`) | `jamServer` |
 | `jam/waveFeedback` | bool, фидбек ротора в сессию волны джема (HOST-16) | `true` | `jamWaveFeedback` |
+| `language` | string (`AppLanguage.tag`: `be`, `ru`, `en`) | `be` (и любое другое значение) | `language` |
 
 Ключи и умолчания те же, что в десктопном QiYaa, где они применимы. `jam/server`
 обрезается по краям при записи; ключ `jam/hostKey` из 0.2.3 (ключи хозяина отменены) `Settings` удаляет при создании; адрес по умолчанию передаёт `AppGraph` в конструктор, потому что
 `data` не видит `BuildConfig`. `setEq(settings, presetName)` пишет четыре ключа одной транзакцией. Строка полос с числом элементов ≠ 10 или с нечисловыми значениями читается как плоский EQ.
+
+`Settings.storedLanguage(context)` читает язык без графа: `AppLocale` зовёт его в `attachBaseContext`, раньше `QiYaaApp.onCreate`.
 
 **Traps:**
 - Значения зажимаются на записи (`setVolume`, `setBalance`), но не на чтении: чужое значение в файле уйдёт в поток как есть.

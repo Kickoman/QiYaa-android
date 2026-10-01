@@ -4,8 +4,10 @@ import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import io.github.kickoman.qiyaa.AppLocale
 import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.appGraph
+import io.github.kickoman.qiyaa.data.AppLanguage
 import io.github.kickoman.qiyaa.queue.QueueController
 import io.github.kickoman.qiyaa.yandex.ErrorKind
 import io.github.kickoman.qiyaa.yandex.NamedRef
@@ -189,6 +191,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         loginJob?.cancel()
         mutableLogin.update { it.copy(status = LoginStatus.SigningIn) }
         viewModelScope.launch { applyToken(token) }
+    }
+
+    /** Stores the interface language and applies it to the app's resources; the screen recreates the activity. */
+    fun setLanguage(language: AppLanguage) {
+        settings.setLanguage(language)
+        AppLocale.apply(getApplication(), language)
     }
 
     fun signOut() {

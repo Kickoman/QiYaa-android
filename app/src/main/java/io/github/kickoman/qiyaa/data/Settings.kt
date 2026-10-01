@@ -45,6 +45,10 @@ class Settings(context: Context, defaultJamServer: String = "") {
         MutableStateFlow(preferences.getString(KEY_JAM_SERVER, null) ?: defaultJamServer)
     val jamServer: StateFlow<String> = mutableJamServer.asStateFlow()
 
+    private val mutableLanguage =
+        MutableStateFlow(AppLanguage.fromTag(preferences.getString(KEY_LANGUAGE, null)))
+    val language: StateFlow<AppLanguage> = mutableLanguage.asStateFlow()
+
     private val mutableJamWaveFeedback = MutableStateFlow(preferences.getBoolean(KEY_JAM_WAVE_FEEDBACK, true))
 
     /** HOST-16: rotor feedback to the jam wave's own session. */
@@ -96,6 +100,11 @@ class Settings(context: Context, defaultJamServer: String = "") {
         preferences.edit().putBoolean(KEY_JAM_WAVE_FEEDBACK, value).apply()
     }
 
+    fun setLanguage(language: AppLanguage) {
+        mutableLanguage.value = language
+        preferences.edit().putString(KEY_LANGUAGE, language.tag).apply()
+    }
+
     fun setTheme(theme: AccentTheme) {
         mutableTheme.value = theme
         preferences.edit().putString(KEY_THEME, theme.key).apply()
@@ -127,6 +136,7 @@ class Settings(context: Context, defaultJamServer: String = "") {
         const val KEY_EQ_PREAMP = "equalizer/preamp"
         const val KEY_EQ_BANDS = "equalizer/bands"
         const val KEY_THEME = "theme"
+        const val KEY_LANGUAGE = "language"
         const val KEY_JAM_SERVER = "jam/server"
 
         /** Removed on start: jams need no host key since 2026-10-01 (0.2.3 stored one). */
@@ -134,5 +144,10 @@ class Settings(context: Context, defaultJamServer: String = "") {
         const val KEY_JAM_WAVE_FEEDBACK = "jam/waveFeedback"
         const val DEFAULT_VOLUME = 75
         const val DEFAULT_EQ_PRESET = "Flat"
+
+        /** The stored language, before the graph exists (attachBaseContext). */
+        fun storedLanguage(context: Context): AppLanguage = AppLanguage.fromTag(
+            context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getString(KEY_LANGUAGE, null),
+        )
     }
 }

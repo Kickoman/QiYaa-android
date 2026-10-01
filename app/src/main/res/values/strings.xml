@@ -53,7 +53,7 @@
     <string name="playlist_title">PLAYLIST</string>
     <string name="playlist_loaded">%1$s · %2$d LOADED</string>
     <string name="playlist_empty">Playlist is empty.\nADD or the Library tab — pick what to listen to.</string>
-    <string name="playlist_loading_more">··· LOADING MORE FROM THE WAVE ···</string>
+    <string name="playlist_loading_more">··· LOADING MORE FROM THE VIBE ···</string>
     <string name="playlist_loading_more_toast">Loading more tracks…</string>
     <string name="playlist_selected">SELECTED</string>
     <string name="playlist_tap_hint">TAP NUMBER TO SELECT</string>
@@ -83,7 +83,7 @@
     <string name="library_title">LIBRARY</string>
     <string name="library_sign_out">SIGN OUT</string>
     <string name="library_search_hint">Artist, album or track… (Enter)</string>
-    <string name="library_my_wave">My Wave</string>
+    <string name="library_my_wave">My Vibe</string>
     <string name="library_my_wave_sub">ENDLESS · LOADS AS YOU LISTEN</string>
     <string name="library_liked">Liked tracks</string>
     <string name="library_playlists">Playlists</string>
@@ -124,13 +124,13 @@
         <item quantity="other">%1$s: %2$d tracks</item>
     </plurals>
     <string name="queue_empty">%1$s: empty</string>
-    <string name="queue_wave_started">%1$s: wave started</string>
+    <string name="queue_wave_started">%1$s: vibe started</string>
     <string name="queue_nothing_found">Nothing found</string>
     <string name="queue_liked">Added to Liked</string>
     <string name="queue_unliked">Removed from Liked</string>
     <string name="queue_disliked">Disliked · skipping</string>
-    <string name="queue_wave_error">Wave error: %1$s</string>
-    <string name="queue_wave_more_error">Wave: %1$s</string>
+    <string name="queue_wave_error">Vibe error: %1$s</string>
+    <string name="queue_wave_more_error">Vibe: %1$s</string>
     <string name="queue_search_error">Search error: %1$s</string>
     <string name="queue_playback_error">Playback error: %1$s</string>
     <string name="player_service_unavailable">Player service unavailable</string>
@@ -200,11 +200,11 @@
     <string name="jam_continue_no">End it</string>
     <string name="jam_server">Server</string>
     <string name="jam_server_hint">https://jam.example.org</string>
-    <string name="jam_wave_feedback">Teach the jam wave</string>
-    <string name="jam_wave_feedback_note">When the guests\' queue is empty, the jam wave plays. On: it learns from skips during the jam, and only there. Off: no feedback at all.</string>
+    <string name="jam_wave_feedback">Teach the jam vibe</string>
+    <string name="jam_wave_feedback_note">When the guests\' queue is empty, the jam vibe plays. On: it learns from skips during the jam, and only there. Off: no feedback at all.</string>
     <string name="jam_done">Done</string>
     <string name="jam_added_by">+ %1$s</string>
-    <string name="jam_wave_mark">Jam wave</string>
+    <string name="jam_wave_mark">Jam vibe</string>
     <string name="jam_library_row">Jam</string>
     <string name="jam_library_off">Start</string>
     <string name="jam_library_on">On · %1$d</string>
@@ -224,8 +224,8 @@
         <item quantity="one">%d track in a row would not play · stopped</item>
         <item quantity="other">%d tracks in a row would not play · stopped</item>
     </plurals>
-    <string name="player_shuffle_wave">Shuffle does not apply to waves · Yandex sets the order</string>
-    <string name="player_repeat_wave">Repeat does not apply to waves · the wave keeps going</string>
+    <string name="player_shuffle_wave">Shuffle does not apply to vibes · Yandex sets the order</string>
+    <string name="player_repeat_wave">Repeat does not apply to vibes · the vibe keeps going</string>
     <string name="notification_like">Like</string>
     <string name="notification_unlike">Remove like</string>
     <string name="notification_dislike">Dislike and skip</string>
@@ -234,11 +234,11 @@
     <string name="library_group_for_you">MADE FOR YOU</string>
     <string name="queue_similar_title">Similar: %1$s</string>
     <string name="library_similar_hint">Hold a playlist to play similar tracks</string>
-    <string name="library_wheel">Wheel of waves</string>
+    <string name="library_wheel">Wheel of vibes</string>
     <string name="library_wheel_meta">MATCHED</string>
-    <string name="library_sub_wheel">WHEEL OF WAVES</string>
-    <string name="library_group_wheel_current">MATCHED TO THE CURRENT WAVE</string>
-    <string name="library_group_wheel_my">MATCHED TO MY WAVE</string>
+    <string name="library_sub_wheel">WHEEL OF VIBES</string>
+    <string name="library_group_wheel_current">MATCHED TO THE CURRENT VIBE</string>
+    <string name="library_group_wheel_my">MATCHED TO MY VIBE</string>
     <string name="error_no_network">no network</string>
     <string name="error_token_rejected">the token was rejected, sign in again</string>
     <string name="error_server">server error %1$d</string>
@@ -249,4 +249,5 @@
     <string name="error_unknown">something went wrong</string>
     <string name="library_row_error">ERROR</string>
     <string name="library_retry">TAP TO RETRY</string>
+    <string name="language_title">LANGUAGE</string>
 </resources>

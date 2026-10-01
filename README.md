@@ -51,7 +51,7 @@ CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) выполняет �
 | `queue/` | Очередь: источники, волна и догрузка, политика ошибок, shuffle. Чистая JVM, плеер виден через интерфейс | [queue/README.md](app/src/main/java/io/github/kickoman/qiyaa/queue/README.md) |
 | `playback/` | ExoPlayer + MediaSession, адаптер Media3 для очереди, разрешение ссылок, аудиопроцессоры | [playback/README.md](app/src/main/java/io/github/kickoman/qiyaa/playback/README.md) |
 | `ui/` | Compose: экраны, view model, тема | [ui/README.md](app/src/main/java/io/github/kickoman/qiyaa/ui/README.md) |
-| корень | `AppGraph` (ручной граф зависимостей, один на процесс), `QiYaaApp`, `NetworkMonitor` (есть ли сеть; питает `yandex/Session`) | — |
+| корень | `AppGraph` (ручной граф зависимостей, один на процесс), `QiYaaApp`, `NetworkMonitor` (есть ли сеть; питает `yandex/Session`), `AppLocale` (язык интерфейса — свой, не системный) | — |
 | `app/src/test/` | JVM-тесты | [test/README.md](app/src/test/README.md) |
 | `spec/` | Подмодуль [Kickoman/QiYaa-spec](https://github.com/Kickoman/QiYaa-spec): сценарии плеера, фикстуры API, эталоны DSP и таблица паритета, общие с десктопом. Меняется сначала там, потом здесь (`CLAUDE.md`) | [spec/README.md](spec/README.md) |
 

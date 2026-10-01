@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.kickoman.qiyaa.R
+import io.github.kickoman.qiyaa.data.AppLanguage
 import io.github.kickoman.qiyaa.jam.ParticipantKind
 import io.github.kickoman.qiyaa.playback.JamHostPhase
 import io.github.kickoman.qiyaa.playback.JamHostState
@@ -44,6 +45,7 @@ import io.github.kickoman.qiyaa.ui.ListState
 import io.github.kickoman.qiyaa.ui.PlayerViewModel
 import io.github.kickoman.qiyaa.ui.components.ActionButton
 import io.github.kickoman.qiyaa.ui.components.IconPaths
+import io.github.kickoman.qiyaa.ui.components.LanguageSwitch
 import io.github.kickoman.qiyaa.ui.components.PathIcon
 import io.github.kickoman.qiyaa.ui.components.QiText
 import io.github.kickoman.qiyaa.ui.components.ScreenHeader
@@ -72,6 +74,7 @@ fun LibraryScreen(
     val artists by viewModel.artists.state.collectAsStateWithLifecycle()
     val albums by viewModel.albums.state.collectAsStateWithLifecycle()
     val playerUi by player.ui.collectAsStateWithLifecycle()
+    val language by viewModel.settings.language.collectAsStateWithLifecycle()
     val track = playerUi.current
 
     LaunchedEffect(account.uid) { if (account.isValid) viewModel.loadLibraryLists() }
@@ -248,6 +251,21 @@ fun LibraryScreen(
             ActionButton("↗ " + stringResource(R.string.library_open), Modifier.weight(1f), height = 48.dp) {
                 track?.let { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(it.webUrl))) }
             }
+        }
+
+        Row(
+            Modifier.padding(start = 16.dp, end = 8.dp, bottom = 8.dp).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            // With the English word, so that a language one cannot read can still be undone.
+            val title = stringResource(R.string.language_title)
+            QiText(
+                if (language == AppLanguage.ENGLISH) title else "$title · LANGUAGE",
+                LabelStyle,
+                color = colors.dim,
+            )
+            LanguageSwitch(language, viewModel::setLanguage)
         }
     }
 }

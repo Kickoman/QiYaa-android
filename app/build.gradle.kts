@@ -29,6 +29,12 @@ if (releaseTag != null && !canSign) {
 }
 
 android {
+    // The app switches its language itself (AppLocale): every language must be in the install.
+    bundle {
+        language {
+            enableSplit = false
+        }
+    }
     namespace = "io.github.kickoman.qiyaa"
     compileSdk = 35
 

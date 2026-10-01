@@ -1,6 +1,7 @@
 package io.github.kickoman.qiyaa.ui
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -9,9 +10,18 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import io.github.kickoman.qiyaa.AppLocale
+import io.github.kickoman.qiyaa.data.Settings
 
 class MainActivity : ComponentActivity() {
     private val notifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(newBase)
+        // An override configuration rather than a wrapped context: the activity keeps following
+        // the screen and the night mode, and only the language is the app's own.
+        applyOverrideConfiguration(AppLocale.configuration(Settings.storedLanguage(newBase)))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
