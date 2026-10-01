@@ -18,7 +18,7 @@ ui/
 | Файл | Содержит |
 |---|---|
 | `AppRoot.kt` | `AppRoot`, `MiniPlayer`, `TabBar` |
-| `MainActivity.kt` | `MainActivity` — `setContent { AppRoot() }` и запрос `POST_NOTIFICATIONS` на Android 13+ |
+| `MainActivity.kt` | `MainActivity` — язык интерфейса (`applyOverrideConfiguration` в `attachBaseContext`), `setContent { AppRoot() }` и запрос `POST_NOTIFICATIONS` на Android 13+ |
 | `AppViewModel.kt` | `Screen`, `LibrarySection`, `LoginStatus`, `LoginUi`, `LibraryUi`, `AppViewModel`, `PlaylistRef.sourceId` |
 | `ListLoader.kt` | `ListState` (`Idle`, `Loading`, `Loaded(items)`, `Failed(error)`), `ListLoader` — загрузка одного списка библиотеки со своей ошибкой и повтором |
 | `PlayerViewModel.kt` | `PlayerUi`, `PlayerViewModel`, `AccentTheme.labelId` |
@@ -123,7 +123,9 @@ class ListLoader<T>(scope: CoroutineScope, io: CoroutineContext, fetch: suspend 
 
 ## Строки
 
-Все тексты — `res/values/strings.xml` (английский) и `res/values-ru/strings.xml`; `queue_loaded` — `plurals`. Ключи `jam_*` — экраны джема; `jam_refused_*` — причины отказа сервера, неизвестная причина — `jam_refused_other`. Ключи `queue_*` рендерят `QueueEvent` (в том числе `queue_waiting_for_network` и plurals `queue_stopped_after_failures`), `theme_*` — подписи `AccentTheme`.
+Все тексты — `res/values/strings.xml` (английский), `res/values-be/strings.xml` (белорусский) и `res/values-ru/strings.xml`; `queue_loaded` и `queue_stopped_after_failures` — `plurals` (у белорусского и русского формы `one`, `few`, `many`, `other`). «Волна» Яндекса по-английски — **vibe** («My Vibe», «Jam vibe», «Wheel of vibes»), не wave; ключи (`library_my_wave`…) остались прежними. Слова те же, что на ПК: таблица в `translations/README.md` репозитория QiYaa. `StringsTest` проверяет, что каждый текст переведён на оба языка с теми же подстановками, формы plurals и что ни один английский текст не говорит «wave».
+
+**Язык интерфейса — свой, не системный.** `data/Settings.language` (по умолчанию белорусский). `AppLocale` даёт его приложению и `PlaybackService` в `attachBaseContext` (контекст с локалью) и активности — через `applyOverrideConfiguration`, чтобы она по-прежнему следила за экраном и тёмной темой. `LanguageSwitch` (коды `BE RU EN`, текущий подсвечен) стоит на экране входа (сменить язык можно до входа) и внизу библиотеки с подписью `language_title` и английским словом «LANGUAGE», чтобы непонятный язык можно было отменить. Выбор: `AppViewModel.setLanguage` сохраняет язык и переводит ресурсы приложения (`AppLocale.apply`), экран пересоздаёт активность; сервис перестраивает кнопки уведомления под новый язык. Системная смена конфигурации сбрасывает локаль ресурсов приложения и сервиса — `onConfigurationChanged` применяет язык заново. В сборке `bundle.language.enableSplit = false`: все языки должны быть в установке. Ключи `jam_*` — экраны джема; `jam_refused_*` — причины отказа сервера, неизвестная причина — `jam_refused_other`. Ключи `queue_*` рендерят `QueueEvent` (в том числе `queue_waiting_for_network` и plurals `queue_stopped_after_failures`), `theme_*` — подписи `AccentTheme`.
 
 ## Not here
 

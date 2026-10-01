@@ -234,4 +234,5 @@
     <string name="error_unknown">что-то пошло не так</string>
     <string name="library_row_error">ОШИБКА</string>
     <string name="library_retry">НАЖМИТЕ, ЧТОБЫ ПОВТОРИТЬ</string>
+    <string name="language_title">ЯЗЫК</string>
 </resources>

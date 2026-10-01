@@ -44,6 +44,7 @@ import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.ui.AppViewModel
 import io.github.kickoman.qiyaa.ui.LoginStatus
 import io.github.kickoman.qiyaa.ui.components.ActionButton
+import io.github.kickoman.qiyaa.ui.components.LanguageSwitch
 import io.github.kickoman.qiyaa.ui.components.LedDot
 import io.github.kickoman.qiyaa.ui.components.QiText
 import io.github.kickoman.qiyaa.ui.components.tap
@@ -62,6 +63,7 @@ fun LoginScreen(viewModel: AppViewModel) {
     val colors = Qi.colors
     val context = LocalContext.current
     val login by viewModel.login.collectAsStateWithLifecycle()
+    val language by viewModel.settings.language.collectAsStateWithLifecycle()
     fun open(url: String) = context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
 
     Column(
@@ -70,9 +72,15 @@ fun LoginScreen(viewModel: AppViewModel) {
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp),
     ) {
-        Spacer(Modifier.height(48.dp))
-        QiText(stringResource(R.string.brand), mono(12.sp, 600, 3.sp), color = colors.muted)
-        Spacer(Modifier.height(10.dp))
+        Row(
+            Modifier.fillMaxWidth().padding(top = 28.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            QiText(stringResource(R.string.brand), mono(12.sp, 600, 3.sp), color = colors.muted)
+            // Before the sign-in too: someone who does not read the default language can switch.
+            LanguageSwitch(language, viewModel::setLanguage)
+        }
         QiText(stringResource(R.string.login_title), sans(26.sp, 600, colors.text, lineHeight = 30.sp))
         login.notice?.let { notice ->
             Spacer(Modifier.height(12.dp))

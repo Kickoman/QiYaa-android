@@ -3,6 +3,7 @@ package io.github.kickoman.qiyaa.playback
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.Log
@@ -26,6 +27,7 @@ import androidx.media3.session.SessionError
 import androidx.media3.session.SessionResult
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import io.github.kickoman.qiyaa.AppLocale
 import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.appGraph
 import io.github.kickoman.qiyaa.audio.AudioBus
@@ -45,6 +47,15 @@ class PlaybackService : MediaSessionService() {
     private var engine: Media3Engine? = null
     private val serviceScope = MainScope()
     private val currentTrackId = MutableStateFlow<String?>(null)
+
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(AppLocale.wrap(base))
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        AppLocale.apply(this, appGraph.settings.language.value)
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -114,9 +125,13 @@ class PlaybackService : MediaSessionService() {
         currentTrackId.value = player.currentMediaItem?.mediaId
         serviceScope.launch { currentTrackId.collect(bitrate::onCurrentChanged) }
         serviceScope.launch {
-            combine(currentTrackId, graph.library.likedIds) { id, liked -> id != null && id in liked }
+            // The buttons' names follow the language picked while the service runs.
+            combine(currentTrackId, graph.library.likedIds, graph.settings.language) { id, liked, language ->
+                (id != null && id in liked) to language
+            }
                 .distinctUntilChanged()
-                .collect { liked ->
+                .collect { (liked, language) ->
+                    AppLocale.apply(this@PlaybackService, language)
                     built.setCustomLayout(NotificationButtons.layout(this@PlaybackService, liked))
                 }
         }
