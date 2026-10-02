@@ -185,6 +185,8 @@
     <string name="jam_server_hint">https://jam.example.org</string>
     <string name="jam_wave_feedback">Учить волну джема</string>
     <string name="jam_wave_feedback_note">Когда очередь гостей пуста, играет волна джема. Да: она учится на пропусках во время джема и только там. Нет: никакого фидбека.</string>
+    <string name="jam_share_audio">Гости могут слушать</string>
+    <string name="jam_share_audio_note">На странице джема появится кнопка «Слушать»: браузеры гостей играют те же файлы, что и вы, примерно одновременно с вами. Это файлы вашей подписки: Яндекс Музыка даёт их для вашего личного прослушивания.</string>
     <string name="jam_done">Готово</string>
     <string name="jam_added_by">+ %1$s</string>
     <string name="jam_wave_mark">Волна джема</string>

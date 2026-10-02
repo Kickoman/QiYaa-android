@@ -922,6 +922,7 @@ class QueueController(
                 mutableState.value.tracks.getOrNull(index)
             }
         val slot = mutableState.value.jamSlots?.getOrNull(index)
+        val next = mutableState.value.tracks.getOrNull(index + 1)
         val positionMs = current?.positionMs?.coerceAtLeast(0) ?: 0
         val playback =
             when {
@@ -932,8 +933,9 @@ class QueueController(
                     track,
                     positionMs,
                     !playing,
+                    next,
                 )
-                else -> JamPlayback(JamPlayback.Kind.WAVE, null, track, positionMs, !playing)
+                else -> JamPlayback(JamPlayback.Kind.WAVE, null, track, positionMs, !playing, next)
             }
         run.listener.onPlayback(playback)
     }

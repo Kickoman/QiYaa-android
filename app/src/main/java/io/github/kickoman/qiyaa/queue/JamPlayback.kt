@@ -18,6 +18,8 @@ data class JamPlayback(
     val track: Track?,
     val positionMs: Long,
     val paused: Boolean,
+    /** The track that plays after this one, if any: its file may be shared too (LISTEN-03). */
+    val nextTrack: Track? = null,
 ) {
     enum class Kind { ITEM, WAVE, IDLE }
 }

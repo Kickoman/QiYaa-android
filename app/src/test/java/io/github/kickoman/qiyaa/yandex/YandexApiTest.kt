@@ -80,7 +80,13 @@ class YandexApiTest {
         for (case in Spec.cases("users-likes-tracks")) {
             route("GET", "/users/42/likes/tracks", Spec.fixture("users-likes-tracks", case))
             val expected = Spec.expected("users-likes-tracks", case)
+            val posts = requests["/tracks/"]?.size ?: 0
             library.likedTracks()
+            if (expected == SpecJson.ids("trackIds", emptyList())) {
+                // No likes: nothing to fetch.
+                assertEquals("users-likes-tracks/$case", posts, requests["/tracks/"]?.size ?: 0)
+                continue
+            }
             val ids = form(last("/tracks/"))["track-ids"].orEmpty().split(',')
             assertEquals("users-likes-tracks/$case", expected, SpecJson.ids("trackIds", ids))
             assertEquals("false", form(last("/tracks/"))["with-positions"])

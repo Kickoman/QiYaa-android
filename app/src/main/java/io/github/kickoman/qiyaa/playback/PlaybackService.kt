@@ -5,8 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
-import android.os.SystemClock
-import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -80,11 +78,7 @@ class PlaybackService : MediaSessionService() {
                     graph.audioBus.visualizerTap,
                 )
             }
-        val links =
-            TrackUrlCache(clock = SystemClock::elapsedRealtime) { id ->
-                Log.d(LOG_TAG, "Signing the link of track $id")
-                graph.api.resolveTrackUrl(id)
-            }
+        val links = graph.trackLinks
         val bitrate = CurrentBitrate(graph.audioBus::setBitrate)
         val httpDataSource = OkHttpDataSource.Factory(graph.httpClient).setUserAgent(USER_AGENT)
         val dataSource =

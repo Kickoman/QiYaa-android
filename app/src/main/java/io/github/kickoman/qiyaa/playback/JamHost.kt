@@ -74,7 +74,12 @@ interface JamCatalog {
     suspend fun tracks(ids: List<String>): List<Track>
 }
 
-data class JamHostConfig(val serverUrl: String, val waveFeedback: Boolean)
+data class JamHostConfig(
+    val serverUrl: String,
+    val waveFeedback: Boolean,
+    /** Listening along (spec/jam/listen.md): guests may play the files the host plays. */
+    val shareAudio: Boolean = false,
+)
 
 enum class JamHostPhase { NONE, CREATING, ACTIVE }
 
@@ -113,6 +118,8 @@ class JamHost(
     private val scope: CoroutineScope,
     private val io: CoroutineContext,
     appVersion: String,
+    /** A link already signed for a track, without signing one (LISTEN-02, LISTEN-03). */
+    private val signedLink: (trackId: String) -> String? = { null },
     private val newId: () -> String = { UUID.randomUUID().toString() },
     clock: () -> Long = System::currentTimeMillis,
     private val log: (String, Throwable?) -> Unit = { _, _ -> },
@@ -320,7 +327,25 @@ class JamHost(
                 )
                 JamPlayback.Kind.IDLE -> Playing(NowPlayingSource.IDLE, positionMs = 0, paused = true)
             }
-        client.send(message)
+        client.send(
+            if (playback.kind ==
+                JamPlayback.Kind.IDLE
+            ) {
+                message
+            } else {
+                withListenUrls(message, playback)
+            },
+        )
+    }
+
+    /** LISTEN-01 to LISTEN-04: with sharing on, the Yandex files of this track and the next. */
+    private fun withListenUrls(message: Playing, playback: JamPlayback): Playing {
+        if (!config().shareAudio) return message
+        fun link(trackId: String?) = trackId?.let(signedLink)?.takeIf(JamCodec::isListenUrl)
+        return message.copy(
+            listenUrl = link(playback.track?.id),
+            listenNextUrl = link(playback.nextTrack?.id),
+        )
     }
 
     private fun request(build: (String) -> ClientMessage): Boolean = connected && client.send(build(newId()))
