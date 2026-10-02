@@ -22,12 +22,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.ui.theme.ButtonStyle
 import io.github.kickoman.qiyaa.ui.theme.CaptionStyle
 import io.github.kickoman.qiyaa.ui.theme.Qi
@@ -87,6 +93,50 @@ fun ActionButton(
     if (border != null) shaped = shaped.border(1.dp, border, shape)
     Box(shaped.tap(onClick = onClick), contentAlignment = Alignment.Center) {
         QiText(text, ButtonStyle, color = color, maxLines = 1)
+    }
+}
+
+/**
+ * A button as wide as its [modifier] makes it, with an icon instead of a label (a label in
+ * Belarusian or Russian may not fit). [description] is what a screen reader says.
+ */
+@Composable
+fun IconWideButton(
+    description: String,
+    modifier: Modifier = Modifier,
+    height: Dp = 44.dp,
+    onClick: () -> Unit,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    Box(
+        modifier
+            .height(height)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Qi.colors.surface)
+            .tap(onClick = onClick)
+            .semantics {
+                contentDescription = description
+                role = Role.Button
+            },
+        contentAlignment = Alignment.Center,
+        content = content,
+    )
+}
+
+/** Like or unlike the current track: an outlined heart, filled in the accent colour once liked. */
+@Composable
+fun LikeButton(liked: Boolean, modifier: Modifier = Modifier, height: Dp = 44.dp, onClick: () -> Unit) {
+    IconWideButton(
+        stringResource(if (liked) R.string.player_liked else R.string.player_like),
+        modifier,
+        height,
+        onClick,
+    ) {
+        if (liked) {
+            PathIcon(IconPaths.HEART, 22.dp, Qi.colors.accent)
+        } else {
+            PathIcon(IconPaths.HEART, 22.dp, Qi.colors.muted, strokeWidth = IconPaths.OUTLINE)
+        }
     }
 }
 
