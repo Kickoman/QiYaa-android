@@ -42,6 +42,7 @@ import io.github.kickoman.qiyaa.jam.ValidateReason
 import io.github.kickoman.qiyaa.jam.ValidateRequest
 import io.github.kickoman.qiyaa.jam.ValidateResult
 import io.github.kickoman.qiyaa.jam.Welcome
+import io.github.kickoman.qiyaa.queue.JamPlayback
 import io.github.kickoman.qiyaa.support.FakeJamTransport
 import io.github.kickoman.qiyaa.support.QueueHarness
 import io.github.kickoman.qiyaa.support.Spec
@@ -362,12 +363,50 @@ class JamHostTest {
         assertTrue(h.sent().single() is Resume)
     }
 
+    @Test
+    fun `LISTEN-01 to LISTEN-05 with sharing on, playing carries the files of this track and the next`() =
+        runTest {
+            val h = Harness(this)
+            h.created()
+            val file = { name: String ->
+                "https://s1.storage.yandex.net/get-mp3/0123456789abcdef0123456789abcdef/65cd937b03427/$name.mp3"
+            }
+            h.signed["11"] = file("a")
+            h.signed["22"] = file("b")
+            val playback = JamPlayback(
+                JamPlayback.Kind.ITEM,
+                "i1",
+                Track(id = "11", title = "A"),
+                0,
+                paused = false,
+                nextTrack = Track(id = "22", title = "B"),
+            )
+            h.host.onPlayback(playback)
+            assertEquals(
+                Playing(NowPlayingSource.ITEM, itemId = "i1", positionMs = 0, paused = false),
+                h.sent().last(),
+            )
+            h.config = h.config.copy(shareAudio = true)
+            h.host.onPlayback(playback)
+            assertEquals(file("a"), (h.sent().last() as Playing).listenUrl)
+            assertEquals(file("b"), (h.sent().last() as Playing).listenNextUrl)
+            h.signed["22"] = "http://127.0.0.1:8080/get-mp3/a/b/t" // not Yandex's: the server would refuse it
+            h.signed.remove("11")
+            h.host.onPlayback(playback)
+            assertEquals(null, (h.sent().last() as Playing).listenUrl)
+            assertEquals(null, (h.sent().last() as Playing).listenNextUrl)
+            h.signed["11"] = file("a")
+            h.host.onPlayback(JamPlayback(JamPlayback.Kind.IDLE, null, null, 0, paused = true))
+            assertEquals(Playing(NowPlayingSource.IDLE, positionMs = 0, paused = true), h.sent().last())
+        }
+
     private class Harness(val scope: TestScope, stored: JamSession? = null) {
         val queue = QueueHarness(scope)
         val transport = FakeJamTransport()
         val catalog = FakeCatalog()
         val store = MemoryStore(stored?.let(JamSessionCodec::encode))
         var config = JamHostConfig("https://jam.example.org", waveFeedback = true)
+        val signed = HashMap<String, String>()
         val events = ArrayList<JamHostEvent>()
         private var ids = 0
         val host =
@@ -382,6 +421,7 @@ class JamHostTest {
                 scope = scope.backgroundScope,
                 io = StandardTestDispatcher(scope.testScheduler),
                 appVersion = "test",
+                signedLink = { signed[it] },
                 newId = { "r${++ids}" },
                 clock = { scope.testScheduler.currentTime },
             )

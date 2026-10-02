@@ -27,6 +27,15 @@ class TrackUrlCache(
         return link
     }
 
+    /** The link already signed for [trackId] and still fresh, without signing one: for the jam's listeners. */
+    fun peek(trackId: String): String? {
+        val now = clock()
+        synchronized(entries) {
+            val cached = entries[trackId] ?: return null
+            return cached.link.url.takeIf { now - cached.signedAtMs < ttlMs }
+        }
+    }
+
     fun invalidate(trackId: String) {
         synchronized(entries) { entries.remove(trackId) }
     }

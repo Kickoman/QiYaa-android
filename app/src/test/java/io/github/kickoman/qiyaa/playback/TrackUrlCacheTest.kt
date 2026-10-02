@@ -17,6 +17,17 @@ class TrackUrlCacheTest {
         }
 
     @Test
+    fun `peek gives a fresh link without signing one`() = runBlocking {
+        assertEquals(null, cache.peek("1"))
+        cache.get("1")
+        now = 999
+        assertEquals("https://storage/1/1", cache.peek("1"))
+        now = 1_000
+        assertEquals(null, cache.peek("1"))
+        assertEquals(listOf("1"), signed)
+    }
+
+    @Test
     fun `a link asked for again within its lifetime is not signed again`() = runBlocking {
         val first = cache.get("1")
         now = 999

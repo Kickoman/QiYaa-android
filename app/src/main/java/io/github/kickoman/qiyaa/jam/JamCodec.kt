@@ -162,6 +162,8 @@ object JamCodec {
             is Playing -> {
                 atLeast("positionMs", message.positionMs, 0)
                 message.itemId?.let { pattern("itemId", it, itemId) }
+                message.listenUrl?.let { listenUrl("listenUrl", it) }
+                message.listenNextUrl?.let { listenUrl("listenNextUrl", it) }
                 message.track?.let(::track)
                 when (message.source) {
                     NowPlayingSource.ITEM -> require(message.itemId != null) { "source item needs itemId" }
@@ -267,6 +269,8 @@ object JamCodec {
         nowPlaying.itemId?.let { pattern("nowPlaying.itemId", it, itemId) }
         nowPlaying.addedBy?.let { pattern("nowPlaying.addedBy", it, publicId) }
         nowPlaying.track?.let(::track)
+        nowPlaying.listenUrl?.let { listenUrl("nowPlaying.listenUrl", it) }
+        nowPlaying.listenNextUrl?.let { listenUrl("nowPlaying.listenNextUrl", it) }
         when (nowPlaying.source) {
             NowPlayingSource.ITEM ->
                 require(nowPlaying.itemId != null && nowPlaying.track != null && nowPlaying.addedBy != null) {
@@ -331,6 +335,13 @@ object JamCodec {
         require(text.codePointCount() in 1..100 && noControl(text) && text.isNotBlank()) { "bad search text" }
     }
 
+    /** A file of Yandex Music's storage that guests may listen to (spec/jam/listen.md). */
+    fun isListenUrl(url: String): Boolean = url.length <= MAX_LISTEN_URL && listenUrl.matches(url)
+
+    private fun listenUrl(field: String, url: String) {
+        require(isListenUrl(url)) { "$field is not a file of Yandex Music's storage" }
+    }
+
     private fun joinUrl(url: String) {
         require(url.length <= 200 && joinUrl.matches(url)) { "joinUrl $url" }
     }
@@ -362,6 +373,11 @@ object JamCodec {
     private val appVersion = Regex("^[0-9A-Za-z.+_-]{1,32}$")
     private val seed = Regex("^track:[0-9A-Za-z_-]{1,64}$")
     private val coverUri = Regex("^\\S*%%\\S*$")
+    private const val MAX_LISTEN_URL = 400
+    private val listenUrl =
+        Regex(
+            "^https://[A-Za-z0-9-]+\\.storage\\.yandex\\.net/get-mp3/[0-9a-f]{32}/[0-9a-f]{1,32}/[^\\s#?]+$",
+        )
     private val joinUrl =
         Regex("^https?://[^\\s#/]+(?:/[^\\s#]*)?/j/[0-9a-hjkmnp-tv-z]{8}#[A-Za-z0-9_-]{22}$")
     private val nameShape = Regex("^[^\\s\\x00-\\x1F\\x7F](?:[^\\x00-\\x1F\\x7F]*[^\\s\\x00-\\x1F\\x7F])?$")

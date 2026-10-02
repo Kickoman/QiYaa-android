@@ -202,6 +202,8 @@
     <string name="jam_server_hint">https://jam.example.org</string>
     <string name="jam_wave_feedback">Teach the jam vibe</string>
     <string name="jam_wave_feedback_note">When the guests\' queue is empty, the jam vibe plays. On: it learns from skips during the jam, and only there. Off: no feedback at all.</string>
+    <string name="jam_share_audio">Guests may listen</string>
+    <string name="jam_share_audio_note">The jam page gets a Listen button: the guests\' browsers play the files you play, roughly in time with you. They are your subscription\'s files: Yandex Music licenses them for your own listening.</string>
     <string name="jam_done">Done</string>
     <string name="jam_added_by">+ %1$s</string>
     <string name="jam_wave_mark">Jam vibe</string>

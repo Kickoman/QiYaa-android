@@ -96,6 +96,9 @@ data class JamNowPlaying(
     val positionMs: Long,
     val paused: Boolean,
     val reportedAt: Long,
+    /** Listening along (spec/jam/listen.md): the file the host plays, and the next one. */
+    val listenUrl: String? = null,
+    val listenNextUrl: String? = null,
 )
 
 @Serializable
@@ -203,6 +206,9 @@ data class Playing(
     val track: JamTrack? = null,
     val positionMs: Long,
     val paused: Boolean,
+    /** Listening along (LISTEN-02, LISTEN-03): Yandex storage files only. */
+    val listenUrl: String? = null,
+    val listenNextUrl: String? = null,
 ) : ClientMessage
 
 @Serializable

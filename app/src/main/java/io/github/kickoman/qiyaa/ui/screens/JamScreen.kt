@@ -409,6 +409,7 @@ fun JamSettingsScreen(viewModel: JamViewModel, onDone: () -> Unit) {
     val colors = Qi.colors
     val server by viewModel.settings.jamServer.collectAsStateWithLifecycle()
     val feedback by viewModel.settings.jamWaveFeedback.collectAsStateWithLifecycle()
+    val share by viewModel.settings.jamShareAudio.collectAsStateWithLifecycle()
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         ScreenHeader(stringResource(R.string.jam_settings_title))
         SectionLabel(stringResource(R.string.jam_server))
@@ -426,6 +427,14 @@ fun JamSettingsScreen(viewModel: JamViewModel, onDone: () -> Unit) {
             OnOff(feedback, R.string.jam_on, R.string.jam_off, viewModel::setWaveFeedback)
         }
         Note(stringResource(R.string.jam_wave_feedback_note))
+        SectionLabel(stringResource(R.string.jam_share_audio))
+        Row(
+            Modifier.padding(start = 16.dp, end = 16.dp).fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OnOff(share, R.string.jam_on, R.string.jam_off, viewModel::setShareAudio)
+        }
+        Note(stringResource(R.string.jam_share_audio_note))
         ActionButton(
             stringResource(R.string.jam_done).uppercase(),
             Modifier.padding(16.dp).fillMaxWidth(),

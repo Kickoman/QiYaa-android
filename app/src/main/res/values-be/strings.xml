@@ -185,6 +185,8 @@
     <string name="jam_server_hint">https://jam.example.org</string>
     <string name="jam_wave_feedback">Вучыць хвалю джэма</string>
     <string name="jam_wave_feedback_note">Калі чарга гасцей пустая, грае хваля джэма. Так: яна вучыцца на пропусках падчас джэма і толькі там. Не: ніякага фідбэку.</string>
+    <string name="jam_share_audio">Госці могуць слухаць</string>
+    <string name="jam_share_audio_note">На старонцы джэма з\'явіцца кнопка «Слухаць»: браўзеры гасцей граюць тыя ж файлы, што і вы, прыкладна адначасова з вамі. Гэта файлы вашай падпіскі: Яндэкс Музыка дае іх для вашага асабістага праслухоўвання.</string>
     <string name="jam_done">Гатова</string>
     <string name="jam_added_by">+ %1$s</string>
     <string name="jam_wave_mark">Хваля джэма</string>

@@ -54,6 +54,11 @@ class Settings(context: Context, defaultJamServer: String = "") {
     /** HOST-16: rotor feedback to the jam wave's own session. */
     val jamWaveFeedback: StateFlow<Boolean> = mutableJamWaveFeedback.asStateFlow()
 
+    private val mutableJamShareAudio = MutableStateFlow(preferences.getBoolean(KEY_JAM_SHARE_AUDIO, false))
+
+    /** Listening along (spec/jam/listen.md): guests may play the files the host plays. */
+    val jamShareAudio: StateFlow<Boolean> = mutableJamShareAudio.asStateFlow()
+
     fun setVolume(value: Int) {
         mutableVolume.value = value.coerceIn(0, AudioBus.MAX_VOLUME)
         preferences.edit().putInt(KEY_VOLUME, mutableVolume.value).apply()
@@ -105,6 +110,11 @@ class Settings(context: Context, defaultJamServer: String = "") {
         preferences.edit().putString(KEY_LANGUAGE, language.tag).apply()
     }
 
+    fun setJamShareAudio(value: Boolean) {
+        mutableJamShareAudio.value = value
+        preferences.edit().putBoolean(KEY_JAM_SHARE_AUDIO, value).apply()
+    }
+
     fun setTheme(theme: AccentTheme) {
         mutableTheme.value = theme
         preferences.edit().putString(KEY_THEME, theme.key).apply()
@@ -142,6 +152,7 @@ class Settings(context: Context, defaultJamServer: String = "") {
         /** Removed on start: jams need no host key since 2026-10-01 (0.2.3 stored one). */
         const val KEY_OLD_JAM_HOST_KEY = "jam/hostKey"
         const val KEY_JAM_WAVE_FEEDBACK = "jam/waveFeedback"
+        const val KEY_JAM_SHARE_AUDIO = "jam/shareAudio"
         const val DEFAULT_VOLUME = 75
         const val DEFAULT_EQ_PRESET = "Flat"
 

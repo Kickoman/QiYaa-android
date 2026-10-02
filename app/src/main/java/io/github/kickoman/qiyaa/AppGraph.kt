@@ -2,6 +2,7 @@ package io.github.kickoman.qiyaa
 
 import android.content.Context
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import io.github.kickoman.qiyaa.audio.AudioBus
 import io.github.kickoman.qiyaa.data.JamFile
@@ -14,6 +15,7 @@ import io.github.kickoman.qiyaa.playback.JamCatalog
 import io.github.kickoman.qiyaa.playback.JamHost
 import io.github.kickoman.qiyaa.playback.JamHostConfig
 import io.github.kickoman.qiyaa.playback.OkHttpJamTransport
+import io.github.kickoman.qiyaa.playback.TrackUrlCache
 import io.github.kickoman.qiyaa.queue.LibraryMusicSource
 import io.github.kickoman.qiyaa.queue.QueueController
 import io.github.kickoman.qiyaa.queue.QueueStore
@@ -65,6 +67,14 @@ class AppGraph(val context: Context) {
             store = QueueFile(context).asQueueStore(),
             logFailure = { stage, failed -> Log.w(LOG_TAG, "Queue $stage failed", failed) },
         )
+
+    /** Signed track links, shared by the player and the jam host's listeners (LISTEN-02). */
+    val trackLinks =
+        TrackUrlCache(clock = SystemClock::elapsedRealtime) { id ->
+            Log.d(LOG_TAG, "Signing the link of track $id")
+            api.resolveTrackUrl(id)
+        }
+
     val jamHost =
         JamHost(
             transport = OkHttpJamTransport(httpClient),
@@ -73,8 +83,13 @@ class AppGraph(val context: Context) {
             catalog = library.asJamCatalog(),
             store = JamSessionStore(JamFile(context).asJamStore()),
             config = {
-                JamHostConfig(settings.jamServer.value, settings.jamWaveFeedback.value)
+                JamHostConfig(
+                    settings.jamServer.value,
+                    settings.jamWaveFeedback.value,
+                    settings.jamShareAudio.value,
+                )
             },
+            signedLink = trackLinks::peek,
             queueTitle = { context.getString(R.string.jam_queue_title) },
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
             io = Dispatchers.IO,
