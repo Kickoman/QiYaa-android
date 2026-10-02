@@ -36,10 +36,11 @@ import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.audio.AudioBus
 import io.github.kickoman.qiyaa.ui.PlayerViewModel
 import io.github.kickoman.qiyaa.ui.balanceLabel
-import io.github.kickoman.qiyaa.ui.components.ActionButton
 import io.github.kickoman.qiyaa.ui.components.HorizontalSlider
 import io.github.kickoman.qiyaa.ui.components.IconActionButton
 import io.github.kickoman.qiyaa.ui.components.IconPaths
+import io.github.kickoman.qiyaa.ui.components.IconWideButton
+import io.github.kickoman.qiyaa.ui.components.LikeButton
 import io.github.kickoman.qiyaa.ui.components.PathIcon
 import io.github.kickoman.qiyaa.ui.components.QiText
 import io.github.kickoman.qiyaa.ui.components.RoundButton
@@ -296,17 +297,13 @@ fun PlayerScreen(viewModel: PlayerViewModel, onJam: (() -> Unit)? = null) {
             Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp).fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            ActionButton(
-                "♥ " + stringResource(if (isLiked) R.string.player_liked else R.string.player_like),
+            LikeButton(isLiked, Modifier.weight(1f), onClick = viewModel::toggleLikeCurrent)
+            IconWideButton(
+                stringResource(R.string.player_dislike_skip),
                 Modifier.weight(1f),
-                color = if (isLiked) colors.accent else colors.muted,
-            ) { viewModel.toggleLikeCurrent() }
-            ActionButton(
-                "✕ " + stringResource(R.string.player_dislike_skip),
-                Modifier.weight(1f),
-                color = colors.muted,
+                onClick = viewModel::dislikeCurrent,
             ) {
-                viewModel.dislikeCurrent()
+                PathIcon(IconPaths.THUMB_DOWN, 22.dp, colors.muted, strokeWidth = IconPaths.OUTLINE)
             }
             IconActionButton(onClick = viewModel::stop) { PathIcon(IconPaths.STOP, 20.dp, colors.muted) }
         }

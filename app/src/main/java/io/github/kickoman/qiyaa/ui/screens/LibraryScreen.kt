@@ -43,9 +43,10 @@ import io.github.kickoman.qiyaa.ui.AppViewModel
 import io.github.kickoman.qiyaa.ui.LibrarySection
 import io.github.kickoman.qiyaa.ui.ListState
 import io.github.kickoman.qiyaa.ui.PlayerViewModel
-import io.github.kickoman.qiyaa.ui.components.ActionButton
 import io.github.kickoman.qiyaa.ui.components.IconPaths
+import io.github.kickoman.qiyaa.ui.components.IconWideButton
 import io.github.kickoman.qiyaa.ui.components.LanguageSwitch
+import io.github.kickoman.qiyaa.ui.components.LikeButton
 import io.github.kickoman.qiyaa.ui.components.PathIcon
 import io.github.kickoman.qiyaa.ui.components.QiText
 import io.github.kickoman.qiyaa.ui.components.ScreenHeader
@@ -235,21 +236,26 @@ fun LibraryScreen(
             Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp).fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            ActionButton(
-                "♥ " + stringResource(if (isLiked) R.string.player_liked else R.string.player_like),
+            LikeButton(isLiked, Modifier.weight(1f), height = 48.dp, onClick = player::toggleLikeCurrent)
+            IconWideButton(
+                stringResource(R.string.library_dislike),
                 Modifier.weight(1f),
                 height = 48.dp,
-                color = if (isLiked) colors.accent else colors.muted,
-            ) { player.toggleLikeCurrent() }
-            ActionButton(
-                "✕ " + stringResource(R.string.library_dislike),
-                Modifier.weight(1f),
-                height = 48.dp,
+                onClick = player::dislikeCurrent,
             ) {
-                player.dislikeCurrent()
+                PathIcon(IconPaths.THUMB_DOWN, 22.dp, colors.muted, strokeWidth = IconPaths.OUTLINE)
             }
-            ActionButton("↗ " + stringResource(R.string.library_open), Modifier.weight(1f), height = 48.dp) {
-                track?.let { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(it.webUrl))) }
+            IconWideButton(
+                stringResource(
+                    R.string.library_open,
+                ),
+                Modifier.weight(1f),
+                height = 48.dp,
+                onClick = {
+                    track?.let { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(it.webUrl))) }
+                },
+            ) {
+                PathIcon(IconPaths.OPEN_OUTSIDE, 22.dp, colors.muted, strokeWidth = IconPaths.OUTLINE)
             }
         }
 
