@@ -186,7 +186,7 @@
     <string name="jam_wave_feedback">Учить волну джема</string>
     <string name="jam_wave_feedback_note">Когда очередь гостей пуста, играет волна джема. Да: она учится на пропусках во время джема и только там. Нет: никакого фидбека.</string>
     <string name="jam_share_audio">Гости могут слушать</string>
-    <string name="jam_share_audio_note">На странице джема появится кнопка «Слушать»: браузеры гостей играют те же файлы, что и вы, примерно одновременно с вами. Это файлы вашей подписки: Яндекс Музыка даёт их для вашего личного прослушивания.</string>
+    <string name="jam_share_audio_note">На странице джема появится кнопка «Слушать»: браузеры гостей играют те же файлы, что и вы, примерно одновременно с вами. Это файлы вашей подписки: Яндекс Музыка даёт их для вашего личного прослушивания. Только при стандартном качестве: файлы экономии не передаются.</string>
     <string name="jam_done">Готово</string>
     <string name="jam_added_by">+ %1$s</string>
     <string name="jam_wave_mark">Волна джема</string>
@@ -237,4 +237,10 @@
     <string name="library_row_error">ОШИБКА</string>
     <string name="library_retry">НАЖМИТЕ, ЧТОБЫ ПОВТОРИТЬ</string>
     <string name="language_title">ЯЗЫК</string>
+    <string name="quality_title">КАЧЕСТВО</string>
+    <string name="quality_wifi">Wi-Fi</string>
+    <string name="quality_mobile">Мобильная сеть</string>
+    <string name="quality_standard">Стандарт</string>
+    <string name="quality_economy">Экономия</string>
+    <string name="quality_note">Экономия: HE-AAC 64 kbps, втрое меньше трафика. Со следующего трека.</string>
 </resources>

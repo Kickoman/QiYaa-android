@@ -15,7 +15,7 @@ grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   #
 | `PlaybackFailures.kt` | `PlaybackFailures.classify` — `queue.FailureKind` по коду `PlaybackException` и причине; `errorKind` — `yandex.ErrorKind` для пользователя |
 | `MediaItems.kt` | `MediaItems` — `Track` ↔ `MediaItem` |
 | `TrackResolver.kt` | `TrackResolver` — `qiyaa://track/{id}` → подписанная ссылка из `TrackUrlCache` |
-| `TrackUrlCache.kt` | `TrackUrlCache` — подписанные ссылки по `trackId` на 15 минут, до 64 штук |
+| `TrackUrlCache.kt` | `TrackUrlCache` — подписанные ссылки по `trackId` на 15 минут, до 64 штук, с качеством каждой |
 | `ExpiredLinkDataSource.kt` | `ExpiredLinkDataSource` — при 403/410 от хранилища сбрасывает ссылку и открывает поток заново |
 | `LogTag.kt` | `LOG_TAG = "QiYaa"` — тег logcat пакета |
 | `CurrentBitrate.kt` | `CurrentBitrate` — битрейт по треку; в `AudioBus` попадает битрейт текущего трека |
@@ -134,22 +134,35 @@ class Media3Engine(player: Player, controller: QueueController) : PlayerEngine {
 
 URI трека виртуальный: `qiyaa://track/{id}` (`MediaItems.SCHEME`). `mediaId = track.id`. В `MediaMetadata.extras` (`Bundle`) лежат `id`, `albumId`, `durationMs` (long), `artists` (string array list), `cover` (nullable string), `title`, чтобы `toTrack` восстанавливал `Track` из уведомления и после пересоздания процесса без сети. `artworkUri` = `coverUrl`.
 
-`TrackResolver.resolveDataSpec` вызывается на loading-потоке ExoPlayer при каждом открытии источника: старт, перемотка за скачанное, повтор после обрыва, предзагрузка следующего трека. `runBlocking { links.get(id) }` там допустим. URI с другой схемой проходит без изменений.
+`TrackResolver.resolveDataSpec` вызывается на loading-потоке ExoPlayer при каждом открытии источника: старт, перемотка за скачанное, повтор после обрыва, предзагрузка следующего трека. `runBlocking { links.get(id, continuing = dataSpec.position > 0) }` там допустим: открытие с середины файла (перемотка за скачанное, повтор после обрыва) продолжает тот же файл. URI с другой схемой проходит без изменений.
 
 ```kotlin
-class TrackUrlCache(clock: () -> Long, ttlMs: Long = TTL_MS, capacity: Int = CAPACITY, resolve: suspend (String) -> ResolvedUrl) {
-    suspend fun get(trackId: String): ResolvedUrl   // из кэша, пока ссылке меньше ttlMs; иначе resolve
+class TrackUrlCache(
+    clock: () -> Long,
+    quality: () -> Quality = { Quality.STANDARD },   // качество, действующее сейчас
+    ttlMs: Long = TTL_MS,
+    capacity: Int = CAPACITY,
+    resolve: suspend (String, Quality) -> ResolvedUrl,
+) {
+    suspend fun get(trackId: String, continuing: Boolean = false): ResolvedUrl
     fun peek(trackId: String): String?              // свежая ссылка из кэша без подписи; для слушателей джема
-    fun invalidate(trackId: String)
+    fun invalidate(trackId: String)                 // отказ хранилища: следующий get подпишет заново, в том же качестве
     companion object { TTL_MS = 15 * 60 * 1_000; CAPACITY = 64 }
 }
 ```
 
-Кэш один на процесс — `AppGraph.trackLinks`: его берут и сервис, и хозяин джема. `resolve` — `YandexApi.resolveTrackUrl`: два запроса, `download-info` к API и `download-info` хранилища. Часы — `SystemClock.elapsedRealtime`. Каждая настоящая подпись пишет в logcat `Signing the link of track <id>` (тег `QiYaa`, уровень debug): по ней видно, что перемотка и повторное открытие обходятся без API. Без кэша эти два запроса шли на каждое открытие; с кэшем перемотка и предзагрузка того же трека обходятся без API. Срок жизни подписанной ссылки Яндекс не документирует; проверено 2026-10-02: ссылка живёт час (параметр `ts` — время истечения в микросекундах), потом хранилище отвечает 401. 15 минут выбраны, чтобы перемотка в любое место почти любого трека шла по той же ссылке. Если ссылка истекла раньше, хранилище отвечает 403 или 410, и `ExpiredLinkDataSource` сбрасывает запись, заново открывает источник, а `TrackResolver` подписывает новую ссылку: цена слишком длинного срока — один лишний запрос. `CAPACITY` ограничивает память в длинной волне; вытесняется давно не использованная ссылка. Упавшая подпись не кэшируется. Доступ к кэшу синхронизирован: предзагрузка и текущий трек открываются с разных потоков; два одновременных промаха по одному треку подпишут ссылку дважды, это допустимо.
+**Качество** (`spec/player/quality.md`). Запись помнит качество, в котором ссылка подписана. `get(id)` — новый старт файла: берётся `quality()` и запись того же качества, пока она свежая; запись другого качества подписывается заново (QUAL-01, QUAL-02). `get(id, continuing = true)` — чтение с середины: берётся качество записи, даже если выбор уже другой, потому что файл другого кодека не продолжит начатый (QUAL-08); устаревшая запись подписывается заново в том же качестве. `invalidate` не удаляет запись, а делает её устаревшей, чтобы повторное открытие после 403/410 осталось в своём качестве. `peek` отдаёт ссылку любого качества: это файл, который играет. `AppGraph` передаёт `quality = qualityInEffect()`: `Settings.qualityMetered` на лимитной сети (`NetworkMonitor.isMetered()`: мобильная или лимитный Wi-Fi), иначе `Settings.quality` (QUAL-07).
+
+Кэш один на процесс — `AppGraph.trackLinks`: его берут и сервис, и хозяин джема. `resolve` — `YandexApi.resolveTrackUrl(id, quality)`: в стандартном качестве два запроса, `download-info` к API и `download-info` хранилища; в экономии `get-file-info` (см. `yandex/README.md`). Часы — `SystemClock.elapsedRealtime`. Каждая настоящая подпись пишет в logcat `Signing the link of track <id>` (тег `QiYaa`, уровень debug): по ней видно, что перемотка и повторное открытие обходятся без API. Без кэша эти два запроса шли на каждое открытие; с кэшем перемотка и предзагрузка того же трека обходятся без API. Срок жизни подписанной ссылки Яндекс не документирует; проверено 2026-10-02: ссылка живёт час (параметр `ts` — время истечения в микросекундах), потом хранилище отвечает 401. 15 минут выбраны, чтобы перемотка в любое место почти любого трека шла по той же ссылке. Если ссылка истекла раньше, хранилище отвечает 403 или 410, и `ExpiredLinkDataSource` сбрасывает запись, заново открывает источник, а `TrackResolver` подписывает новую ссылку: цена слишком длинного срока — один лишний запрос. `CAPACITY` ограничивает память в длинной волне; вытесняется давно не использованная ссылка. Упавшая подпись не кэшируется. Доступ к кэшу синхронизирован: предзагрузка и текущий трек открываются с разных потоков; два одновременных промаха по одному треку подпишут ссылку дважды, это допустимо.
 
 `ExpiredLinkDataSource` оборачивает `ResolvingDataSource` и повторяет открытие один раз, только для `HttpDataSource.InvalidResponseCodeException` 403/410 у `qiyaa://`-трека; второй отказ уходит в ExoPlayer как обычно (трековая ошибка, `queue/ErrorPolicy`). Все методы `DataSource` пересылаются явно: `getResponseHeaders` — default-метод Java, и делегирование Kotlin `by` его бы не переслало (см. ловушку `TransportCommandsListener`).
 
-**Битрейт.** `TrackResolver` сообщает битрейт выбранного варианта в `CurrentBitrate.onResolved(id, kbps)`, а сервис — смену текущего трека (`onMediaItemTransition` → `currentTrackId` → `onCurrentChanged`). В `AudioBus.bitrateKbps` попадает битрейт текущего трека: предзагрузка следующего за ~50 с до конца его не меняет, показание меняется ровно на переходе; пока ссылка текущего трека не подписана — 0 (`--K`). Битрейты помнятся для последних 64 треков. Исключения `yandex` — `IOException`, поэтому ExoPlayer превращает их в `PlaybackException`, а не падает (см. `yandex/README.md`).
+**Битрейт.** В экономии показание — `64K`. `TrackResolver` сообщает битрейт выбранного варианта в `CurrentBitrate.onResolved(id, kbps)`, а сервис — смену текущего трека (`onMediaItemTransition` → `currentTrackId` → `onCurrentChanged`). В `AudioBus.bitrateKbps` попадает битрейт текущего трека: предзагрузка следующего за ~50 с до конца его не меняет, показание меняется ровно на переходе; пока ссылка текущего трека не подписана — 0 (`--K`). Битрейты помнятся для последних 64 треков. Исключения `yandex` — `IOException`, поэтому ExoPlayer превращает их в `PlaybackException`, а не падает (см. `yandex/README.md`).
+
+**Traps (качество):**
+- Смена качества или сети не трогает следующий трек, который ExoPlayer уже начал грузить: он доиграет в старом качестве (QUAL-05, пробел A2 в `spec/player/README.md`). Заменить его `MediaItem` значило бы удалить и вставить элемент заново, а это перемешивает порядок shuffle ExoPlayer. Треки после него берут новый выбор.
+- «С середины» определяется по `dataSpec.position > 0`. Открытие с позиции 0 считается новым стартом и берёт действующее качество. Если ExoPlayer перечитает с нуля уже начатый mp3 без тега ID3 после смены качества, он получит файл другого кодека, и трек кончится ошибкой (ERR-04). У файлов Яндекса ID3 есть, а первый сэмпл MP4 лежит после `moov`, так что на практике чтение с нуля не происходит.
+- `NetworkMonitor.isMetered()` читается в момент подписи на loading-потоке ExoPlayer: `ConnectivityManager.isActiveNetworkMetered` это допускает.
 
 ## `TimedAudioSink`
 
@@ -189,7 +202,7 @@ data class JamHostConfig(serverUrl: String, waveFeedback: Boolean)
 - **`command{skip}`** — `QueueController.jamSkip` (HOST-18, HOST-19).
 - **Добавить** (HOST-20). `add` шлёт `add{track}`; трек попадает в хвост только со следующим `state`. `playNext` — `pin` для уже ждущего трека, иначе `add` и `pin`, когда элемент с этим треком от хозяина появится в `state`.
 - **Конец** (HOST-32). `end()` отправляет `end`, если есть связь, и в любом случае заканчивает локально: `QueueController.endJam`, хранилище очищается, соединение закрывается. `ended` от сервера — то же без `end`.
-- **Слушать вместе** (`spec/jam/listen.md`, LISTEN-01–05). С `JamHostConfig.shareAudio` (`Settings.jamShareAudio`, по умолчанию выключено) `playing` трека джема и трека волны несёт `listenUrl` — ссылку на файл, который играет, и `listenNextUrl` — на следующий (`JamPlayback.nextTrack`). Ссылки берутся из `TrackUrlCache.peek` — уже подписанные, без новых запросов к Яндексу; кэш теперь общий (`AppGraph.trackLinks`) для плеера и хозяина джема. Ссылка не из хранилища Яндекса (`JamCodec.isListenUrl`) не уходит: сервер отказал бы во всём `playing`.
+- **Слушать вместе** (`spec/jam/listen.md`, LISTEN-01–05, LISTEN-13). С `JamHostConfig.shareAudio` (`Settings.jamShareAudio`, по умолчанию выключено) `playing` трека джема и трека волны несёт `listenUrl` — ссылку на файл, который играет, и `listenNextUrl` — на следующий (`JamPlayback.nextTrack`). Ссылки берутся из `TrackUrlCache.peek` — уже подписанные, без новых запросов к Яндексу; кэш теперь общий (`AppGraph.trackLinks`) для плеера и хозяина джема. Ссылка не из хранилища Яндекса (`JamCodec.isListenUrl`) не уходит: сервер отказал бы во всём `playing`. Поэтому файл экономии (`strm*.strm.yandex.net`, не `/get-mp3/`) слушателям не передаётся (LISTEN-13).
 - **Соединение живёт с `PlaybackService`**: `onCreate` сервиса зовёт `onServiceStarted` (идёт джем — `resume`), `onDestroy` — `onServiceStopped` (соединение закрывается, джем остаётся в памяти и на диске, комната ждёт хозяина час, REC-05). На переднем плане ради джема сервис не держим.
 
 ## `JamTracks`

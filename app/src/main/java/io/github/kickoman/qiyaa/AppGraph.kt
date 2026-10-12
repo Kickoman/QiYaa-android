@@ -5,6 +5,7 @@ import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import io.github.kickoman.qiyaa.audio.AudioBus
+import io.github.kickoman.qiyaa.data.AudioQuality
 import io.github.kickoman.qiyaa.data.JamFile
 import io.github.kickoman.qiyaa.data.QueueFile
 import io.github.kickoman.qiyaa.data.Settings
@@ -21,6 +22,7 @@ import io.github.kickoman.qiyaa.queue.QueueController
 import io.github.kickoman.qiyaa.queue.QueueStore
 import io.github.kickoman.qiyaa.yandex.DeviceAuth
 import io.github.kickoman.qiyaa.yandex.Library
+import io.github.kickoman.qiyaa.yandex.Quality
 import io.github.kickoman.qiyaa.yandex.Session
 import io.github.kickoman.qiyaa.yandex.Track
 import io.github.kickoman.qiyaa.yandex.YandexApi
@@ -44,7 +46,11 @@ class AppGraph(val context: Context) {
 
     val settings = Settings(context, defaultJamServer = BuildConfig.JAM_URL)
     val tokenStore = TokenStore(context)
-    val api = YandexApi(httpClient).also { it.token = tokenStore.load() }
+    val api =
+        YandexApi(httpClient, log = { message -> Log.i(LOG_TAG, message) }).also {
+            it.token =
+                tokenStore.load()
+        }
     val library = Library(api)
     val networkMonitor = NetworkMonitor(context, applicationScope)
     val session = Session(library, networkMonitor.available, applicationScope).also { it.start() }
@@ -70,10 +76,19 @@ class AppGraph(val context: Context) {
 
     /** Signed track links, shared by the player and the jam host's listeners (LISTEN-02). */
     val trackLinks =
-        TrackUrlCache(clock = SystemClock::elapsedRealtime) { id ->
-            Log.d(LOG_TAG, "Signing the link of track $id")
-            api.resolveTrackUrl(id)
+        TrackUrlCache(clock = SystemClock::elapsedRealtime, quality = ::qualityInEffect) { id, quality ->
+            Log.d(LOG_TAG, "Signing the link of track $id ($quality)")
+            api.resolveTrackUrl(id, quality)
         }
+
+    /** QUAL-07: the choice of the network in use. */
+    private fun qualityInEffect(): Quality {
+        val choice = if (networkMonitor.isMetered()) settings.qualityMetered.value else settings.quality.value
+        return when (choice) {
+            AudioQuality.STANDARD -> Quality.STANDARD
+            AudioQuality.ECONOMY -> Quality.ECONOMY
+        }
+    }
 
     val jamHost =
         JamHost(

@@ -1,6 +1,6 @@
 # `yandex/` — клиент Яндекс Музыки
 
-Пакет говорит с `api.music.yandex.net` и `oauth.yandex.ru`: конверт `{invocationInfo, result}`, вход по коду устройства, подпись ссылки на mp3, нормализация токена и источники библиотеки (лайки, плейлисты, волна, поиск). Он **не** хранит токен (это `data/TokenStore`), **не** знает про ExoPlayer и очередь (это `playback/`) и не показывает ничего пользователю: любая ошибка — исключение из дерева ниже, любой ожидаемый промах — данные.
+Пакет говорит с `api.music.yandex.net` и `oauth.yandex.ru`: конверт `{invocationInfo, result}`, вход по коду устройства, подпись ссылки на mp3, файл экономичного качества (`get-file-info`), нормализация токена и источники библиотеки (лайки, плейлисты, волна, поиск). Он **не** хранит токен (это `data/TokenStore`), **не** знает про ExoPlayer и очередь (это `playback/`) и не показывает ничего пользователю: любая ошибка — исключение из дерева ниже, любой ожидаемый промах — данные.
 
 Чистая JVM: пакет не импортирует `android.*` и тестируется против `MockWebServer`.
 
@@ -17,12 +17,13 @@ grep -rlnE '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiy
 | `YandexApi.kt` | `YandexApi` — транспорт (OkHttp), конверт, `accountStatus`, `tracks`, `resolveTrackUrl`, `reportPlayStarted` |
 | `TrackParsing.kt` | `TrackParsing` — `JsonElement` → `Track` |
 | `TrackUrl.kt` | `TrackUrl` — выбор варианта и подпись ссылки на mp3 |
+| `FileInfo.kt` | `Quality`, `FileInfoRequest`, `FileDownloadInfo`, `FileInfo` — запрос `GET /get-file-info`, его подпись и разбор |
 | `Library.kt` | `Library` — аккаунт, лайки, источники треков, волна, поиск |
 | `Session.kt` | `SessionState`, `AccountGateway`, `Session` — жизненный цикл входа: офлайн, повторы, истёкший токен |
 | `DeviceAuth.kt` | `DeviceAuth` — OAuth «код устройства» |
 | `TokenNormalizer.kt` | `TokenNormalizer` — из вставленного текста в чистый токен |
 
-Зависимости внутри пакета: `Session → AccountGateway` (реализует `Library`), `Library → YandexApi → TrackParsing, TrackUrl → JsonFields, Models, Errors`. `DeviceAuth` и `TokenNormalizer` зависят только от `JsonFields` и `Errors`.
+Зависимости внутри пакета: `Session → AccountGateway` (реализует `Library`), `Library → YandexApi → TrackParsing, TrackUrl, FileInfo → JsonFields, Models, Errors`. `DeviceAuth` и `TokenNormalizer` зависят только от `JsonFields` и `Errors`.
 
 ## Исключения
 
@@ -72,7 +73,12 @@ sealed interface ErrorKind {   // NoNetwork, TokenRejected, ServerError(status),
 ## `YandexApi`
 
 ```kotlin
-class YandexApi(client: OkHttpClient, val baseUrl: String = "https://api.music.yandex.net") {
+class YandexApi(
+    client: OkHttpClient,
+    val baseUrl: String = "https://api.music.yandex.net",
+    clock: () -> Long = System::currentTimeMillis,    // мс; ts подписи get-file-info
+    log: (String) -> Unit = {},                       // откат экономии; AppGraph пишет в Log.i
+) {
     @Volatile var token: String                                  // "" = без Authorization
     val tokenRejections: SharedFlow<HttpException>               // 401/403 от API на запросе с токеном
     suspend fun getJson(path: String, query: Map<String, String> = emptyMap()): JsonElement
@@ -82,7 +88,7 @@ class YandexApi(client: OkHttpClient, val baseUrl: String = "https://api.music.y
     suspend fun getText(fullUrl: String): String                 // без конверта, для download-info
     suspend fun accountStatus(): Account
     suspend fun tracks(ids: List<String>): List<Track>           // POST /tracks/, до 250 id за раз
-    suspend fun resolveTrackUrl(trackId: String): ResolvedUrl    // "id" или "id:albumId"
+    suspend fun resolveTrackUrl(trackId: String, quality: Quality = Quality.STANDARD): ResolvedUrl   // "id" или "id:albumId"
     suspend fun reportPlayStarted(account: Account, track: Track, playId: String)
     companion object { fun formatSeconds(durationMs: Long): String }
 }
@@ -94,7 +100,9 @@ class YandexApi(client: OkHttpClient, val baseUrl: String = "https://api.music.y
 
 `tokenRejections` получает каждое `HttpException` с `isTokenRejected`, если запрос ушёл с заголовком `Authorization`, до того как исключение брошено. Так `Session` узнаёт об отозванном токене на **любом** запросе, а не только при старте. Не эмитят: запросы без токена (вход), 5xx, `getText()` — у хранилища свой 403, не про токен. Поток — `MutableSharedFlow(extraBufferCapacity = 1)` с `tryEmit`: без подписчика событие теряется.
 
-`resolveTrackUrl` делает два запроса: `GET /tracks/{id}/download-info` → список вариантов; затем `GET <downloadInfoUrl>?format=json` → `{host, path, ts, s}` → подпись (см. `TrackUrl`). `accountStatus` без `uid` в ответе — `AuthException` (токен не принят).
+`resolveTrackUrl` при `Quality.STANDARD` делает два запроса: `GET /tracks/{id}/download-info` → список вариантов; затем `GET <downloadInfoUrl>?format=json` → `{host, path, ts, s}` → подпись (см. `TrackUrl`). `ResolvedUrl.codec` — кодек выбранного варианта.
+
+При `Quality.ECONOMY` сначала `GET /get-file-info` (см. `FileInfo`) с заголовками `Authorization` и `X-Yandex-Music-Client: YandexMusicDesktopAppWindows/5.95.0`. Пригодный ответ даёт `ResolvedUrl(url, bitrate, codec)`. Обрыв сети — `NetworkException` (QUAL-04: ждать сеть, как для любой ссылки). Всё остальное (любой HTTP-статус, ответ без `https`-ссылки, `encraw`, кодек не из запроса) — строка в `log` и тот же трек по стандартному пути (QUAL-03). Этот запрос идёт мимо `execute`: его 401 и 403 — отказ в подписи, а не в токене, и в `tokenRejections` не попадают (иначе экономия выкидывала бы на экран входа). `accountStatus` без `uid` в ответе — `AuthException` (токен не принят).
 
 `reportPlayStarted` отправляет форму `POST /play-audio` с полями `track-id`, `album-id`, `from=web-own_tracks-track-track-main`, `play-id`, `uid`, `timestamp` и `client-now` (одно и то же значение, `yyyy-MM-dd'T'HH:mm:ss.SSS'Z'` в UTC), `track-length-seconds` (формат `QString::number`: `180`, `201.5`), `total-played-seconds=0`, `end-position-seconds=0`.
 
@@ -103,6 +111,8 @@ class YandexApi(client: OkHttpClient, val baseUrl: String = "https://api.music.y
 - OkHttp сам убирает `Authorization` при редиректе на другой хост, так что редирект с API наружу токен тоже не уносит.
 - `token` читается в момент сборки запроса; смена токена не влияет на уже отправленные вызовы.
 - `getText` не распаковывает конверт и не парсит JSON — только для второго прыжка `download-info`.
+- Подпись `get-file-info` содержит `+` и `/`. `addQueryParameter` кодирует их (`%2B`, `%2F`); голый `+` сервер прочтёт как пробел и ответит 403 `not-allowed`, как на любую неверную подпись. Тест `QUAL-02 …` проверяет, что в закодированном запросе нет `+`.
+- Ключ подписи — от Windows-приложения Яндекса; ключ их Android-приложения уже отвечает 403. Если отзовут и этот, вся экономия молча уйдёт в стандарт: в логе будет `GET /get-file-info … HTTP 403`.
 - `formatSeconds` эмулирует Qt: целые секунды без `.0`. Так делает десктопный QiYaa, и сервер это принимает.
 
 ## `TrackParsing`
@@ -134,6 +144,28 @@ object TrackUrl {
 Подпись: `md5("XGRlBW9FXlekgbPrRHuSiA" + path.substring(1) + s)` в hex, ссылка `https://{host}/get-mp3/{md5}/{ts}{path}`. `ts` может прийти числом — `scalarString` приводит его к строке без дробной части.
 
 **Traps:** `path` обязан начинаться с `/` (иначе `null`), потому что подписывается без первого символа.
+
+## `FileInfo`
+
+```kotlin
+enum class Quality { STANDARD, ECONOMY }
+data class FileInfoRequest(val trackId: String, val quality: String, val codecs: List<String>, val transport: String)
+data class FileDownloadInfo(val quality: String, val codec: String, val bitrateKbps: Int, val transport: String,
+    val url: String, val urls: List<String>, val key: String?)   // key — только при encraw
+
+object FileInfo {
+    const val PATH = "/get-file-info"
+    const val CLIENT = "YandexMusicDesktopAppWindows/5.95.0"
+    const val CLIENT_HEADER = "X-Yandex-Music-Client"
+    fun economy(trackId: String): FileInfoRequest                               // lq, he-aac-mp4,mp3, raw
+    fun sign(request: FileInfoRequest, timestampSeconds: Long): String
+    fun query(request: FileInfoRequest, timestampSeconds: Long): List<Pair<String, String>>   // ещё не закодировано
+    fun parse(result: JsonElement?): FileDownloadInfo?                          // null без https-url
+    fun isUsable(info: FileDownloadInfo, request: FileInfoRequest): Boolean     // raw и кодек из запроса
+}
+```
+
+Подпись: base64 от HMAC-SHA256(ключ Windows-приложения, `ts + trackId + quality + codecs без запятых + transport`) без последнего символа; пример из спеки (`ts` 1760000000, трек 155647609) — `keefcyb+nfzl1cRn8glR+ZyzpQf/h2gSrMF0fHIOHpQ`. Порядок параметров: `ts, trackId, quality, codecs, transports, sign`. Ответ: `result.downloadInfo` с `quality` (уровень, который выбрал сервер), `codec`, `bitrate`, `transport`, `url`, `urls`, `key`. Для экономии это HE-AAC 64 kbps в MP4 на `strm*.strm.yandex.net`; ExoPlayer играет его без доработок. Всё про эндпоинт и что известно о lossless — в `spec/player/quality.md`; фикстуры — `spec/fixtures/yandex/get-file-info`.
 
 ## `Library`
 

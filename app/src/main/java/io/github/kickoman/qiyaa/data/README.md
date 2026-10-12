@@ -4,7 +4,8 @@
 
 | Файл | Содержит |
 |---|---|
-| `Settings.kt` | `Settings` — громкость, баланс, визуализатор, EQ, тема, язык |
+| `Settings.kt` | `Settings` — громкость, баланс, визуализатор, EQ, тема, язык, качество звука |
+| `AudioQuality.kt` | `AudioQuality` — стандарт / экономия (`spec/player/quality.md`) |
 | `AppLanguage.kt` | `AppLanguage` — языки интерфейса: белорусский (по умолчанию), русский, английский |
 | `TokenStore.kt` | `TokenStore` — токен |
 | `QueueFile.kt` | `QueueFile` — сохранённая очередь, файл `queue.json` |
@@ -32,8 +33,10 @@
 | `jam/waveFeedback` | bool, фидбек ротора в сессию волны джема (HOST-16) | `true` | `jamWaveFeedback` |
 | `jam/shareAudio` | bool, гости могут слушать файлы хозяина (`spec/jam/listen.md`) | `false` | `jamShareAudio` |
 | `language` | string (`AppLanguage.tag`: `be`, `ru`, `en`) | `be` (и любое другое значение) | `language` |
+| `playback/quality` | string (`AudioQuality.key`: `standard`, `economy`), качество на Wi-Fi и другой безлимитной сети | `standard` (и любое другое значение) | `quality` |
+| `playback/qualityMetered` | string, то же на мобильной и другой лимитной сети (QUAL-07) | `standard` (и любое другое значение) | `qualityMetered` |
 
-Ключи и умолчания те же, что в десктопном QiYaa, где они применимы. `jam/server`
+Ключи и умолчания те же, что в десктопном QiYaa, где они применимы (`playback/quality` там единственный: у ПК нет мобильной сети). Какое из двух качеств действует, решает `AppGraph` по `NetworkMonitor.isMetered()`; `data` про сеть не знает. `jam/server`
 обрезается по краям при записи; ключ `jam/hostKey` из 0.2.3 (ключи хозяина отменены) `Settings` удаляет при создании; адрес по умолчанию передаёт `AppGraph` в конструктор, потому что
 `data` не видит `BuildConfig`. `setEq(settings, presetName)` пишет четыре ключа одной транзакцией. Строка полос с числом элементов ≠ 10 или с нечисловыми значениями читается как плоский EQ.
 
@@ -56,9 +59,9 @@
 Как `QueueFile`, только файл `filesDir/jam.json`, а `write(null)` удаляет его: джем закончился.
 Формат знает `jam/JamSessionCodec`; `AppGraph` оборачивает файл в `jam.JamStore`.
 
-## `AccentTheme`, `VisualizerMode`
+## `AccentTheme`, `VisualizerMode`, `AudioQuality`
 
-Оба enum хранятся по явному значению (`key`, `storedValue`), а не по `ordinal`, и умеют `next()` по кругу. Неизвестное сохранённое значение — `AccentTheme.DEFAULT` (`AMBER`) и `VisualizerMode.SPECTRUM`. Подписи тем — в `ui` (`AccentTheme.labelId()` → `R.string.theme_*`).
+Все три enum хранятся по явному значению (`key`, `storedValue`), а не по `ordinal`; `AccentTheme` и `VisualizerMode` умеют `next()` по кругу. Неизвестное сохранённое значение — `AccentTheme.DEFAULT` (`AMBER`), `VisualizerMode.SPECTRUM` и `AudioQuality.STANDARD` (так `lossless` из будущей версии прочитается как стандарт). `AudioQuality` — выбор пользователя; в `yandex.Quality` его переводит `AppGraph`, потому что `data` не зависит от `yandex`. Подписи тем — в `ui` (`AccentTheme.labelId()` → `R.string.theme_*`).
 
 ## Not here
 

@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.data.AppLanguage
+import io.github.kickoman.qiyaa.data.AudioQuality
 import io.github.kickoman.qiyaa.jam.ParticipantKind
 import io.github.kickoman.qiyaa.playback.JamHostPhase
 import io.github.kickoman.qiyaa.playback.JamHostState
@@ -48,6 +49,7 @@ import io.github.kickoman.qiyaa.ui.components.IconWideButton
 import io.github.kickoman.qiyaa.ui.components.LanguageSwitch
 import io.github.kickoman.qiyaa.ui.components.LikeButton
 import io.github.kickoman.qiyaa.ui.components.PathIcon
+import io.github.kickoman.qiyaa.ui.components.PillToggle
 import io.github.kickoman.qiyaa.ui.components.QiText
 import io.github.kickoman.qiyaa.ui.components.ScreenHeader
 import io.github.kickoman.qiyaa.ui.components.tap
@@ -76,6 +78,8 @@ fun LibraryScreen(
     val albums by viewModel.albums.state.collectAsStateWithLifecycle()
     val playerUi by player.ui.collectAsStateWithLifecycle()
     val language by viewModel.settings.language.collectAsStateWithLifecycle()
+    val quality by viewModel.settings.quality.collectAsStateWithLifecycle()
+    val qualityMetered by viewModel.settings.qualityMetered.collectAsStateWithLifecycle()
     val track = playerUi.current
 
     LaunchedEffect(account.uid) { if (account.isValid) viewModel.loadLibraryLists() }
@@ -259,6 +263,21 @@ fun LibraryScreen(
             }
         }
 
+        QiText(
+            stringResource(R.string.quality_title),
+            LabelStyle,
+            Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 2.dp),
+            color = colors.dim,
+        )
+        QualityRow(stringResource(R.string.quality_wifi), quality, viewModel::setQuality)
+        QualityRow(stringResource(R.string.quality_mobile), qualityMetered, viewModel::setQualityMetered)
+        QiText(
+            stringResource(R.string.quality_note),
+            HintStyle,
+            Modifier.padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 6.dp),
+            color = colors.dim,
+        )
+
         Row(
             Modifier.padding(start = 16.dp, end = 8.dp, bottom = 8.dp).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -272,6 +291,25 @@ fun LibraryScreen(
                 color = colors.dim,
             )
             LanguageSwitch(language, viewModel::setLanguage)
+        }
+    }
+}
+
+@Composable
+private fun QualityRow(network: String, current: AudioQuality, onPick: (AudioQuality) -> Unit) {
+    Row(
+        Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        QiText(network, sans(14.sp, 500), Modifier.weight(1f), color = Qi.colors.text)
+        for ((choice, label) in listOf(
+            AudioQuality.STANDARD to R.string.quality_standard,
+            AudioQuality.ECONOMY to R.string.quality_economy,
+        )) {
+            PillToggle(stringResource(label).uppercase(), current == choice) {
+                if (current != choice) onPick(choice)
+            }
         }
     }
 }

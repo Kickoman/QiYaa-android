@@ -20,6 +20,7 @@ import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
+import okhttp3.mockwebserver.SocketPolicy
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -505,6 +506,86 @@ class YandexApiTest {
         val chunks = requests.getValue("/tracks/").map { form(it)["track-ids"].orEmpty().split(',') }
         assertEquals(listOf(250, 50), chunks.map { it.size })
         assertEquals(ids, chunks.flatten())
+    }
+
+    @Test
+    fun `QUAL-02 economy asks get-file-info with the desktop client's signature and takes its file`() =
+        runBlocking {
+            route("GET", "/get-file-info", Spec.fixture("get-file-info", "lq-he-aac-mp4"))
+
+            val resolved = api.resolveTrackUrl("155647609:7767133", Quality.ECONOMY)
+
+            val expected = Spec.expected("get-file-info", "lq-he-aac-mp4")
+            assertEquals(expected.getValue("url").jsonPrimitive.content, resolved.url)
+            assertEquals(64, resolved.bitrateKbps)
+            assertEquals("he-aac-mp4", resolved.codec)
+            assertEquals(null, requests["/tracks/155647609/download-info"])
+            val request = last("/get-file-info")
+            assertEquals(FileInfo.CLIENT, request.getHeader(FileInfo.CLIENT_HEADER))
+            assertEquals("OAuth test-token", request.getHeader("Authorization"))
+            val url = request.requestUrl!!
+            assertEquals("155647609", url.queryParameter("trackId"))
+            assertEquals("lq", url.queryParameter("quality"))
+            assertEquals("he-aac-mp4,mp3", url.queryParameter("codecs"))
+            assertEquals("raw", url.queryParameter("transports"))
+            val sign = FileInfo.sign(FileInfo.economy("155647609"), url.queryParameter("ts")!!.toLong())
+            assertEquals(sign, url.queryParameter("sign"))
+            assertFalse(url.encodedQuery!!.contains('+'))
+        }
+
+    @Test
+    fun `QUAL-03 economy falls back to the standard link and never rejects the token`() = runBlocking {
+        val storage = MockWebServer()
+        storage.start()
+        try {
+            val variants = Spec.fixture("tracks-download-info", "variants")
+            val storageBase = storage.url("/").toString().removeSuffix("/")
+            route(
+                "GET",
+                "/tracks/1/download-info",
+                variants.copy(body = variants.body.replace("https://storage.mds.yandex.net", storageBase)),
+            )
+            val seen = ArrayList<HttpException>()
+            val collector =
+                launch(start = CoroutineStart.UNDISPATCHED) {
+                    api.tokenRejections.collect {
+                        seen +=
+                            it
+                    }
+                }
+            val expectedUrl = Spec.expected(
+                "storage-download-info",
+                "ok",
+            ).getValue("trackUrl").jsonPrimitive.content
+            for (case in listOf("403-not-allowed", "429-concurrency-limit", "encraw", "no-url")) {
+                route("GET", "/get-file-info", Spec.fixture("get-file-info", case))
+                storage.enqueue(Spec.fixture("storage-download-info", "ok").response())
+
+                val resolved = api.resolveTrackUrl("1", Quality.ECONOMY)
+
+                assertEquals(case, expectedUrl, resolved.url)
+                assertEquals(case, 320, resolved.bitrateKbps)
+                assertEquals(case, "mp3", resolved.codec)
+            }
+            collector.cancel()
+            assertEquals(emptyList<HttpException>(), seen)
+            assertEquals(4, requests["/get-file-info"]?.size)
+        } finally {
+            storage.shutdown()
+        }
+    }
+
+    @Test
+    fun `QUAL-04 a network failure of get-file-info is the link's network failure`() = runBlocking {
+        routes["GET /get-file-info"] =
+            MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AFTER_REQUEST)
+        try {
+            api.resolveTrackUrl("1", Quality.ECONOMY)
+            fail("expected NetworkException")
+        } catch (expected: NetworkException) {
+            assertTrue(expected.message!!.contains("/get-file-info"))
+        }
+        assertEquals(null, requests["/tracks/1/download-info"])
     }
 
     private fun route(method: String, path: String, fixture: Fixture) {

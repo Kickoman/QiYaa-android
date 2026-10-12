@@ -57,7 +57,7 @@ data class DownloadVariant(
 
 data class DownloadInfo(val host: String, val path: String, val timestamp: String, val secret: String)
 
-data class ResolvedUrl(val url: String, val bitrateKbps: Int)
+data class ResolvedUrl(val url: String, val bitrateKbps: Int, val codec: String = "")
 
 enum class WaveEvent(val wireName: String) {
     RADIO_STARTED("radioStarted"),
