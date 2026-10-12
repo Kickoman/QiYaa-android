@@ -59,6 +59,18 @@ class Settings(context: Context, defaultJamServer: String = "") {
     /** Listening along (spec/jam/listen.md): guests may play the files the host plays. */
     val jamShareAudio: StateFlow<Boolean> = mutableJamShareAudio.asStateFlow()
 
+    private val mutableQuality =
+        MutableStateFlow(AudioQuality.fromKey(preferences.getString(KEY_QUALITY, null)))
+
+    /** spec/player/quality.md: on Wi-Fi and other unmetered networks. */
+    val quality: StateFlow<AudioQuality> = mutableQuality.asStateFlow()
+
+    private val mutableQualityMetered =
+        MutableStateFlow(AudioQuality.fromKey(preferences.getString(KEY_QUALITY_METERED, null)))
+
+    /** On mobile data and other metered networks (QUAL-07). */
+    val qualityMetered: StateFlow<AudioQuality> = mutableQualityMetered.asStateFlow()
+
     fun setVolume(value: Int) {
         mutableVolume.value = value.coerceIn(0, AudioBus.MAX_VOLUME)
         preferences.edit().putInt(KEY_VOLUME, mutableVolume.value).apply()
@@ -115,6 +127,16 @@ class Settings(context: Context, defaultJamServer: String = "") {
         preferences.edit().putBoolean(KEY_JAM_SHARE_AUDIO, value).apply()
     }
 
+    fun setQuality(quality: AudioQuality) {
+        mutableQuality.value = quality
+        preferences.edit().putString(KEY_QUALITY, quality.key).apply()
+    }
+
+    fun setQualityMetered(quality: AudioQuality) {
+        mutableQualityMetered.value = quality
+        preferences.edit().putString(KEY_QUALITY_METERED, quality.key).apply()
+    }
+
     fun setTheme(theme: AccentTheme) {
         mutableTheme.value = theme
         preferences.edit().putString(KEY_THEME, theme.key).apply()
@@ -153,6 +175,8 @@ class Settings(context: Context, defaultJamServer: String = "") {
         const val KEY_OLD_JAM_HOST_KEY = "jam/hostKey"
         const val KEY_JAM_WAVE_FEEDBACK = "jam/waveFeedback"
         const val KEY_JAM_SHARE_AUDIO = "jam/shareAudio"
+        const val KEY_QUALITY = "playback/quality"
+        const val KEY_QUALITY_METERED = "playback/qualityMetered"
         const val DEFAULT_VOLUME = 75
         const val DEFAULT_EQ_PRESET = "Flat"
 

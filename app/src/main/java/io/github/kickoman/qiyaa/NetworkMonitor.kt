@@ -36,6 +36,9 @@ class NetworkMonitor(context: Context, scope: CoroutineScope) {
         }.distinctUntilChanged()
             .stateIn(scope, SharingStarted.Eagerly, isConnected())
 
+    /** Mobile data or a metered Wi-Fi: QUAL-07 takes the mobile choice then. */
+    fun isMetered(): Boolean = connectivityManager.isActiveNetworkMetered
+
     private fun isConnected(): Boolean {
         val network = connectivityManager.activeNetwork ?: return false
         val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false

@@ -364,7 +364,7 @@ class JamHostTest {
     }
 
     @Test
-    fun `LISTEN-01 to LISTEN-05 with sharing on, playing carries the files of this track and the next`() =
+    fun `LISTEN-01 to LISTEN-05 and LISTEN-13 with sharing on, playing carries the Yandex mp3 files`() =
         runTest {
             val h = Harness(this)
             h.created()
@@ -396,6 +396,12 @@ class JamHostTest {
             assertEquals(null, (h.sent().last() as Playing).listenUrl)
             assertEquals(null, (h.sent().last() as Playing).listenNextUrl)
             h.signed["11"] = file("a")
+            h.signed["22"] =
+                "https://strm-fra-01.strm.yandex.net/music-v2/raw/ysign1=0f1e,lid=299,ts=66f80000/0/" +
+                "7767133/21d40f5d.226909333.2.155647609/aac64he-mp4"
+            h.host.onPlayback(playback)
+            assertEquals(file("a"), (h.sent().last() as Playing).listenUrl)
+            assertEquals(null, (h.sent().last() as Playing).listenNextUrl) // LISTEN-13: an economy file
             h.host.onPlayback(JamPlayback(JamPlayback.Kind.IDLE, null, null, 0, paused = true))
             assertEquals(Playing(NowPlayingSource.IDLE, positionMs = 0, paused = true), h.sent().last())
         }

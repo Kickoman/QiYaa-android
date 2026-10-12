@@ -1,14 +1,16 @@
 package io.github.kickoman.qiyaa.playback
 
+import io.github.kickoman.qiyaa.yandex.Quality
 import io.github.kickoman.qiyaa.yandex.ResolvedUrl
 
 class TrackUrlCache(
     private val clock: () -> Long,
+    private val quality: () -> Quality = { Quality.STANDARD },
     private val ttlMs: Long = TTL_MS,
     private val capacity: Int = CAPACITY,
-    private val resolve: suspend (String) -> ResolvedUrl,
+    private val resolve: suspend (String, Quality) -> ResolvedUrl,
 ) {
-    private class Entry(val link: ResolvedUrl, val signedAtMs: Long)
+    private class Entry(val link: ResolvedUrl, val quality: Quality, val signedAtMs: Long)
 
     private val entries =
         object : LinkedHashMap<String, Entry>(capacity, LOAD_FACTOR, true) {
@@ -16,14 +18,22 @@ class TrackUrlCache(
                 size > capacity
         }
 
-    suspend fun get(trackId: String): ResolvedUrl {
+    /** [continuing]: the file is read on from the middle, so it keeps its quality (QUAL-08). */
+    suspend fun get(trackId: String, continuing: Boolean = false): ResolvedUrl {
         val now = clock()
+        val wanted: Quality
         synchronized(entries) {
             val cached = entries[trackId]
-            if (cached != null && now - cached.signedAtMs < ttlMs) return cached.link
+            wanted = if (continuing && cached != null) cached.quality else quality()
+            if (cached != null &&
+                cached.quality == wanted &&
+                now - cached.signedAtMs < ttlMs
+            ) {
+                return cached.link
+            }
         }
-        val link = resolve(trackId)
-        synchronized(entries) { entries[trackId] = Entry(link, now) }
+        val link = resolve(trackId, wanted)
+        synchronized(entries) { entries[trackId] = Entry(link, wanted, now) }
         return link
     }
 
@@ -36,8 +46,13 @@ class TrackUrlCache(
         }
     }
 
+    /** The storage refused the link: the next [get] signs it again, in the same quality. */
     fun invalidate(trackId: String) {
-        synchronized(entries) { entries.remove(trackId) }
+        val expired = clock() - ttlMs
+        synchronized(entries) {
+            val cached = entries[trackId] ?: return
+            entries[trackId] = Entry(cached.link, cached.quality, expired)
+        }
     }
 
     companion object {

@@ -22,7 +22,12 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
-class YandexApi(private val client: OkHttpClient, val baseUrl: String = "https://api.music.yandex.net") {
+class YandexApi(
+    private val client: OkHttpClient,
+    val baseUrl: String = "https://api.music.yandex.net",
+    private val clock: () -> Long = System::currentTimeMillis,
+    private val log: (String) -> Unit = {},
+) {
     @Volatile
     var token: String = ""
 
@@ -101,8 +106,11 @@ class YandexApi(private val client: OkHttpClient, val baseUrl: String = "https:/
         return (result as? JsonArray)?.map(TrackParsing::parseTrack) ?: emptyList()
     }
 
-    suspend fun resolveTrackUrl(trackId: String): ResolvedUrl {
+    suspend fun resolveTrackUrl(trackId: String, quality: Quality = Quality.STANDARD): ResolvedUrl {
         val id = trackId.substringBefore(':')
+        if (quality == Quality.ECONOMY) {
+            economyUrl(id)?.let { return it }
+        }
         val path = "/tracks/$id/download-info"
         val variants = TrackUrl.parseDownloadVariants(getJson(path))
         val best =
@@ -116,7 +124,33 @@ class YandexApi(private val client: OkHttpClient, val baseUrl: String = "https:/
         val info =
             TrackUrl.parseDownloadInfo(getText(infoUrl))
                 ?: throw MalformedResponseException("GET", infoUrl, "download info without host, path or s")
-        return ResolvedUrl(TrackUrl.buildTrackUrl(info), best.bitrateKbps)
+        return ResolvedUrl(TrackUrl.buildTrackUrl(info), best.bitrateKbps, best.codec)
+    }
+
+    /** QUAL-02 to QUAL-04: null falls back to the standard link; only a network failure throws. */
+    private suspend fun economyUrl(trackId: String): ResolvedUrl? = withContext(Dispatchers.IO) {
+        val request = FileInfo.economy(trackId)
+        val url = (baseUrl + FileInfo.PATH).toHttpUrl().newBuilder()
+        for ((key, value) in FileInfo.query(request, clock() / 1_000)) url.addQueryParameter(key, value)
+        val call = request(url.build()).header(FileInfo.CLIENT_HEADER, FileInfo.CLIENT).get().build()
+        val (status, body) =
+            try {
+                client.newCall(call).execute().use { response ->
+                    response.code to
+                        response.body?.string().orEmpty()
+                }
+            } catch (failed: IOException) {
+                throw NetworkException("GET", FileInfo.PATH, failed)
+            }
+        val info = if (status < 400) FileInfo.parse(parseJsonObjectOrNull(body)?.get("result")) else null
+        if (info == null || !FileInfo.isUsable(info, request)) {
+            log(
+                "GET ${FileInfo.PATH} for track $trackId: HTTP $status, " +
+                    "${info?.let { "${it.codec}/${it.transport}" } ?: "no file"}; taking the standard link",
+            )
+            return@withContext null
+        }
+        ResolvedUrl(info.url, info.bitrateKbps, info.codec)
     }
 
     suspend fun reportPlayStarted(account: Account, track: Track, playId: String) {

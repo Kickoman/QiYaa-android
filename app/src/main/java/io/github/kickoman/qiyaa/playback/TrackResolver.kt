@@ -11,7 +11,7 @@ class TrackResolver(private val links: TrackUrlCache, private val bitrate: Curre
     ResolvingDataSource.Resolver {
     override fun resolveDataSpec(dataSpec: DataSpec): DataSpec {
         val id = MediaItems.trackIdOf(dataSpec.uri) ?: return dataSpec
-        val resolved = runBlocking { links.get(id) }
+        val resolved = runBlocking { links.get(id, continuing = dataSpec.position > 0) }
         bitrate.onResolved(id, resolved.bitrateKbps)
         return dataSpec.buildUpon().setUri(Uri.parse(resolved.url)).build()
     }

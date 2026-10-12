@@ -8,6 +8,7 @@ import io.github.kickoman.qiyaa.AppLocale
 import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.appGraph
 import io.github.kickoman.qiyaa.data.AppLanguage
+import io.github.kickoman.qiyaa.data.AudioQuality
 import io.github.kickoman.qiyaa.queue.QueueController
 import io.github.kickoman.qiyaa.yandex.ErrorKind
 import io.github.kickoman.qiyaa.yandex.NamedRef
@@ -198,6 +199,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         settings.setLanguage(language)
         AppLocale.apply(getApplication(), language)
     }
+
+    fun setQuality(quality: AudioQuality) = settings.setQuality(quality)
+
+    fun setQualityMetered(quality: AudioQuality) = settings.setQualityMetered(quality)
 
     fun signOut() {
         leaveSession(notice = null)
