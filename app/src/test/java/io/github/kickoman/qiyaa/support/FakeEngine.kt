@@ -113,6 +113,8 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
         if (!wasEmpty && index <= currentIndex) currentIndex += added.size
         if (wasEmpty && tracks.isNotEmpty()) {
             currentIndex = 0
+            positionMs = 0
+            isEnded = false
             report(tracks[0], Transition.NEW_QUEUE)
         }
     }

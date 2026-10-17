@@ -668,11 +668,14 @@ class QueueController(
 
     private fun replaceBase(entries: List<QueueEntry>, title: String, isWave: Boolean, sourceId: String?) {
         val current = engine
-        val cursor = cursorIndex(current)
         val before = mutableState.value.entries
+        val dropsHeld = holding && before.getOrNull(cursorIndex(current))?.isWaiting == false
+        val cursor = if (dropsHeld) -1 else cursorIndex(current)
+        movingCursor = dropsHeld
         for (at in before.indices.reversed()) {
             if (at != cursor && !before[at].isJamItem) removeEntry(current, at)
         }
+        movingCursor = false
         val cursorAt = before.indices.count { it < cursor && before[it].isJamItem }
         mutableState.update { state ->
             val rows = state.entries.mapIndexed { i, entry ->
@@ -698,9 +701,9 @@ class QueueController(
         }
         val playable = entries.filter { it.track.available }
         inHead = playable.any { it.part == EntryPart.HEAD }
+        if (cursor < 0) holding = playable.isNotEmpty()
         if (playable.isNotEmpty()) {
             mutableState.update { it.copy(entries = it.entries + playable) }
-            if (cursor < 0) holding = true
             movingCursor = holding
             current?.appendTracks(playable.map(QueueEntry::track))
             movingCursor = false

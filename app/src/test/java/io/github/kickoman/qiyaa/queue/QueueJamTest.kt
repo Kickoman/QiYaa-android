@@ -1666,6 +1666,54 @@ class QueueJamTest {
         }
 
     @Test
+    fun `HOST-21 a second pick into an empty player drops the held first one, Next plays its first row`() =
+        runTest {
+            for (attached in listOf(true, false)) {
+                val h = QueueHarness(this, attached = attached)
+                val jam = h.startJam()
+                h.controller.loadSource("A") { tracks("a1", "a2") }
+                runCurrent()
+                h.controller.loadSource("B") { tracks("b1", "b2") }
+                runCurrent()
+                val entries = h.controller.state.value.entries
+                assertEquals("$attached", listOf("b1", "b2"), entries.map { it.track.id })
+                assertEquals("$attached", listOf(EntryPart.HEAD, EntryPart.HEAD), entries.map { it.part })
+                if (!attached) h.controller.attach(h.engine)
+                assertEquals("$attached", listOf("b1", "b2"), h.engine.ids())
+                assertEquals("$attached", "b1", h.currentId())
+                assertFalse("$attached", h.engine.playWhenReady)
+                assertEquals("$attached", idle, jam.playbacks.last())
+                h.engine.commands.clear()
+                h.controller.next()
+                assertEquals("$attached", "b1", h.currentId())
+                assertEquals("$attached", listOf("prepare", "play"), h.engine.commands)
+                h.engine.startPlaying()
+                assertEquals("$attached", base("b1", next = "b2"), jam.playbacks.last())
+                assertEquals("$attached", listOf("b2"), h.playOn(1))
+            }
+        }
+
+    @Test
+    fun `HOST-36 HOST-21 Clear after a pick into an empty player leaves it empty, Next plays nothing`() =
+        runTest {
+            for (attached in listOf(true, false)) {
+                val h = QueueHarness(this, attached = attached)
+                val jam = h.startJam()
+                h.controller.loadSource("A") { tracks("a1", "a2") }
+                runCurrent()
+                h.controller.clear()
+                assertEquals("$attached", emptyList<QueueEntry>(), h.controller.state.value.entries)
+                assertEquals("$attached", idle, jam.playbacks.last())
+                if (!attached) h.controller.attach(h.engine)
+                assertEquals("$attached", emptyList<String>(), h.engine.ids())
+                h.controller.next()
+                assertEquals("$attached", emptyList<String>(), h.engine.ids())
+                assertFalse("$attached", h.engine.playWhenReady)
+                assertEquals("$attached", idle, jam.playbacks.last())
+            }
+        }
+
+    @Test
     fun `HOST-21 TR-04 a pick while the end waits for the vibe stops there if paused, else plays on`() =
         runTest {
             for (playing in listOf(false, true)) {
