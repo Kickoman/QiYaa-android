@@ -18,6 +18,7 @@ grep -rlnE '^import (android|androidx|io\.github\.kickoman)' app/src/main/java/i
 | `JamCodec.kt` | `JamCodec` — JSON сообщений, проверки схемы, `Decoded` |
 | `JamClient.kt` | `JamClient`, `JamTransport`, `JamSocket`, `JamHandler`, `JamStatus` |
 | `JamSessionStore.kt` | `JamSession`, `JamSessionStore`, `JamSessionCodec`, `JamStore` |
+| `JamLink.kt` | `JamLink` — ссылка для входа гостя: сервер, комната, секрет |
 
 ## `Protocol.kt`
 
@@ -121,8 +122,41 @@ interface JamHandler { fun onWelcome(); fun onMessage(message: ServerMessage) }
 `decode` возвращает `null` для пустого, битого файла и другой версии. `JamStore.write(null)` удаляет
 сессию. В приложении хранилище — `data/JamFile` (`filesDir/jam.json`, `AtomicFile`).
 
+## `JamLink`
+
+```kotlin
+data class JamLink(val serverUrl: String, val roomId: String, val joinSecret: String?) {
+    companion object { fun find(text: String): JamLink? }   // null — в тексте нет ссылки на джем
+}
+```
+
+Ссылка для входа гостя (GUEST-01; протокол, «Identifiers and secrets»): `https://<сервер>/j/<roomId>#<joinSecret>`.
+`find` берёт **первую** такую ссылку где угодно в тексте, поэтому подходит и текст «Join my jam: https://…», которым
+делится хозяин, и вставка с переводами строк вокруг. Разбор:
+
+| Часть | Правило |
+|---|---|
+| схема | только `https://` (в любом регистре); `http://`, `wss://`, ссылка без схемы — не ссылка: в приложении `usesCleartextTraffic="false"`, `ws://` не соединится никогда |
+| хост | `[A-Za-z0-9.-]+` или IPv6 в `[…]`; `user@` не допускается |
+| порт | необязателен; `:443` отбрасывается |
+| префикс пути | всё перед последним `/j/`, как в `JamCodec.joinUrl`: `https://example.org/jam/j/…` → сервер `https://example.org/jam` |
+| `roomId` | ровно 8 знаков Crockford в нижнем регистре `[0-9a-hjkmnp-tv-z]`; `7K3M9Q2X`, 7 или 9 знаков — не ссылка |
+| после `roomId` | необязательные `/`, `?…` и `#…`; любой другой путь (`/j/<roomId>/more`) — не ссылка |
+| секрет | всё после `#`; если это не ровно 22 знака base64url `[A-Za-z0-9_-]`, `joinSecret = null` (GUEST-05) |
+| конец ссылки | пробел, любой пробел Юникода (`\p{Z}`, в том числе U+00A0) или конец текста; знаки `.,;:!?)]}>'"»` в самом конце отрезаются |
+
+`serverUrl` нормализован, чтобы у одной комнаты было одно членство (GUEST-01, GUEST-03): `https://`, хост и порт в
+нижнем регистре, без `:443`, префикс пути без `/` на конце (регистр префикса сохраняется). Сокет — `JamClient.socketUrl(serverUrl)`,
+то есть `wss://<сервер>/ws`.
+
+**Ловушки:**
+- Сервер гостя — источник ссылки, а не `Settings.jamServer`: вставленная ссылка на чужой сервер тоже работает.
+- Секрет живёт в `JamLink.toString()` (это `data class`): не писать ссылку в лог целиком.
+- Мессенджеры иногда теряют `#…`. Тогда `joinSecret = null`, и войти можно только в комнату, членство в которой уже есть.
+
 ## Тесты
 
 `app/src/test/.../jam/`: `JamCodecTest` (все примеры спецификации, кодирование туда и обратно,
 правила `source`: каждое — правильный пример с одной правкой),
-`JamClientTest` (поддельный транспорт, виртуальное время `runTest`), `JamSessionCodecTest`.
+`JamClientTest` (поддельный транспорт, виртуальное время `runTest`), `JamSessionCodecTest`, `JamLinkTest`
+(GUEST-01, GUEST-05: текст вокруг ссылки, нормализация сервера, отказы; все `joinUrl` примеров `created` и `linkRotated`).
