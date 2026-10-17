@@ -16,6 +16,7 @@ grep -rln 'qiyaa\.\(playback\|ui\|data\)\.' app/src/main/java/io/github/kickoman
 | `QueueController.kt` | `QueueState`, `PlayModes`, `QueueController` — вся логика очереди |
 | `QueueEntry.kt` | `EntryPart` (`HEAD`, `CONTINUATION`), `QueueEntry` — запись очереди: трек, его часть и `WaveContext` порции, из которой он пришёл |
 | `PlayerEngine.kt` | `PlayerEngine` — что очереди нужно от плеера |
+| `HeadShuffle.kt` | `HeadShuffle` — порядок shuffle: проход головы, за ним остальные индексы по возрастанию; вставка, удаление и новый проход (чистая арифметика для `playback/HeadShuffleOrder` и `support/FakeEngine`) |
 | `MusicSource.kt` | `MusicSource` — какие запросы к библиотеке делает очередь |
 | `LibraryMusicSource.kt` | `LibraryMusicSource` — `MusicSource` поверх `yandex/Library` |
 | `QueueEvent.kt` | `QueueEvent` — что очередь сообщает наружу |
@@ -80,6 +81,7 @@ class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: C
 - **Ошибки воспроизведения** (ERR-01…07) — по `ErrorPolicy`, см. ниже.
 - **«Вперёд»** (`next()`): следующий трек в порядке воспроизведения (TR-03), с повтором — первый после последнего (TR-05); в конце конечной очереди — пауза и начало текущего трека, курсор остаётся (TR-04); в конце волны — `LoadingMore` и `requestMore()` (WAVE-09).
 - **«Назад»** (`previous()`): после 3 с (`RESTART_AFTER_MS`) — перемотка текущего трека в 0 (`seekToPosition(0)`), та же игра: ни `skip`, ни нового `trackStarted` и `/play-audio`, секунды прослушивания считаются дальше (TR-02). Иначе предыдущий трек, на первом с повтором — последний, без повтора — рестарт первого трека (TR-01): `restart()`, как у «стоп», то есть `skip` и новая игра. В конце конечной очереди (`STATE_ENDED`, TR-04) позиция равна длине трека, поэтому «назад» перематывает последний трек в 0; его игра закрылась в конце (`onEnded`), так что, когда трек снова заиграет (ExoPlayer оставляет `playWhenReady`), это новый старт. Десктоп здесь идёт к предыдущему треку; спека этот случай не описывает.
+- **Shuffle — проход головы** (TR-03). С shuffle порядок воспроизведения — проход головы (каждый её трек один раз, в случайном порядке), затем все остальные записи по индексу; записи, добавленные позже, в голову не попадают (см. «`PlayerEngine`» ниже). Проход начинается заново: `setTracks` (новая очередь, восстановление, `attach`) — с трека, с которого очередь играет; включение shuffle пользователем (`setShuffle(true)`, когда до этого он не действовал) — с текущего трека, если тот в голове, как на десктопе; `endJam` — все оставшиеся записи становятся головой, проход с текущего трека. Удаление строк проход сохраняет. Проход в файл не пишется: после выгрузки процесса новый проход начинается с восстановленного трека, так что уже сыгранные треки головы могут прозвучать снова. Пока голова — вся очередь (вне джема сейчас всегда), это прежний shuffle, только проход начинается с текущего трека, а не со случайного места, и поэтому доходит до каждого трека.
 - **Голова и продолжение.** Каждая запись очереди (`QueueEntry`) знает свою часть. «Моя волна» и станция (`playWave`) — все записи `CONTINUATION`, у каждой `WaveContext` своей порции, включая догруженные. `loadSource`, `search` и `setQueue(isWave = false)` — все `HEAD` без контекстов. Старый джем: элементы и `Other` — `HEAD`, треки волны джема — `CONTINUATION`, с контекстом только при `waveFeedback`. Вне джема голова всегда — префикс очереди.
 - **Сначала `state`, потом движок.** Каждая правка плейлиста движка идёт после такой же правки `state`, поэтому `entries[engine.currentIndex]` — та запись, о которой сообщает движок, в том числе в колбэке, который движок зовёт синхронно из самой правки (удаление текущего трека в ExoPlayer и `support/FakeEngine`). `onStarted` берёт часть и контекст из этой записи, сверив id трека. `removeIndices` удаляет по одному индексу по убыванию: сначала из `state`, потом из движка. Проверка: `./gradlew testDebugUnitTest --tests '*QueueEditingTest*entry the engine reports*'`.
 - **Один хозяин плеера.** Движок может смениться (сервис пересоздан при живом процессе): `detach` запоминает трек и позицию, `attach` нового движка кладёт ту же очередь на паузе туда же, вместе с режимами shuffle и повтора. Очередь, выбранная без движка, применяется при `attach`; правка очереди без движка меняет только `state`. Подробнее — `playback/README.md`.
@@ -93,6 +95,23 @@ class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: C
 **Ошибки источников и лайков.** Упавший запрос даёт `QueueEvent.Failed(stage, error)`, где `error` — `yandex/ErrorKind.of(failed)`, а само исключение уходит в `logFailure(stage, failed)`; в приложении это `Log.w` из `AppGraph`. Текста исключения в событии нет. Ошибка воспроизведения приходит уже с видом: `onFailure(kind, error)` от `playback/PlaybackFailures`. Ошибка догрузки заменённой волны пишется в лог, но события не даёт (WAVE-07).
 
 `events` — `MutableSharedFlow(extraBufferCapacity = 8)` с `tryEmit`: без подписчика события теряются, это нормально для тостов.
+
+## `PlayerEngine`
+
+```kotlin
+interface PlayerEngine {
+    val itemCount: Int;  val currentIndex: Int;  val positionMs: Long;  val isEnded: Boolean
+    var shuffleEnabled: Boolean;  var repeatEnabled: Boolean
+    fun hasNext(): Boolean;  fun hasPrevious(): Boolean;  fun playOrder(): List<Int>
+    fun setTracks(tracks: List<Track>, playWhenReady: Boolean, startIndex: Int = 0, startPositionMs: Long = 0, headSize: Int = tracks.size)
+    fun shuffleHead(headSize: Int, first: Int)   // новый проход головы; first = -1, когда курсор не в голове
+    fun appendTracks(tracks);  fun insertTracks(index, tracks);  fun removeAt(index);  fun clear()
+    fun seekTo(index);  fun seekToPosition(positionMs);  fun skipToNext();  fun skipToPrevious()
+    fun prepare();  fun play();  fun pause();  fun stop()
+}
+```
+
+Голова — первые `headSize` индексов плейлиста; контроллер передаёт число записей `HEAD` в начале очереди (у волны 0, у обычной очереди — все). Контракт порядка: с shuffle `playOrder()` — проход головы, который начинается с `startIndex` (`setTracks`) или `first` (`shuffleHead`), если тот в голове, затем остальные индексы по возрастанию. Вставленные позже треки головой не становятся; вставка в пустой плейлист делает вставленные треки головой. Удаление сохраняет порядок остальных. Движок держит этот порядок уже тогда, когда сообщает о смене трека, вызванной правкой (`onItemChanged` из `setTracks`): контроллер читает `playOrder()` прямо в колбэке. Вставка в пустой плейлист сообщает новый текущий трек (`onItemChanged`, `NEW_QUEUE`), а `seekTo` на текущий индекс — только перемотку (`onSeeked()`), как ExoPlayer. Адаптер Media3 и `HeadShuffleOrder` — в `playback/README.md`.
 
 ## Режим джема
 
@@ -153,17 +172,18 @@ object ErrorPolicy {
 
 ## Тесты
 
-`app/src/test/.../queue/`: `QueueSourcesTest`, `QueueWaveTest`, `QueueErrorsTest`, `QueueEditingTest`, `QueueJamTest` гоняют контроллер с `support/FakeEngine` (плейлист, курсор, конец, порядок shuffle, синхронные колбэки, в том числе `onSeeked()` внутри `seekToPosition` — как ExoPlayer, без повтора) и `support/FakeMusicSource` (ответы — лямбды, в том числе отложенные `CompletableDeferred`). Имена тестов начинаются с ID сценария.
+`app/src/test/.../queue/`: `QueueSourcesTest`, `QueueWaveTest`, `QueueErrorsTest`, `QueueEditingTest`, `QueueJamTest` гоняют контроллер с `support/FakeEngine` (плейлист, курсор, конец, проход головы по контракту `PlayerEngine`, синхронные колбэки, в том числе `onSeeked()` внутри `seekToPosition` и `seekTo` на текущий индекс — как ExoPlayer) и `support/FakeMusicSource` (ответы — лямбды, в том числе отложенные `CompletableDeferred`). Имена тестов начинаются с ID сценария.
 
 **Traps:**
 - Секунды прослушивания считаются по часам `clock` только между `onPlayingChanged(true)` и `(false)` открытого трека; перемотка времени не добавляет. В тестах часы — виртуальное время `runTest`.
-- Повтор после ожидания сети должен остаться голым `engine.prepare()` (ERR-09). Если повтор заново поставит плейлист (`setMediaItems`, в терминах `PlayerEngine` — `setTracks`) или заменит элемент на другой URI, Media3 сообщит смену трека, контроллер получит `onItemChanged`, и ожидание станет новой игрой: `skip`, новый `trackStarted` и `/play-audio`. `seekTo` на тот же индекс в Media3 1.4.1 даёт только разрыв позиции (SEEK, то есть `onSeeked`: отчёт джема и сохранение, игра та же), а `replaceMediaItem` с тем же `qiyaa://track/<id>` обновляет элемент на месте; но `support/FakeEngine.seekTo` на тот же индекс сообщает `onItemChanged`, так что тесты такой повтор поймают.
+- Повтор после ожидания сети должен остаться голым `engine.prepare()` (ERR-09). Если повтор заново поставит плейлист (`setMediaItems`, в терминах `PlayerEngine` — `setTracks`) или заменит элемент на другой URI, Media3 сообщит смену трека, контроллер получит `onItemChanged`, и ожидание станет новой игрой: `skip`, новый `trackStarted` и `/play-audio`. `seekTo` на тот же индекс в Media3 1.4.1 даёт только разрыв позиции (SEEK, то есть `onSeeked`: отчёт джема и сохранение, игра та же), и `support/FakeEngine.seekTo` на тот же индекс ведёт себя так же; `replaceMediaItem` с тем же `qiyaa://track/<id>` обновляет элемент на месте.
 - «Назад» после 3 с и «назад» в джеме должны остаться `seekToPosition` (`Player.seekTo(ms)`). `skipToPrevious` (`seekToPreviousMediaItem`) на тот же элемент идёт в Media3 через `repeatCurrentMediaItem` и сообщает смену трека с причиной `SEEK`, а это `skip` и новая игра. Так сейчас работает «назад» в пределах 3 с в очереди из одного трека с повтором, и это совпадает с `playIndex(0)` десктопа.
 - `title` — данные из UI или сервера (имя плейлиста, `getString(R.string.library_my_wave)`), не константа этого пакета.
 - `state.tracks` и плейлист плеера пишет только контроллер, поэтому сверять их не нужно; если в плеер начнёт писать кто-то ещё (например, команда удаления из уведомления), это должно идти через контроллер.
 - `removeIndices` удаляет по убыванию индексов, иначе сдвиг сломает выборку, и по одному: `state` раньше движка. Если сначала удалить из движка, колбэк смены текущего трека прочитает старый `state`, и старт припишется не той записи (чужой контекст фидбека или никакого).
 - `QueueState.tracks` — производное от `entries`. Новую очередь или правку задают записями, а не треками: трек без записи теряет часть и контекст.
-- `DefaultShuffleOrder` ExoPlayer вставляет дописанные треки в случайные места перемешанного порядка, поэтому в волне shuffle запрещён, а не «исправлен». Выбор shuffle и повтора хранится в `WaveModeRule` и в сохранённой очереди.
+- Порядок shuffle — свой (`HeadShuffle`, в ExoPlayer — `playback/HeadShuffleOrder`), а не `DefaultShuffleOrder`: тот вставляет дописанные треки в случайные места перемешанного порядка, а новая очередь начиналась с индекса 0, который стоит в случайном месте прохода, так что перемешанная очередь кончалась, не сыграв часть треков. В волне shuffle по-прежнему не действует (WAVE-10): это правило спеки, а не обход порядка. Выбор shuffle и повтора хранится в `WaveModeRule` и в сохранённой очереди.
+- Новый проход нужен только тогда, когда shuffle начинает действовать: `setShuffle(true)` при уже включённом shuffle проход не трогает, иначе каждое нажатие перемешивало бы оставшееся.
 - Режим ExoPlayer — не выбор пользователя: в запертой очереди контроллер сам ставит «выключено». Если снова начать читать выбор из событий плеера, это «выключено» станет неотличимо от выбора пользователя. Команды сессии перехватывает `playback/QueueForwardingPlayer`, `support/FakeEngine` на смену режима контроллер не зовёт.
 - `restore` идёт в блоке `init` после объявления всех полей: инициализатор поля, объявленного ниже `init`, затёр бы восстановленное значение.
 - Файл без треков, с другой версией или битый читается как «сохранённой очереди нет»; пустая очередь после `clear` сохраняется и тоже ничего не восстанавливает.

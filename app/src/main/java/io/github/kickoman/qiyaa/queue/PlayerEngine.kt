@@ -16,7 +16,15 @@ interface PlayerEngine {
 
     fun playOrder(): List<Int>
 
-    fun setTracks(tracks: List<Track>, playWhenReady: Boolean, startIndex: Int = 0, startPositionMs: Long = 0)
+    fun setTracks(
+        tracks: List<Track>,
+        playWhenReady: Boolean,
+        startIndex: Int = 0,
+        startPositionMs: Long = 0,
+        headSize: Int = tracks.size,
+    )
+
+    fun shuffleHead(headSize: Int, first: Int)
 
     fun appendTracks(tracks: List<Track>)
 

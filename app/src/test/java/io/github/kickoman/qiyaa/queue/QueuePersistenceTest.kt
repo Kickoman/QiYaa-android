@@ -95,6 +95,24 @@ class QueuePersistenceTest {
     }
 
     @Test
+    fun `with shuffle on, a restored queue starts a new pass from the restored track`() = runTest {
+        val first = QueueHarness(this)
+        first.controller.loadSource("Liked") { tracks("a", "b", "c", "d", "e") }
+        runCurrent()
+        first.controller.setShuffle(true)
+        first.engine.seekTo(3)
+        first.engine.startPlaying()
+        first.engine.stopPlaying()
+        runCurrent()
+
+        val second = QueueHarness(this, attached = false, store = FakeQueueStore(first.store.text))
+        second.controller.attach(second.engine)
+        assertTrue(second.engine.shuffleEnabled)
+        assertEquals(3, second.engine.currentIndex)
+        assertEquals(listOf(3, 0, 1, 2, 4), second.engine.playOrder())
+    }
+
+    @Test
     fun `TR-02 Previous on a restored queue at 42 s seeks to 0, and Play reports the track once`() = runTest {
         val first = QueueHarness(this)
         first.controller.loadSource("Liked") { tracks("a", "b") }

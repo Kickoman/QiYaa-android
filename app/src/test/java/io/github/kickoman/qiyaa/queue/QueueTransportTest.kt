@@ -12,6 +12,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -91,6 +92,33 @@ class QueueTransportTest {
         harness.engine.shuffleOrder = listOf(0, 2, 1)
         harness.controller.next()
         assertEquals(2, harness.engine.currentIndex)
+    }
+
+    @Test
+    fun `TR-03 shuffle switched on starts a pass with the current track, and every track plays once`() =
+        runTest {
+            val harness = loaded(this, "a", "b", "c", "d")
+            harness.engine.seekTo(2)
+            harness.controller.setShuffle(true)
+            assertEquals(2, harness.engine.playOrder().first())
+            val played = mutableListOf(harness.engine.currentIndex)
+            repeat(3) {
+                harness.controller.next()
+                played += harness.engine.currentIndex
+            }
+            assertEquals(setOf(0, 1, 2, 3), played.toSet())
+            assertFalse(harness.engine.hasNext())
+        }
+
+    @Test
+    fun `TR-03 with shuffle on, a new queue's pass starts with its first track`() = runTest {
+        val harness = QueueHarness(this)
+        harness.controller.setShuffle(true)
+        harness.controller.loadSource("Liked") { tracks("a", "b", "c") }
+        runCurrent()
+        assertTrue(harness.engine.shuffleEnabled)
+        assertEquals(0, harness.engine.playOrder().first())
+        assertEquals(setOf(0, 1, 2), harness.engine.playOrder().toSet())
     }
 
     @Test

@@ -134,7 +134,8 @@ class QueueController(
         if (state.tracks.isEmpty()) return
         applyModes()
         val index = restore.index.coerceIn(0, state.tracks.lastIndex)
-        engine.setTracks(state.tracks, restore.playWhenReady, index, restore.positionMs)
+        val headSize = headSizeOf(state.entries)
+        engine.setTracks(state.tracks, restore.playWhenReady, index, restore.positionMs, headSize)
         jam?.let(::applyJamQueue)
     }
 
@@ -266,10 +267,23 @@ class QueueController(
     private fun modesLocked(): Boolean = mutableState.value.isWave || jam != null
 
     fun setShuffle(on: Boolean) {
+        val wasOn = shuffleRule.playerModeFor(modesLocked())
         shuffleRule.onUserChanged(on, modesLocked())
+        if (!wasOn && shuffleRule.playerModeFor(modesLocked())) startShufflePass()
         applyModes()
         save()
     }
+
+    private fun startShufflePass() {
+        val current = engine ?: return
+        val headSize = headSizeOf(mutableState.value.entries)
+        val inHead = current.itemCount > 0 && current.currentIndex < headSize
+        val first = if (inHead) current.currentIndex else -1
+        current.shuffleHead(headSize, first)
+    }
+
+    private fun headSizeOf(entries: List<QueueEntry>): Int =
+        entries.takeWhile { it.part == EntryPart.HEAD }.size
 
     fun setRepeat(on: Boolean) {
         repeatRule.onUserChanged(on, modesLocked())
@@ -468,7 +482,8 @@ class QueueController(
             return
         }
         restorePoint = null
-        current.setTracks(playable.map(QueueEntry::track), playWhenReady = autoplay)
+        val tracks = playable.map(QueueEntry::track)
+        current.setTracks(tracks, playWhenReady = autoplay, headSize = headSizeOf(playable))
         save()
     }
 
@@ -790,6 +805,9 @@ class QueueController(
         }
         mutableState.update { state ->
             state.copy(entries = state.entries.map { QueueEntry(it.track) }, jamSlots = null)
+        }
+        if (current != null && current.itemCount > 0) {
+            current.shuffleHead(current.itemCount, current.currentIndex)
         }
         applyModes()
         save()
