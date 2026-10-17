@@ -63,6 +63,10 @@ class JamViewModel(application: Application) : AndroidViewModel(application) {
     fun setHostName(name: String) = mutableUi.update { it.copy(hostName = name.take(JamHost.MAX_NAME)) }
 
     fun start() {
+        if (graph.jamGuest.state.value.phase.isSession) {
+            notice(string(R.string.jam_host_while_guest))
+            return
+        }
         if (!isConfigured) {
             notice(string(R.string.jam_not_configured))
             return

@@ -65,6 +65,7 @@ fun LibraryScreen(
     viewModel: AppViewModel,
     player: PlayerViewModel,
     jam: JamHostState,
+    guestOf: String?,
     onJam: () -> Unit,
     onJamSearch: ((String) -> Unit)?,
 ) {
@@ -193,10 +194,11 @@ fun LibraryScreen(
                 .background(colors.surface),
         ) {
             val jamMeta =
-                when (jam.phase) {
-                    JamHostPhase.NONE -> stringResource(R.string.jam_library_off)
-                    JamHostPhase.CREATING -> "…"
-                    JamHostPhase.ACTIVE -> stringResource(
+                when {
+                    guestOf != null -> stringResource(R.string.jam_library_guest, guestOf)
+                    jam.phase == JamHostPhase.NONE -> stringResource(R.string.jam_library_off)
+                    jam.phase == JamHostPhase.CREATING -> "…"
+                    else -> stringResource(
                         R.string.jam_library_on,
                         jam.room?.participants?.count { it.kind != ParticipantKind.HOST } ?: 0,
                     )

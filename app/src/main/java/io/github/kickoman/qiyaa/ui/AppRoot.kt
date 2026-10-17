@@ -43,6 +43,8 @@ import io.github.kickoman.qiyaa.ui.components.QiText
 import io.github.kickoman.qiyaa.ui.components.tap
 import io.github.kickoman.qiyaa.ui.screens.EqScreen
 import io.github.kickoman.qiyaa.ui.screens.JamContinueDialog
+import io.github.kickoman.qiyaa.ui.screens.JamGuestAddScreen
+import io.github.kickoman.qiyaa.ui.screens.JamGuestScreen
 import io.github.kickoman.qiyaa.ui.screens.JamScreen
 import io.github.kickoman.qiyaa.ui.screens.JamSettingsScreen
 import io.github.kickoman.qiyaa.ui.screens.LibraryScreen
@@ -67,10 +69,12 @@ fun AppRoot(
     app: AppViewModel = viewModel(),
     player: PlayerViewModel = viewModel(),
     jam: JamViewModel = viewModel(),
+    guest: JamGuestViewModel = viewModel(),
 ) {
     val theme by app.settings.theme.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { player.notices.collect(app::say) }
     LaunchedEffect(Unit) { jam.notices.collect(app::say) }
+    LaunchedEffect(Unit) { guest.notices.collect(app::say) }
     QiYaaTheme(theme) {
         val colors = Qi.colors
         val screen by app.screen.collectAsStateWithLifecycle()
@@ -82,6 +86,9 @@ fun AppRoot(
         val sessionState by app.sessionState.collectAsStateWithLifecycle()
         val jamState by jam.state.collectAsStateWithLifecycle()
         val jamOn = jamState.phase == JamHostPhase.ACTIVE
+        val guestState by guest.state.collectAsStateWithLifecycle()
+        val guestOn = guestState.phase.isSession
+        val openLink = { text: String -> app.openJamLink(text) }
         val backTarget = screen.backTarget
         BackHandler(enabled = backTarget != null) { backTarget?.let(app::go) }
 
@@ -112,14 +119,29 @@ fun AppRoot(
                                 app,
                                 player,
                                 jamState,
-                                onJam = { app.go(Screen.JAM) },
+                                guestOf = (guestState.room?.hostName ?: "…").takeIf { guestOn },
+                                onJam = { app.go(if (guestOn) Screen.JAM_GUEST else Screen.JAM) },
                                 onJamSearch = { text: String ->
                                     jam.search(text)
                                     app.go(Screen.JAM)
                                 }.takeIf { jamOn },
                             )
-                        Screen.JAM -> JamScreen(jam, onSettings = { app.go(Screen.JAM_SETTINGS) })
+                        Screen.JAM -> JamScreen(
+                            jam,
+                            onSettings = { app.go(Screen.JAM_SETTINGS) },
+                            onJoinLink = openLink,
+                        )
                         Screen.JAM_SETTINGS -> JamSettingsScreen(jam, onDone = { app.go(Screen.JAM) })
+                        Screen.JAM_GUEST -> JamGuestScreen(
+                            guest,
+                            onAdd = { app.go(Screen.JAM_GUEST_ADD) },
+                            onClose = { app.go(Screen.PLAYER) },
+                            onJoinLink = openLink,
+                        )
+                        Screen.JAM_GUEST_ADD -> JamGuestAddScreen(
+                            guest,
+                            onBack = { app.go(Screen.JAM_GUEST) },
+                        )
                     }
                 }
                 val track = playerUi.current

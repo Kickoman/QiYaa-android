@@ -18,6 +18,12 @@ class ScreenTest {
     }
 
     @Test
+    fun `Back from the guest's room goes to the player, and from adding tracks to the room`() {
+        assertEquals(Screen.PLAYER, Screen.JAM_GUEST.backTarget)
+        assertEquals(Screen.JAM_GUEST, Screen.JAM_GUEST_ADD.backTarget)
+    }
+
+    @Test
     fun `Back from the player or the sign-in screen is left to the system and closes the app`() {
         assertEquals(null, Screen.PLAYER.backTarget)
         assertEquals(null, Screen.LOGIN.backTarget)

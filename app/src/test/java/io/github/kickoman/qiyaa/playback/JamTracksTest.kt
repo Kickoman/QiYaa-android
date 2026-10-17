@@ -1,10 +1,15 @@
 package io.github.kickoman.qiyaa.playback
 
+import io.github.kickoman.qiyaa.jam.Add
+import io.github.kickoman.qiyaa.jam.Decoded
+import io.github.kickoman.qiyaa.jam.JamCodec
+import io.github.kickoman.qiyaa.jam.JamGuest
 import io.github.kickoman.qiyaa.jam.JamTrack
 import io.github.kickoman.qiyaa.yandex.Track
 import io.github.kickoman.qiyaa.yandex.TrackParsing
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class JamTracksTest {
@@ -42,6 +47,28 @@ class JamTracksTest {
         assertNull(JamTracks.toJam(Track(id = "1:2", title = "A")))
         assertNull(JamTracks.toJam(Track(id = "1", title = " ")))
         assertNull(JamTracks.toJam(Track(id = "1", title = "A", albumId = "x y"))?.albumId)
+    }
+
+    @Test
+    fun `GUEST-07 a guest's add of the longest toJam track, in 3-byte characters, fits the 4 KiB frame`() {
+        val cjk = "\u6F22"
+        val track =
+            Track(
+                id = "9".repeat(64),
+                title = cjk.repeat(200),
+                artists = List(12) { cjk.repeat(70) },
+                albumId = "8".repeat(64),
+                durationMs = Long.MAX_VALUE,
+                coverUrl = TrackParsing.coverUrl(cjk.repeat(298) + "%%"),
+            )
+        val jam = JamTracks.toJam(track)!!
+        assertEquals(cjk.repeat(150), jam.title)
+        assertEquals(List(10) { cjk.repeat(64) }, jam.artists)
+        assertEquals(cjk.repeat(298) + "%%", jam.coverUri)
+        val frame = JamCodec.encode(Add("a".repeat(36), track = jam))
+        assertTrue(JamCodec.decodeClient(frame) is Decoded.Message)
+        val bytes = frame.toByteArray(Charsets.UTF_8).size
+        assertTrue("$bytes bytes", bytes in 3_500..JamGuest.GUEST_FRAME_BYTES)
     }
 
     @Test
