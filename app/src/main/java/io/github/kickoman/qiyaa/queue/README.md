@@ -74,7 +74,7 @@ class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: C
 }
 ```
 
-В приложении `AppGraph` создаёт контроллер со `scope` на `Dispatchers.Main.immediate` и `io = Dispatchers.IO`; все методы вызываются с главного потока, запросы `MusicSource` и загрузчики — на `io`. В тестах оба — диспетчер `runTest`, время виртуальное. `continueWithVibeByDefault` — значение настройки «продолжать волной» для новых очередей (CONT-01); пакет не может импортировать `data/`, поэтому это лямбда. `AppGraph` пока передаёт `{ true }` — значение по умолчанию.
+В приложении `AppGraph` создаёт контроллер со `scope` на `Dispatchers.Main.immediate` и `io = Dispatchers.IO`; все методы вызываются с главного потока, запросы `MusicSource` и загрузчики — на `io`. В тестах оба — диспетчер `runTest`, время виртуальное. `continueWithVibeByDefault` — значение настройки «продолжать волной» для новых очередей (CONT-01); пакет не может импортировать `data/`, поэтому это лямбда. `AppGraph` передаёт `{ settings.continueWithVibe.value }` (ключ `playback/continueWithVibe`, `data/README.md`); переключатели на экранах — `ui/README.md`, «Продолжать волной».
 
 Гарантии (сценарии `spec/player/`):
 - **Побеждает последний источник** (SRC-01…03). Каждый `loadSource`/`playWave`/`search` берёт билет; ответ или ошибка устаревшего билета отбрасываются молча. Поиск с лучшим артистом или альбомом — один источник, как бы много запросов он ни делал.

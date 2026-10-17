@@ -71,6 +71,10 @@ class Settings(context: Context, defaultJamServer: String = "") {
     /** On mobile data and other metered networks (QUAL-07). */
     val qualityMetered: StateFlow<AudioQuality> = mutableQualityMetered.asStateFlow()
 
+    private val mutableContinueWithVibe =
+        MutableStateFlow(preferences.getBoolean(KEY_CONTINUE_WITH_VIBE, true))
+    val continueWithVibe: StateFlow<Boolean> = mutableContinueWithVibe.asStateFlow()
+
     fun setVolume(value: Int) {
         mutableVolume.value = value.coerceIn(0, AudioBus.MAX_VOLUME)
         preferences.edit().putInt(KEY_VOLUME, mutableVolume.value).apply()
@@ -137,6 +141,11 @@ class Settings(context: Context, defaultJamServer: String = "") {
         preferences.edit().putString(KEY_QUALITY_METERED, quality.key).apply()
     }
 
+    fun setContinueWithVibe(value: Boolean) {
+        mutableContinueWithVibe.value = value
+        preferences.edit().putBoolean(KEY_CONTINUE_WITH_VIBE, value).apply()
+    }
+
     fun setTheme(theme: AccentTheme) {
         mutableTheme.value = theme
         preferences.edit().putString(KEY_THEME, theme.key).apply()
@@ -177,6 +186,7 @@ class Settings(context: Context, defaultJamServer: String = "") {
         const val KEY_JAM_SHARE_AUDIO = "jam/shareAudio"
         const val KEY_QUALITY = "playback/quality"
         const val KEY_QUALITY_METERED = "playback/qualityMetered"
+        const val KEY_CONTINUE_WITH_VIBE = "playback/continueWithVibe"
         const val DEFAULT_VOLUME = 75
         const val DEFAULT_EQ_PRESET = "Flat"
 

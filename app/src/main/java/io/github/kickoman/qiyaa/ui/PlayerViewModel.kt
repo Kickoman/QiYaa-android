@@ -150,6 +150,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         notify(string(if (on) R.string.player_repeat_on else R.string.player_repeat_off))
     }
 
+    fun setQueueContinuesWithVibe(on: Boolean) {
+        queue.setContinueWithVibe(on)
+        val now = queue.state.value.continueWithVibe
+        notify(string(if (now) R.string.vibe_continue_on else R.string.vibe_continue_off))
+    }
+
     fun toggleMiniPlay() {
         val current = controller ?: return
         if (current.isPlaying) current.pause() else togglePlay()

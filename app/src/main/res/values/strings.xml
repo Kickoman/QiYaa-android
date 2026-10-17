@@ -187,8 +187,6 @@
     <string name="jam_join">New guests</string>
     <string name="jam_join_open">Welcome</string>
     <string name="jam_join_closed">Closed</string>
-    <string name="jam_on">On</string>
-    <string name="jam_off">Off</string>
     <string name="jam_new_link">New link</string>
     <string name="jam_end">End the jam</string>
     <string name="jam_end_confirm">Tap again to end</string>
@@ -258,4 +256,11 @@
     <string name="quality_standard">Standard</string>
     <string name="quality_economy">Economy</string>
     <string name="quality_note">Economy: HE-AAC 64 kbps, a third of the data. From the next track on.</string>
+    <string name="toggle_on">On</string>
+    <string name="toggle_off">Off</string>
+    <string name="vibe_continue_title">CONTINUE WITH A VIBE</string>
+    <string name="vibe_continue_new_queues">New queues</string>
+    <string name="vibe_continue_note">When likes, a playlist, an album, an artist or a search runs out, a vibe from what played follows. The playlist switches it for the queue that plays.</string>
+    <string name="vibe_continue_on">A vibe will follow this queue</string>
+    <string name="vibe_continue_off">This queue stops at its end</string>
 </resources>

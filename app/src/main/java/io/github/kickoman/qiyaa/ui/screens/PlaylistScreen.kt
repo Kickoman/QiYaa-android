@@ -29,11 +29,13 @@ import io.github.kickoman.qiyaa.queue.JamSlot
 import io.github.kickoman.qiyaa.ui.JamViewModel
 import io.github.kickoman.qiyaa.ui.PlayerViewModel
 import io.github.kickoman.qiyaa.ui.components.ActionButton
+import io.github.kickoman.qiyaa.ui.components.OnOffPills
 import io.github.kickoman.qiyaa.ui.components.QiText
 import io.github.kickoman.qiyaa.ui.components.ScreenHeader
 import io.github.kickoman.qiyaa.ui.components.tap
 import io.github.kickoman.qiyaa.ui.formatTime
 import io.github.kickoman.qiyaa.ui.theme.HintStyle
+import io.github.kickoman.qiyaa.ui.theme.LabelStyle
 import io.github.kickoman.qiyaa.ui.theme.Qi
 import io.github.kickoman.qiyaa.ui.theme.ReadoutStyle
 import io.github.kickoman.qiyaa.ui.theme.mono
@@ -62,6 +64,23 @@ fun PlaylistScreen(viewModel: PlayerViewModel, jam: JamViewModel, onAdd: () -> U
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+        }
+
+        if (!queue.isWave && queue.jamSlots == null && queue.tracks.isNotEmpty()) {
+            Row(
+                Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp).fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                QiText(
+                    stringResource(R.string.vibe_continue_title),
+                    LabelStyle,
+                    Modifier.weight(1f),
+                    color = colors.dim,
+                    maxLines = 2,
+                )
+                OnOffPills(queue.continueWithVibe, onChange = viewModel::setQueueContinuesWithVibe)
+            }
         }
 
         Box(

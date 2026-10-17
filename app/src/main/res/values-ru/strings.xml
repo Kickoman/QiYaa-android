@@ -170,8 +170,6 @@
     <string name="jam_join">Новые гости</string>
     <string name="jam_join_open">Пускать</string>
     <string name="jam_join_closed">Закрыто</string>
-    <string name="jam_on">Да</string>
-    <string name="jam_off">Нет</string>
     <string name="jam_new_link">Новая ссылка</string>
     <string name="jam_end">Закончить джем</string>
     <string name="jam_end_confirm">Нажмите ещё раз</string>
@@ -243,4 +241,11 @@
     <string name="quality_standard">Стандарт</string>
     <string name="quality_economy">Экономия</string>
     <string name="quality_note">Экономия: HE-AAC 64 kbps, втрое меньше трафика. Со следующего трека.</string>
+    <string name="toggle_on">Да</string>
+    <string name="toggle_off">Нет</string>
+    <string name="vibe_continue_title">ПРОДОЛЖАТЬ ВОЛНОЙ</string>
+    <string name="vibe_continue_new_queues">Новые очереди</string>
+    <string name="vibe_continue_note">Когда лайки, плейлист, альбом, исполнитель или поиск заканчиваются, дальше играет волна по тому, что звучало. В плейлисте это переключается для текущей очереди.</string>
+    <string name="vibe_continue_on">За этой очередью пойдёт волна</string>
+    <string name="vibe_continue_off">Эта очередь остановится в конце</string>
 </resources>
