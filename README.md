@@ -15,7 +15,7 @@ Android-порт [QiYaa](https://github.com/Kickoman/QiYaa) — плеера Я�
 
 ## Сборка и проверка
 
-Нужны JDK 17 и Android SDK (platform 35, build-tools 36). Минимальная версия Android — 8.0 (API 26). Шрифты уже лежат в `app/src/main/res/font`; обновить — `bash scripts/fetch-fonts.sh`.
+Нужны JDK 17 и Android SDK: platform 37 (compileSdk; targetSdk остаётся 35) и build-tools 36. Минимальная версия Android — 8.0 (API 26). Шрифты уже лежат в `app/src/main/res/font`; обновить — `bash scripts/fetch-fonts.sh`.
 
 ```sh
 git clone --recurse-submodules git@github.com:Kickoman/QiYaa-android.git   # или git submodule update --init в готовом клоне

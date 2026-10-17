@@ -37,7 +37,7 @@ android {
         }
     }
     namespace = "io.github.kickoman.qiyaa"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "io.github.kickoman.qiyaa"
