@@ -2,11 +2,10 @@ package io.github.kickoman.qiyaa.queue
 
 import io.github.kickoman.qiyaa.support.QueueHarness
 import io.github.kickoman.qiyaa.support.QueueHarness.Companion.tracks
+import io.github.kickoman.qiyaa.support.QueueHarness.Companion.wave
 import io.github.kickoman.qiyaa.yandex.WaveBatch
 import io.github.kickoman.qiyaa.yandex.WaveContext
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -173,15 +172,6 @@ class QueueFeedbackTest {
         harness.controller.playWave(listOf("user:onyourwave"), "My Wave")
         runCurrent()
         assertEquals(emptyList<String>(), harness.source.feedback)
-    }
-
-    private fun wave(scope: TestScope, vararg ids: String): QueueHarness {
-        val harness = QueueHarness(scope)
-        harness.source.onStartWave = { WaveBatch("S1", "B1", tracks(*ids)) }
-        harness.source.onMoreWave = { _, _ -> CompletableDeferred<WaveBatch>().await() }
-        harness.controller.playWave(listOf("user:onyourwave"), "My Wave")
-        scope.runCurrent()
-        return harness
     }
 
     private fun ctx(context: WaveContext) = "${context.sessionId}/${context.stationId}/${context.batchId}"
