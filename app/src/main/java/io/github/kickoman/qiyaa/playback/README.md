@@ -23,7 +23,7 @@ grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   #
 | `EqualizerProcessor.kt` | `EqualizerProcessor` — PCM16 → float → EQ → баланс → PCM16 |
 | `VisualizerTapProcessor.kt` | `VisualizerTapProcessor` — копия PCM в `VisualizerTap`, звук не меняет |
 | `TimedAudioSink.kt` | `TimedAudioSink` — `ForwardingAudioSink`: метки времени входных буферов и звучащая позиция для `VisualizerTap` |
-| `OkHttpJamTransport.kt` | `OkHttpJamTransport` — `jam.JamTransport` на WebSocket OkHttp: без тайм-аута чтения, свой ping раз в 20 с, одно `onClosed` на сокет; адрес, который не URL, — как неудачное соединение |
+| `OkHttpJamTransport.kt` | `OkHttpJamTransport` — `jam.JamTransport` на WebSocket OkHttp для хозяина и гостя (`AppGraph.jamGuest`): без тайм-аута чтения, свой ping раз в 20 с, одно `onClosed` на сокет; адрес, который не URL, — как неудачное соединение |
 | `JamHost.kt` | `JamHost`, `JamHostState`, `JamHostEvent`, `JamCatalog`, `JamHostConfig` — хозяин джема: сервер, режим джема очереди и запросы гостей |
 | `JamTracks.kt` | `JamTracks` — `yandex.Track` ↔ `jam.JamTrack` с пределами протокола |
 
@@ -244,6 +244,8 @@ data class JamHostConfig(serverUrl: String, waveFeedback: Boolean)
 ## `JamTracks`
 
 `toJam(track)` — `null`, если трек не проходит протокол (id не `^[0-9A-Za-z_-]{1,64}$`, пустое название); управляющие символы → пробелы, название ≤ 150, исполнители ≤ 10 по ≤ 64 символа, длительность 0…24 ч. `coverUri` восстанавливается из `coverUrl`: без схемы, `400x400` в конце → `%%`; адрес без размера — без обложки. `fromJam` — обратно через `TrackParsing.coverUrl`.
+
+Тем же `toJam` строит трек для своего `add{track}` гость в приложении (GUEST-07, `jam/JamGuest`), как хозяин строит треки для гостей (`spec/jam/host.md`, «Search and check for guests»). Пределы считаются в знаках UTF-16, поэтому худший случай для кадра — трёхбайтовые знаки (CJK) во всех полях: такой `add` весит около 3,6 КБ и влезает в 4 КиБ кадра гостя (`limits.md`, `JamTracksTest`).
 
 ## Not here
 

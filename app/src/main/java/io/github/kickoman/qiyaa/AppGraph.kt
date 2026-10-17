@@ -10,6 +10,8 @@ import io.github.kickoman.qiyaa.data.JamFile
 import io.github.kickoman.qiyaa.data.QueueFile
 import io.github.kickoman.qiyaa.data.Settings
 import io.github.kickoman.qiyaa.data.TokenStore
+import io.github.kickoman.qiyaa.jam.JamGuest
+import io.github.kickoman.qiyaa.jam.JamGuestStore
 import io.github.kickoman.qiyaa.jam.JamSessionStore
 import io.github.kickoman.qiyaa.jam.JamStore
 import io.github.kickoman.qiyaa.playback.JamCatalog
@@ -107,6 +109,17 @@ class AppGraph(val context: Context) {
             },
             signedLink = trackLinks::peek,
             queueTitle = { context.getString(R.string.jam_queue_title) },
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+            io = Dispatchers.IO,
+            appVersion = BuildConfig.VERSION_NAME,
+            log = { message, failed -> Log.w(LOG_TAG, message, failed) },
+        )
+
+    val jamGuest =
+        JamGuest(
+            transport = OkHttpJamTransport(httpClient),
+            connectivity = networkMonitor.available,
+            store = JamGuestStore(JamFile(context, JamFile.GUEST).asJamStore()),
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
             io = Dispatchers.IO,
             appVersion = BuildConfig.VERSION_NAME,
