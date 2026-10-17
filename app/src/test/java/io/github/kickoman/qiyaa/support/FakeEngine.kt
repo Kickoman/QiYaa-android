@@ -119,13 +119,27 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
 
     override fun removeAt(index: Int) {
         commands += "remove $index"
+        val removedCurrent = index == currentIndex
+        val following = if (removedCurrent) followingInOrder(index) else null
+        val ends = removedCurrent && index == tracks.lastIndex
         tracks.removeAt(index)
         shuffle = shuffle.removed(index, index + 1)
-        if (index < currentIndex) {
-            currentIndex--
-        } else if (index == currentIndex) {
-            report(tracks.getOrNull(currentIndex), Transition.NEW_QUEUE)
+        if (index < currentIndex) currentIndex--
+        if (!removedCurrent) return
+        currentIndex = following?.let { if (it > index) it - 1 else it } ?: playOrder().firstOrNull() ?: 0
+        positionMs = 0
+        isEnded = ends
+        report(tracks.getOrNull(currentIndex), Transition.NEW_QUEUE, playing && !ends)
+        if (ends) {
+            controller.onEnded()
+            if (playing) stopPlaying()
         }
+    }
+
+    private fun followingInOrder(index: Int): Int? {
+        val order = playOrder()
+        val next = order.getOrNull(order.indexOf(index) + 1) ?: order.firstOrNull()?.takeIf { repeatEnabled }
+        return next?.takeIf { it != index }
     }
 
     override fun clear() {
@@ -223,11 +237,11 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
         }
     }
 
-    private fun report(track: Track?, transition: Transition) {
+    private fun report(track: Track?, transition: Transition, isPlaying: Boolean = playing) {
         check(shuffle.length == tracks.size) {
             "The shuffle order has ${shuffle.length} items, the playlist ${tracks.size}: $track"
         }
-        controller.onItemChanged(track, transition, playing)
+        controller.onItemChanged(track, transition, isPlaying)
     }
 
     private fun nextInOrder(): Int? {

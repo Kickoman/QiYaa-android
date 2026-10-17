@@ -22,6 +22,8 @@ interface JamPlaybackListener {
     fun onItemStarted(itemId: String)
 
     fun onPlayback(playback: JamPlayback)
+
+    fun onRemoveItems(itemIds: List<String>)
 }
 
 object JamTail {

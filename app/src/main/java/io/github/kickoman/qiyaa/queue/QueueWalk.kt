@@ -1,11 +1,18 @@
 package io.github.kickoman.qiyaa.queue
 
 object QueueWalk {
-    fun next(entries: List<QueueEntry>, order: List<Int>, current: Int, repeatHoldsHead: Boolean): Int? {
-        waiting(entries, current).firstOrNull()?.let { return it }
-        val after = after(order, current)
+    fun next(
+        entries: List<QueueEntry>,
+        order: List<Int>,
+        current: Int,
+        repeatHoldsHead: Boolean,
+        leaving: Set<Int> = emptySet(),
+    ): Int? {
+        val staying = { index: Int -> index !in leaving }
+        waiting(entries, current).firstOrNull(staying)?.let { return it }
+        val after = after(order, current).filter(staying)
         if (repeatHoldsHead) {
-            val isHead = { index: Int -> entries.getOrNull(index)?.part == EntryPart.HEAD }
+            val isHead = { index: Int -> staying(index) && entries.getOrNull(index)?.part == EntryPart.HEAD }
             return after.firstOrNull(isHead) ?: order.firstOrNull(isHead)
         }
         return after.firstOrNull { entries.getOrNull(it)?.isSpent != true }

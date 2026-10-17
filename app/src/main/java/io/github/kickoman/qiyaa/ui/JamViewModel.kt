@@ -95,18 +95,6 @@ class JamViewModel(application: Application) : AndroidViewModel(application) {
 
     fun playNext(track: Track) = sent(host.playNext(track), R.string.jam_added_next)
 
-    /** The playlist's REM during a jam: the selected jam items leave the room's queue. */
-    fun removeFromJam(indices: Set<Int>) {
-        val entries = graph.queue.state.value.entries
-        val items = indices.mapNotNull { entries.getOrNull(it)?.item?.itemId }
-        if (items.isEmpty()) {
-            notice(string(R.string.jam_remove_nothing))
-            return
-        }
-        // The items leave the playlist with the next state, and their selection with them.
-        if (!items.all(host::remove)) notice(string(R.string.jam_no_connection))
-    }
-
     fun setSearchText(text: String) = mutableUi.update { it.copy(searchText = text) }
 
     fun search(text: String = mutableUi.value.searchText) {

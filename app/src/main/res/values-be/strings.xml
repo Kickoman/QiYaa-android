@@ -132,7 +132,6 @@
     <string name="session_offline">НЯМА СЕТКІ · ПАСПРАБУЮ САМ</string>
     <string name="login_expired">Сесія скончылася. Увайдзіце зноў.</string>
     <string name="queue_waiting_for_network">Няма сеткі · працягну, калі з\'явіцца</string>
-    <string name="queue_jam_active">Ідзе джэм: дадайце трэкі ў джэм</string>
     <string name="jam_title">Джэм</string>
     <string name="jam_settings_title">Сервер джэма</string>
     <string name="jam_settings_open">Сервер</string>
@@ -178,7 +177,6 @@
     <string name="jam_end">Скончыць джэм</string>
     <string name="jam_end_confirm">Націсніце яшчэ раз</string>
     <string name="jam_no_connection">Няма сувязі з серверам джэма</string>
-    <string name="jam_remove_nothing">Вылучыце трэкі джэма, каб прыбраць іх</string>
     <string name="jam_continue_title">Ішоў джэм</string>
     <string name="jam_continue_text">Працягнуць? Спасылка ў гасцей застанецца ранейшай.</string>
     <string name="jam_continue_yes">Працягнуць</string>

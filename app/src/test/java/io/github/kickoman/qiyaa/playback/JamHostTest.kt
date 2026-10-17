@@ -28,6 +28,7 @@ import io.github.kickoman.qiyaa.jam.OutboxEntry
 import io.github.kickoman.qiyaa.jam.Pin
 import io.github.kickoman.qiyaa.jam.Playing
 import io.github.kickoman.qiyaa.jam.Rejected
+import io.github.kickoman.qiyaa.jam.Remove
 import io.github.kickoman.qiyaa.jam.Resume
 import io.github.kickoman.qiyaa.jam.Resumed
 import io.github.kickoman.qiyaa.jam.SearchError
@@ -178,6 +179,22 @@ class JamHostTest {
             )
             assertTrue(h.host.pin("i2"))
         }
+
+    @Test
+    fun `HOST-36 HOST-25 removing a waiting item sends remove, and not connected it says so`() = runTest {
+        val h = Harness(this)
+        h.created()
+        h.state(1, item("i1", "11"), item("i2", "22"), item("i3", "33"))
+        h.queue.controller.removeIndices(setOf(1, 2))
+        assertEquals(listOf("i2", "i3"), h.sent().filterIsInstance<Remove>().map { it.itemId })
+        assertEquals(listOf("11", "22", "33"), h.queue.engine.ids())
+        h.transport.last.drop()
+        runCurrent()
+        h.queue.controller.removeIndices(setOf(1))
+        runCurrent()
+        assertEquals(listOf<JamHostEvent>(JamHostEvent.NotConnected), h.events)
+        assertEquals(listOf("11", "22", "33"), h.queue.engine.ids())
+    }
 
     @Test
     fun `HOST-22 the latest snapshot and a new link are stored`() = runTest {

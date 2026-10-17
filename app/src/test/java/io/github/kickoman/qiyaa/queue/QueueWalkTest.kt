@@ -77,6 +77,17 @@ class QueueWalkTest {
         assertEquals(0, QueueWalk.next(entries, order, 3, true))
     }
 
+    @Test
+    fun `HOST-36 rows that are leaving are never the target, waiting items and the wrap included`() {
+        val entries = entries("h0") + waiting("i1", "x") + waiting("i2", "y") + entries("h3", "h4")
+        val order = entries.indices.toList()
+        assertEquals(2, QueueWalk.next(entries, order, 0, false, leaving = setOf(0, 1)))
+        assertEquals(3, QueueWalk.next(entries, order, 0, false, leaving = setOf(0, 1, 2)))
+        assertNull(QueueWalk.next(entries, order, 3, false, leaving = setOf(1, 2, 3, 4)))
+        assertEquals(0, QueueWalk.next(entries, order, 4, true, leaving = setOf(1, 2, 4)))
+        assertNull(QueueWalk.next(entries("h0"), listOf(0), 0, true, leaving = setOf(0)))
+    }
+
     private fun entries(vararg ids: String) = ids.map { QueueEntry(track(it)) }
 
     private fun waiting(itemId: String?, trackId: String) =

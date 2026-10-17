@@ -101,6 +101,8 @@ sealed interface JamHostEvent {
     data class Ended(val why: Why) : JamHostEvent {
         enum class Why { BY_HOST, BY_SERVER, EXPIRED, GONE }
     }
+
+    data object NotConnected : JamHostEvent
 }
 
 /**
@@ -305,6 +307,14 @@ class JamHost(
 
     override fun onItemStarted(itemId: String) {
         client.started(itemId, sendNow = connected)
+    }
+
+    override fun onRemoveItems(itemIds: List<String>) {
+        if (!connected) {
+            mutableEvents.tryEmit(JamHostEvent.NotConnected)
+            return
+        }
+        for (itemId in itemIds) remove(itemId)
     }
 
     override fun onPlayback(playback: JamPlayback) {

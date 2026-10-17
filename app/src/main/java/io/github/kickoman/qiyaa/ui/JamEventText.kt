@@ -19,6 +19,7 @@ fun JamHostEvent.render(context: Context): String = when (this) {
             JamHostEvent.Ended.Why.GONE -> R.string.jam_ended_gone
         },
     )
+    JamHostEvent.NotConnected -> context.getString(R.string.jam_no_connection)
 }
 
 fun JamGuestEvent.render(context: Context): String = when (this) {

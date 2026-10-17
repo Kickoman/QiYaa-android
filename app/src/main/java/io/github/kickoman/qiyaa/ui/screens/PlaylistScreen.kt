@@ -246,11 +246,7 @@ fun PlaylistScreen(viewModel: PlayerViewModel, jam: JamViewModel, onAdd: () -> U
                 background = colors.surface2,
                 color = if (queue.selected.isEmpty()) colors.dimmer else colors.text,
             ) {
-                if (jam.isActive) {
-                    jam.removeFromJam(queue.selected)
-                } else {
-                    viewModel.queue.removeIndices(queue.selected)
-                }
+                viewModel.queue.removeIndices(queue.selected)
             }
             val allSelected = queue.tracks.isNotEmpty() && queue.selected.size == queue.tracks.size
             ActionButton(

@@ -149,7 +149,6 @@
     <string name="session_offline">NO CONNECTION · WILL RETRY</string>
     <string name="login_expired">Your session has expired. Sign in again.</string>
     <string name="queue_waiting_for_network">No connection · will resume when it is back</string>
-    <string name="queue_jam_active">A jam is on: add tracks to the jam instead</string>
     <string name="jam_title">Jam</string>
     <string name="jam_settings_title">Jam server</string>
     <string name="jam_settings_open">Server</string>
@@ -195,7 +194,6 @@
     <string name="jam_end">End the jam</string>
     <string name="jam_end_confirm">Tap again to end</string>
     <string name="jam_no_connection">No connection to the jam server</string>
-    <string name="jam_remove_nothing">Select tracks from the jam to remove</string>
     <string name="jam_continue_title">A jam was on</string>
     <string name="jam_continue_text">Continue it? Your guests keep their link.</string>
     <string name="jam_continue_yes">Continue</string>

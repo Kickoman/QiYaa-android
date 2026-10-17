@@ -121,10 +121,6 @@ fun AppRoot(
                                 jamState,
                                 guestOf = (guestState.room?.hostName ?: "…").takeIf { guestOn },
                                 onJam = { app.go(if (guestOn) Screen.JAM_GUEST else Screen.JAM) },
-                                onJamSearch = { text: String ->
-                                    jam.search(text)
-                                    app.go(Screen.JAM)
-                                }.takeIf { jamOn },
                             )
                         Screen.JAM -> JamScreen(
                             jam,
