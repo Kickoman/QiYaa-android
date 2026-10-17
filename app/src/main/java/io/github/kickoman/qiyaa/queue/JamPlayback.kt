@@ -2,14 +2,6 @@ package io.github.kickoman.qiyaa.queue
 
 import io.github.kickoman.qiyaa.yandex.Track
 
-sealed interface JamSlot {
-    data class Item(val itemId: String, val addedBy: String) : JamSlot
-
-    data object Wave : JamSlot
-
-    data object Other : JamSlot
-}
-
 data class JamEntry(val itemId: String, val track: Track, val addedBy: String)
 
 data class JamPlayback(
@@ -33,16 +25,16 @@ interface JamPlaybackListener {
 object JamTail {
     data class Edit(val removeFrom: Int, val removeUntil: Int, val insertAt: Int, val insert: List<JamEntry>)
 
-    fun jamPartEnd(slots: List<JamSlot>, currentIndex: Int): Int {
+    fun jamPartEnd(entries: List<QueueEntry>, currentIndex: Int): Int {
         var end = currentIndex + 1
-        while (end < slots.size && slots[end] is JamSlot.Item) end++
+        while (end < entries.size && entries[end].isJamItem) end++
         return end
     }
 
-    fun edit(slots: List<JamSlot>, currentIndex: Int, wanted: List<JamEntry>): Edit {
+    fun edit(entries: List<QueueEntry>, currentIndex: Int, wanted: List<JamEntry>): Edit {
         val start = currentIndex + 1
-        val end = jamPartEnd(slots, currentIndex)
-        val existing = slots.subList(start, end).map { (it as JamSlot.Item).itemId }
+        val end = jamPartEnd(entries, currentIndex)
+        val existing = entries.subList(start, end).map { it.item?.itemId }
         var prefix = 0
         while (prefix < existing.size &&
             prefix < wanted.size &&

@@ -17,8 +17,9 @@ data class QueueSnapshot(
     val positionMs: Long,
     val shuffle: Boolean,
     val repeat: Boolean,
-    val jamSlots: List<JamSlot>? = null,
+    val jam: Boolean = false,
     val parts: List<EntryPart> = emptyList(),
+    val items: List<ItemMark?> = emptyList(),
     val continueWithVibe: Boolean? = null,
     val history: List<String> = emptyList(),
 )
@@ -43,11 +44,13 @@ object QueueSnapshotCodec {
                 positionMs = snapshot.positionMs,
                 shuffle = snapshot.shuffle,
                 repeat = snapshot.repeat,
-                jam = snapshot.jamSlots != null,
+                jam = snapshot.jam,
                 continueWithVibe = snapshot.continueWithVibe,
                 history = snapshot.history,
                 tracks =
                 snapshot.tracks.mapIndexed { i, track ->
+                    val part = snapshot.parts.getOrNull(i)
+                    val item = snapshot.items.getOrNull(i)
                     TrackEntry(
                         id = track.id,
                         title = track.title,
@@ -57,10 +60,10 @@ object QueueSnapshotCodec {
                         available = track.available,
                         coverUrl = track.coverUrl,
                         batchId = snapshot.batchIds.getOrElse(i) { "" },
-                        jamItemId = (snapshot.jamSlots?.getOrNull(i) as? JamSlot.Item)?.itemId.orEmpty(),
-                        jamAddedBy = (snapshot.jamSlots?.getOrNull(i) as? JamSlot.Item)?.addedBy.orEmpty(),
-                        jamWave = snapshot.jamSlots?.getOrNull(i) == JamSlot.Wave,
-                        part = snapshot.parts.getOrNull(i)?.takeIf { it != defaultPart }?.key,
+                        jamItemId = item?.itemId.orEmpty(),
+                        jamAddedBy = item?.addedBy.orEmpty(),
+                        jamWave = snapshot.jam && part == EntryPart.CONTINUATION,
+                        part = part?.takeIf { it in STORED_PARTS && it != defaultPart }?.key,
                     )
                 },
             ),
@@ -81,6 +84,7 @@ object QueueSnapshotCodec {
         val tracks = file.tracks.map {
             Track(it.id, it.title, it.artists, it.albumId, it.durationMs, it.available, it.coverUrl)
         }
+        val index = if (tracks.isEmpty()) 0 else file.index.coerceIn(0, tracks.lastIndex)
         return QueueSnapshot(
             tracks = tracks,
             batchIds = file.tracks.map { it.batchId },
@@ -89,28 +93,40 @@ object QueueSnapshotCodec {
             isWave = file.isWave,
             waveSessionId = file.waveSessionId,
             waveStationId = file.waveStationId,
-            index = if (tracks.isEmpty()) 0 else file.index.coerceIn(0, tracks.lastIndex),
+            index = index,
             positionMs = file.positionMs.coerceAtLeast(0),
             shuffle = file.shuffle,
             repeat = file.repeat,
-            jamSlots = if (file.jam) file.tracks.map(::slotOf) else null,
+            jam = file.jam,
             parts = partsOf(file),
+            items = itemsOf(file, index),
             continueWithVibe = file.continueWithVibe,
             history = file.history,
         )
     }
 
     private fun partsOf(file: SnapshotFile): List<EntryPart> {
-        if (file.tracks.all { it.part == null }) return emptyList()
+        if (!file.jam && file.tracks.all { it.part == null }) return emptyList()
         val default = EntryPart.defaultFor(file.isWave)
-        return file.tracks.map { EntryPart.fromKey(it.part) ?: default }
+        return file.tracks.map { entry ->
+            val stored = EntryPart.fromKey(entry.part)?.takeIf { it in STORED_PARTS } ?: default
+            when {
+                !file.jam -> stored
+                entry.jamItemId.isNotEmpty() -> EntryPart.ITEM
+                entry.jamWave || stored == EntryPart.CONTINUATION -> EntryPart.CONTINUATION
+                else -> EntryPart.OTHER
+            }
+        }
     }
 
-    private fun slotOf(entry: TrackEntry): JamSlot = when {
-        entry.jamItemId.isNotEmpty() -> JamSlot.Item(entry.jamItemId, entry.jamAddedBy)
-        entry.jamWave -> JamSlot.Wave
-        else -> JamSlot.Other
+    private fun itemsOf(file: SnapshotFile, index: Int): List<ItemMark?> {
+        if (!file.jam || file.tracks.all { it.jamItemId.isEmpty() }) return emptyList()
+        return file.tracks.mapIndexed { i, entry ->
+            entry.jamItemId.ifEmpty { null }?.let { ItemMark(it, entry.jamAddedBy, waiting = i > index) }
+        }
     }
+
+    private val STORED_PARTS = setOf(EntryPart.HEAD, EntryPart.CONTINUATION)
 
     @Serializable
     private data class SnapshotFile(

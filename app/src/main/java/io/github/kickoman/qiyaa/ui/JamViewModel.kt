@@ -10,7 +10,6 @@ import io.github.kickoman.qiyaa.jam.JamOrder
 import io.github.kickoman.qiyaa.jam.JamSettingsPatch
 import io.github.kickoman.qiyaa.playback.JamHost
 import io.github.kickoman.qiyaa.playback.JamHostPhase
-import io.github.kickoman.qiyaa.queue.JamSlot
 import io.github.kickoman.qiyaa.yandex.ErrorKind
 import io.github.kickoman.qiyaa.yandex.Track
 import kotlinx.coroutines.CancellationException
@@ -98,8 +97,8 @@ class JamViewModel(application: Application) : AndroidViewModel(application) {
 
     /** The playlist's REM during a jam: the selected jam items leave the room's queue. */
     fun removeFromJam(indices: Set<Int>) {
-        val slots = graph.queue.state.value.jamSlots ?: return
-        val items = indices.mapNotNull { (slots.getOrNull(it) as? JamSlot.Item)?.itemId }
+        val entries = graph.queue.state.value.entries
+        val items = indices.mapNotNull { entries.getOrNull(it)?.item?.itemId }
         if (items.isEmpty()) {
             notice(string(R.string.jam_remove_nothing))
             return

@@ -37,7 +37,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.kickoman.qiyaa.R
-import io.github.kickoman.qiyaa.queue.JamSlot
+import io.github.kickoman.qiyaa.playback.JamHostPhase
+import io.github.kickoman.qiyaa.queue.EntryPart
 import io.github.kickoman.qiyaa.ui.JamViewModel
 import io.github.kickoman.qiyaa.ui.PlayerViewModel
 import io.github.kickoman.qiyaa.ui.TrackActions
@@ -68,6 +69,7 @@ fun PlaylistScreen(viewModel: PlayerViewModel, jam: JamViewModel, onAdd: () -> U
     val names = jamState.room?.participants?.associate { it.publicId to it.name }.orEmpty()
     val waveMark = stringResource(R.string.jam_wave_mark)
     val actionsLabel = stringResource(R.string.playlist_actions)
+    val jamOn = jamState.phase == JamHostPhase.ACTIVE
 
     Column(Modifier.fillMaxSize()) {
         ScreenHeader(stringResource(R.string.playlist_title)) {
@@ -84,7 +86,7 @@ fun PlaylistScreen(viewModel: PlayerViewModel, jam: JamViewModel, onAdd: () -> U
             )
         }
 
-        if (!queue.isWave && queue.jamSlots == null && queue.tracks.isNotEmpty()) {
+        if (!queue.isWave && !jamOn && queue.tracks.isNotEmpty()) {
             Row(
                 Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp).fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -148,12 +150,14 @@ fun PlaylistScreen(viewModel: PlayerViewModel, jam: JamViewModel, onAdd: () -> U
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
+                            val entry = queue.entries.getOrNull(index)
+                            val addedBy = entry?.item?.addedBy
                             val mark =
-                                when (val slot = queue.jamSlots?.getOrNull(index)) {
-                                    is JamSlot.Item -> names[slot.addedBy]?.let {
+                                when {
+                                    addedBy != null -> names[addedBy]?.let {
                                         stringResource(R.string.jam_added_by, it)
                                     }
-                                    JamSlot.Wave -> waveMark
+                                    jamOn && entry?.part == EntryPart.CONTINUATION -> waveMark
                                     else -> null
                                 }
                             Row(
@@ -242,7 +246,7 @@ fun PlaylistScreen(viewModel: PlayerViewModel, jam: JamViewModel, onAdd: () -> U
                 background = colors.surface2,
                 color = if (queue.selected.isEmpty()) colors.dimmer else colors.text,
             ) {
-                if (queue.jamSlots != null && jam.isActive) {
+                if (jam.isActive) {
                     jam.removeFromJam(queue.selected)
                 } else {
                     viewModel.queue.removeIndices(queue.selected)

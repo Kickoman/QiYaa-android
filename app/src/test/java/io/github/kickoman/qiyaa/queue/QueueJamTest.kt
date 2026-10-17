@@ -14,7 +14,6 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -35,7 +34,8 @@ class QueueJamTest {
             h.engine.startPlaying()
             val jam = h.startJam()
             assertEquals(listOf("a", "b"), h.engine.ids())
-            assertEquals(listOf(JamSlot.Other, JamSlot.Other), h.controller.state.value.jamSlots)
+            val parts = h.controller.state.value.entries.map { it.part }
+            assertEquals(listOf(EntryPart.OTHER, EntryPart.OTHER), parts)
             assertEquals(JamPlayback.Kind.WAVE, jam.playbacks.last().kind)
             assertEquals("b", jam.playbacks.last().track?.id)
         }
@@ -53,15 +53,7 @@ class QueueJamTest {
             h.state(item("i2", "B"), item("i4", "D"), item("i5", "E"))
             assertEquals(listOf("A", "B", "D", "E"), h.engine.ids())
             assertEquals(listOf("remove 2", "insert 2 [D, E]"), h.engine.commands)
-            assertEquals(
-                listOf(
-                    JamSlot.Item("i1", "g1"),
-                    JamSlot.Item("i2", "g1"),
-                    JamSlot.Item("i4", "g1"),
-                    JamSlot.Item("i5", "g1"),
-                ),
-                h.controller.state.value.jamSlots,
-            )
+            assertEquals(listOf("i1" to "g1", "i2" to "g1", "i4" to "g1", "i5" to "g1"), h.items())
         }
 
     @Test
@@ -406,7 +398,7 @@ class QueueJamTest {
             h.controller.endJam()
             assertFalse(h.controller.isJamActive)
             assertEquals(listOf("A", "B"), h.engine.ids())
-            assertNull(h.controller.state.value.jamSlots)
+            assertTrue(h.items().none { it.first != null })
             h.engine.finishTrack()
             runCurrent()
             assertEquals(listOf("B"), h.source.reports.map { it.first })
@@ -446,7 +438,7 @@ class QueueJamTest {
             first.state(seeds = listOf("track:A"), seedsVersion = 1)
             runCurrent()
             assertEquals(listOf("A", "w1", "w2"), first.engine.ids())
-            val parts = listOf(EntryPart.HEAD, EntryPart.CONTINUATION, EntryPart.CONTINUATION)
+            val parts = listOf(EntryPart.ITEM, EntryPart.CONTINUATION, EntryPart.CONTINUATION)
             assertEquals(parts, first.controller.state.value.entries.map { it.part })
             assertEquals(parts, first.store.snapshot()!!.parts)
             val restored = QueueHarness(this, store = first.store)
@@ -462,15 +454,12 @@ class QueueJamTest {
         first.state(item("i1", "A"), item("i2", "B"))
         runCurrent()
         val restored = QueueHarness(this, store = first.store)
-        assertEquals(
-            listOf(JamSlot.Item("i1", "g1"), JamSlot.Item("i2", "g1")),
-            restored.controller.state.value.jamSlots,
-        )
+        assertEquals(listOf("i1" to "g1", "i2" to "g1"), restored.items())
         assertEquals(listOf("A", "B"), restored.engine.ids())
         restored.startJam()
         assertEquals(listOf("A", "B"), restored.engine.ids())
         restored.controller.endJam()
-        assertNull(restored.controller.state.value.jamSlots)
+        assertTrue(restored.items().none { it.first != null })
     }
 
     @Test
@@ -564,6 +553,9 @@ class QueueJamTest {
     }
 
     private fun item(itemId: String, trackId: String) = JamEntry(itemId, track(trackId), "g1")
+
+    private fun QueueHarness.items(): List<Pair<String?, String?>> =
+        controller.state.value.entries.map { it.item?.itemId to it.item?.addedBy }
 
     private fun QueueHarness.startJam(waveFeedback: Boolean = false): Recorder =
         Recorder().also { controller.startJam("Jam", it, waveFeedback) }

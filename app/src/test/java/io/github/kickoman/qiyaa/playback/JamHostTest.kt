@@ -221,7 +221,7 @@ class JamHostTest {
         assertEquals(listOf<JamHostEvent>(JamHostEvent.Ended(JamHostEvent.Ended.Why.GONE)), h.events)
         assertNull(h.store.text)
         assertFalse(h.queue.controller.isJamActive)
-        assertNull(h.queue.controller.state.value.jamSlots)
+        assertTrue(h.queue.controller.state.value.entries.none { it.item?.itemId != null })
         assertEquals(JamHostPhase.NONE, h.host.state.value.phase)
     }
 

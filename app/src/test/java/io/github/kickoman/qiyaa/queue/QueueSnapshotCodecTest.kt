@@ -176,6 +176,41 @@ class QueueSnapshotCodecTest {
     }
 
     @Test
+    fun `an old jam's version 1 file reads as parts and item marks and is written back the same`() {
+        val expected =
+            QueueSnapshot(
+                tracks = listOf(
+                    Track("31", "Группа крови", listOf("Кино"), "4054", 285_000),
+                    Track("32", "Кукушка", listOf("Кино"), "4053", 398_000),
+                    Track("33", "Звезда", emptyList(), "", 0),
+                    Track("34", "Пачка сигарет", emptyList(), "", 0),
+                ),
+                batchIds = listOf("", "", "", "B1"),
+                title = "Jam",
+                sourceId = null,
+                isWave = false,
+                waveSessionId = "",
+                waveStationId = "",
+                index = 1,
+                positionMs = 5_000,
+                shuffle = true,
+                repeat = false,
+                jam = true,
+                parts = listOf(EntryPart.OTHER, EntryPart.ITEM, EntryPart.ITEM, EntryPart.CONTINUATION),
+                items = listOf(
+                    null,
+                    ItemMark("i1", "g1", waiting = false),
+                    ItemMark("i2", "g2", waiting = true),
+                    null,
+                ),
+                continueWithVibe = true,
+                history = listOf("32", "31"),
+            )
+        assertEquals(expected, QueueSnapshotCodec.decode(VERSION_1_OLD_JAM))
+        assertEquals(VERSION_1_OLD_JAM, QueueSnapshotCodec.encode(expected))
+    }
+
+    @Test
     fun `an index outside the tracks is clamped`() {
         val text = QueueSnapshotCodec.encode(snapshot.copy(index = 7))
         assertEquals(1, QueueSnapshotCodec.decode(text)!!.index)
@@ -191,6 +226,16 @@ class QueueSnapshotCodecTest {
                 """{"id":"12","title":"Звезда","artists":["Кино","Цой"],"albumId":"4053",""" +
                 """"durationMs":230000,"batchId":"B1"},""" +
                 """{"id":"13","title":"Without a cover","batchId":"B2"}]}"""
+
+        const val VERSION_1_OLD_JAM =
+            """{"version":1,"title":"Jam","isWave":false,"index":1,"positionMs":5000,"shuffle":true,""" +
+                """"repeat":false,"jam":true,"continueWithVibe":true,"history":["32","31"],"tracks":[""" +
+                """{"id":"31","title":"Группа крови","artists":["Кино"],"albumId":"4054",""" +
+                """"durationMs":285000},""" +
+                """{"id":"32","title":"Кукушка","artists":["Кино"],"albumId":"4053","durationMs":398000,""" +
+                """"jamItemId":"i1","jamAddedBy":"g1"},""" +
+                """{"id":"33","title":"Звезда","jamItemId":"i2","jamAddedBy":"g2"},""" +
+                """{"id":"34","title":"Пачка сигарет","batchId":"B1","jamWave":true,"part":"continuation"}]}"""
 
         const val VERSION_1_PLAYLIST =
             """{"version":1,"title":"Road","sourceId":"playlist:1000:3","isWave":false,""" +
