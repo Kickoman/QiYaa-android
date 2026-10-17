@@ -1,6 +1,7 @@
 package io.github.kickoman.qiyaa.queue
 
 import io.github.kickoman.qiyaa.queue.QueueEvent.Stage
+import io.github.kickoman.qiyaa.support.NetworkLoss
 import io.github.kickoman.qiyaa.support.QueueHarness
 import io.github.kickoman.qiyaa.support.QueueHarness.Companion.track
 import io.github.kickoman.qiyaa.support.QueueHarness.Companion.tracks
@@ -162,6 +163,39 @@ class QueueJamTest {
         reply.complete(WaveBatch("SJ", "B1", tracks("w1")))
         runCurrent()
         assertEquals(listOf("insert 1 [w1]", "seek 1", "prepare", "play"), h.engine.commands)
+    }
+
+    @Test
+    fun `ERR-09 a jam item that waits for the network sends started once`() = runTest {
+        for (loss in NetworkLoss.entries) {
+            val h = QueueHarness(this)
+            val jam = h.startJam()
+            h.state(item("i1", "A"), item("i2", "B"))
+            h.engine.startPlaying()
+            advanceTimeBy(10_000)
+            h.engine.commands.clear()
+            h.network.value = false
+            loss.hit(h.engine)
+            assertTrue(loss.name, jam.playbacks.last().paused)
+            advanceTimeBy(60_000)
+            h.network.value = true
+            runCurrent()
+            assertEquals(loss.name, listOf("prepare"), h.engine.commands)
+            h.engine.startPlaying()
+            assertEquals(loss.name, listOf("i1"), jam.started)
+            assertEquals(
+                loss.name,
+                JamPlayback(
+                    JamPlayback.Kind.ITEM,
+                    "i1",
+                    track("A"),
+                    0,
+                    paused = false,
+                    nextTrack = track("B"),
+                ),
+                jam.playbacks.last(),
+            )
+        }
     }
 
     @Test
