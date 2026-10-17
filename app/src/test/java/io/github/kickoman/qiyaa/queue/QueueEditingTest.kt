@@ -156,7 +156,7 @@ class QueueEditingTest {
             harness.controller.loadSource("Liked") { tracks("a", "b", "a", "c") }
             runCurrent()
             val lines = harness.controller.state.value.tracks
-            harness.controller.dislike(lines[2])
+            harness.controller.dislike(lines[2].copy(albumId = "another album"))
             runCurrent()
             assertEquals(1, harness.engine.currentIndex)
             assertEquals(QueueEvent.DislikedAndSkipped, harness.events.last())

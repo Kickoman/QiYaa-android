@@ -29,6 +29,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -269,6 +270,7 @@ fun TrackActionsSheet(actions: TrackActions, viewModel: PlayerViewModel) {
     val colors = Qi.colors
     val context = LocalContext.current
     val track = actions.track
+    val paneLabel = stringResource(R.string.playlist_actions)
     Box(Modifier.fillMaxSize()) {
         Box(
             Modifier.fillMaxSize().background(colors.deep.copy(alpha = 0.7f)).tap {
@@ -282,6 +284,7 @@ fun TrackActionsSheet(actions: TrackActions, viewModel: PlayerViewModel) {
                 .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
                 .background(colors.surface)
                 .pointerInput(Unit) { detectTapGestures() }
+                .semantics { paneTitle = paneLabel }
                 .navigationBarsPadding()
                 .padding(start = 8.dp, end = 8.dp, bottom = 8.dp),
         ) {

@@ -168,7 +168,7 @@ key(trackId) { HorizontalSlider(value = fraction, onChange = …, onChangeFinish
 | дизлайк | `player_dislike_skip`, когда `isCurrent`, иначе `library_dislike` | `dislikePicked()` |
 | браузер | `playlist_open` | `Intent.ACTION_VIEW` с `track.webUrl`, как кнопка библиотеки; `Intent` нужен `Context`, поэтому живёт в листе |
 
-У строк `Role.Button`, подпись строки — её текст для TalkBack. Каждое действие закрывает лист; «назад» — тоже (`BackHandler` в `AppRoot`).
+У строк `Role.Button`, подпись строки — её текст для TalkBack. Панель листа — `paneTitle = playlist_actions`, поэтому TalkBack объявляет лист, когда тот открывается. Каждое действие закрывает лист; «назад» — тоже (`BackHandler` в `AppRoot`).
 
 **Traps (`TrackActionsSheet`):**
 - Панель получает `navigationBarsPadding()` после фона. `MainActivity` включает `enableEdgeToEdge()`, а `AppRoot` отступает от системных полос только в колонке экранов; лист рисуется вне её, и без отступа последняя строка (браузер) легла бы под трёхкнопочную навигацию (48 dp), где тапы уходят системе.
