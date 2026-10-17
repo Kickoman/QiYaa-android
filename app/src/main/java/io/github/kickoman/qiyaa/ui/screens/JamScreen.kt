@@ -6,7 +6,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,9 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -29,7 +25,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -51,12 +46,18 @@ import io.github.kickoman.qiyaa.playback.JamHostState
 import io.github.kickoman.qiyaa.ui.JamViewModel
 import io.github.kickoman.qiyaa.ui.ListState
 import io.github.kickoman.qiyaa.ui.components.ActionButton
+import io.github.kickoman.qiyaa.ui.components.Divider
+import io.github.kickoman.qiyaa.ui.components.InsetField
 import io.github.kickoman.qiyaa.ui.components.LedDot
+import io.github.kickoman.qiyaa.ui.components.Note
 import io.github.kickoman.qiyaa.ui.components.OnOffPills
+import io.github.kickoman.qiyaa.ui.components.Panel
 import io.github.kickoman.qiyaa.ui.components.PillToggle
 import io.github.kickoman.qiyaa.ui.components.QiText
 import io.github.kickoman.qiyaa.ui.components.QrCodeImage
 import io.github.kickoman.qiyaa.ui.components.ScreenHeader
+import io.github.kickoman.qiyaa.ui.components.SectionLabel
+import io.github.kickoman.qiyaa.ui.components.SettingRow
 import io.github.kickoman.qiyaa.ui.components.tap
 import io.github.kickoman.qiyaa.ui.formatTime
 import io.github.kickoman.qiyaa.ui.render
@@ -73,7 +74,7 @@ private const val END_CONFIRM_MS = 3_000L
 private val ROW_BUTTON_WIDTH = 76.dp
 
 @Composable
-fun JamScreen(viewModel: JamViewModel, onSettings: () -> Unit) {
+fun JamScreen(viewModel: JamViewModel, onSettings: () -> Unit, onJoinLink: (String) -> Boolean) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         ScreenHeader(stringResource(R.string.jam_title)) {
@@ -86,7 +87,7 @@ fun JamScreen(viewModel: JamViewModel, onSettings: () -> Unit) {
             )
         }
         when (state.phase) {
-            JamHostPhase.NONE -> StartJam(viewModel, onSettings)
+            JamHostPhase.NONE -> StartJam(viewModel, onSettings, onJoinLink)
             JamHostPhase.CREATING -> Connecting(viewModel)
             JamHostPhase.ACTIVE -> ActiveJam(viewModel, state)
         }
@@ -109,7 +110,7 @@ private fun ConnectionStatus(state: JamHostState) {
 }
 
 @Composable
-private fun StartJam(viewModel: JamViewModel, onSettings: () -> Unit) {
+private fun StartJam(viewModel: JamViewModel, onSettings: () -> Unit, onJoinLink: (String) -> Boolean) {
     val colors = Qi.colors
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val server by viewModel.settings.jamServer.collectAsStateWithLifecycle()
@@ -148,6 +149,7 @@ private fun StartJam(viewModel: JamViewModel, onSettings: () -> Unit) {
         height = 48.dp,
         onClick = viewModel::start,
     )
+    JoinJamSection(onJoinLink)
 }
 
 @Composable
@@ -495,95 +497,5 @@ fun JamContinueDialog(onContinue: () -> Unit, onEnd: () -> Unit) {
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun SectionLabel(text: String) {
-    QiText(
-        text.uppercase(),
-        LabelStyle,
-        Modifier.padding(start = 16.dp, end = 16.dp, top = 22.dp, bottom = 8.dp),
-        color = Qi.colors.dim,
-    )
-}
-
-@Composable
-private fun Note(text: String, color: Color = Qi.colors.dim) {
-    QiText(
-        text,
-        mono(11.sp, 400, lineHeight = 17.sp),
-        Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp),
-        color = color,
-    )
-}
-
-@Composable
-private fun Panel(content: @Composable ColumnScope.() -> Unit) {
-    Column(
-        Modifier
-            .padding(horizontal = 16.dp)
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(Qi.colors.surface),
-        content = content,
-    )
-}
-
-@Composable
-private fun Divider() {
-    Box(Modifier.fillMaxWidth().height(1.dp).background(Qi.colors.background))
-}
-
-@Composable
-private fun SettingRow(label: String, pills: @Composable () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        QiText(label, sans(14.sp, 500), Modifier.weight(1f), color = Qi.colors.text, maxLines = 2)
-        pills()
-    }
-}
-
-@Composable
-private fun InsetField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    hint: String,
-    imeAction: ImeAction = ImeAction.Done,
-    keyboardType: KeyboardType = KeyboardType.Text,
-    onAction: () -> Unit = {},
-) {
-    val colors = Qi.colors
-    val style = mono(13.sp, 400).copy(color = colors.text)
-    Row(
-        Modifier
-            .padding(horizontal = 16.dp)
-            .fillMaxWidth()
-            .height(48.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .background(colors.deep)
-            .border(1.dp, colors.insetBorder, RoundedCornerShape(6.dp))
-            .padding(horizontal = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            textStyle = style,
-            singleLine = true,
-            cursorBrush = SolidColor(colors.accent),
-            keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
-            keyboardActions = KeyboardActions(onAny = { onAction() }),
-            modifier = Modifier.weight(1f),
-            decorationBox = { inner ->
-                if (value.isEmpty() && hint.isNotEmpty()) {
-                    QiText(hint, style, color = colors.dim, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                inner()
-            },
-        )
     }
 }

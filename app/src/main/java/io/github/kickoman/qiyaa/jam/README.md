@@ -239,7 +239,7 @@ data class JamGuestState(val phase: GuestPhase, val serverUrl: String?, val room
 }
 sealed interface JamGuestEvent { data class Refused(val reason: String) }   // отказ в remove, skip, без id
 fun JamNowPlaying.positionMsAt(serverNow: Long): Long
-object GuestNames { const val MAX_NAME = 24; fun clean(name: String): String? }
+object GuestNames { const val MAX_NAME = 24; fun clean(name: String): String?; fun prefill(name: String): String }
 ```
 
 Гость в чужой комнате (`spec/jam/guest.md`). Один на процесс: `AppGraph.jamGuest`, свой `OkHttpJamTransport`,
@@ -316,7 +316,8 @@ object GuestNames { const val MAX_NAME = 24; fun clean(name: String): String? }
 `positionMsAt(serverNow)` — `positionMs`, а при игре плюс `serverNow − reportedAt`, в пределах `0…durationMs`;
 без трека — 0 (GUEST-14). `GuestNames.clean` обрезает края и сворачивает каждую серию пробелов в один; пробел —
 любой знак `\s` JavaScript (`\t \n \v \f \r`, пробел, U+00A0, U+1680, U+2000–U+200A, U+2028, U+2029, U+202F,
-U+205F, U+3000, U+FEFF); результат — 1…24 кодовые точки или `null`.
+U+205F, U+3000, U+FEFF); результат — 1…24 кодовые точки или `null`. `GuestNames.prefill` — то же для поля имени
+(GUEST-02): чистит так же, но длинное имя обрезает до 24 кодовых точек, а не отвергает; пустое — `""`.
 
 **Ловушки:**
 - Гость **никогда** не шлёт `search` (сервер ответит `not-allowed`, ROOM-27) и `add{trackId}` (ROOM-65): он ищет своим

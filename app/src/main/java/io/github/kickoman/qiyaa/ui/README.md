@@ -5,9 +5,10 @@
 ```
 ui/
   AppRoot.kt, MainActivity.kt          корень Compose, вкладки, мини-плеер, тост
-  AppViewModel.kt, PlayerViewModel.kt, JamViewModel.kt  состояние экранов
+  AppViewModel.kt, PlayerViewModel.kt, JamViewModel.kt, JamGuestViewModel.kt  состояние экранов
+  LinkRouting.kt                       куда ведёт ссылка на джем
   QueueEventText.kt, JamEventText.kt, Format.kt         рендер событий и чисел в строки
-  components/   QiText, кнопки, чипы, слайдеры, иконки
+  components/   QiText, кнопки, чипы, слайдеры, иконки, секции экранов джема
   screens/      по одному файлу на экран
   theme/        цвета, шрифты, стили текста
   visualizer/   полоса спектра/осциллографа
@@ -19,11 +20,13 @@ ui/
 |---|---|
 | `AppRoot.kt` | `AppRoot`, `MiniPlayer`, `TabBar` |
 | `MainActivity.kt` | `MainActivity` — язык интерфейса (`applyOverrideConfiguration` в `attachBaseContext`), `setContent { AppRoot() }` и запрос `POST_NOTIFICATIONS` на Android 13+ |
-| `AppViewModel.kt` | `Screen`, `LibrarySection`, `LoginStatus`, `LoginUi`, `LibraryUi`, `AppViewModel`, `PlaylistRef.sourceId` |
+| `AppViewModel.kt` | `Screen`, `LibrarySection`, `LoginStatus`, `LoginUi`, `LibraryUi`, `AppViewModel` (в том числе `openJamLink`), `PlaylistRef.sourceId` |
+| `LinkRouting.kt` | `HostSide`, `GuestSide`, `LinkRefusal`, `LinkAction`, `route(…)`, `GuestPhase.isSession` — решение, что делать со ссылкой на джем (GUEST-01, GUEST-20, GUEST-21) |
 | `ListLoader.kt` | `ListState` (`Idle`, `Loading`, `Loaded(items)`, `Failed(error)`), `ListLoader` — загрузка одного списка библиотеки со своей ошибкой и повтором |
 | `PlayerViewModel.kt` | `PlayerUi`, `TrackActions`, `PlayerViewModel`, `AccentTheme.labelId` |
 | `JamViewModel.kt` | `JamUi`, `JamViewModel` — хозяин джема для экранов: `playback/JamHost`, поиск треков для джема, настройки `jam/*` |
-| `JamEventText.kt` | `JamHostEvent.render(context)`, `refusedText(reason)` — отказы сервера и конец джема → строки |
+| `JamGuestViewModel.kt` | `GuestTab`, `JamGuestUi`, `JamGuestViewModel` — гость в чужом джеме для экранов: `jam/JamGuest`, свои поиск, лайки и плейлисты через `yandex/Library`, «лайк себе» |
+| `JamEventText.kt` | `JamHostEvent.render(context)`, `JamGuestEvent.render(context)`, `refusedText(reason)` (все 18 причин протокола), `guestRefusedText(reason)`, `GuestPhase.endText()`, `GuestAddResult.text()` — отказы, концы джема и сессии гостя → строки |
 | `QueueEventText.kt` | `QueueEvent.render(context)` — событие очереди → строка из ресурсов |
 | `ErrorText.kt` | `ErrorKind.text()` — строка вида ошибки (`error_*`, у `ServerError` со статусом), `render(context)` и `@Composable render()`; `LOG_TAG = "QiYaa"` |
 | `Format.kt` | `formatTime`, `positionAt` (доля полосы перемотки → мс), `timeLabel` (подпись времени плеера), `balanceLabel`, `formatReadout`, `formatDb` |
@@ -31,12 +34,14 @@ ui/
 | `components/Sliders.kt` | `HorizontalSlider` (0…1), `VerticalFader` (дБ) |
 | `components/Icons.kt` | `IconPaths`, `PathIcon` — SVG-пути (viewBox 24): транспорт из макета; сердце, палец вниз и «открыть снаружи» для кнопок лайка, дизлайка и браузера, контуром (`strokeWidth = IconPaths.OUTLINE`), сердце лайкнутого трека — заливкой. Подписи у этих кнопок нет (по-белорусски и по-русски она не помещается), текст — их `contentDescription` |
 | `components/QrCode.kt` | `QrCodeImage` — QR (qrcodegen, коррекция M) тёмным по белому с полями в 4 модуля |
+| `components/Sections.kt` | `SectionLabel`, `Note`, `Panel`, `Divider`, `SettingRow`, `InsetField` — секции экранов джема (хозяина и гостя), простые значения на входе |
 | `screens/LoginScreen.kt` | `LoginScreen` |
 | `screens/PlayerScreen.kt` | `PlayerScreen`, `marqueeText`, `queueTitle` |
 | `screens/PlaylistScreen.kt` | `PlaylistScreen`, `TrackActionsSheet` — лист действий с треком строки |
 | `screens/EqScreen.kt` | `EqScreen`, `PresetsSheet` |
 | `screens/LibraryScreen.kt` | `LibraryScreen` |
 | `screens/JamScreen.kt` | `JamScreen`, `JamSettingsScreen`, `JamContinueDialog` |
+| `screens/JamGuestScreen.kt` | `JamGuestScreen` (комната гостя по фазам), `JamGuestAddScreen` (добавить треки: поиск · лайки · плейлисты), `JoinJamSection` (вставить ссылку; стоит и на `JamScreen`) |
 | `screens/LibrarySectionScreen.kt` | `LibrarySectionScreen` — «для вас» / станции / плейлисты / исполнители / альбомы чипами |
 | `theme/Color.kt` | `QiColors`, `accentColors`, `LocalQiColors` |
 | `theme/Theme.kt` | `Qi.colors`, `QiYaaTheme` |
@@ -45,7 +50,7 @@ ui/
 
 ## View models
 
-`AppViewModel` — навигация (`screen`, `section`), вход (`login`), списки библиотеки (`forYou`, `playlists`, `artists`, `albums`, `stations`, `wheel` — по `ListLoader` на каждый; `libraryUi` хранит только текст поиска и `wheelMatchesCurrent`), тост (`toast`, 1.8 с). При старте: есть токен → `Screen.PLAYER`, иначе `Screen.LOGIN` и `startDeviceLogin()`. Подключением управляет `yandex/Session` (`AppGraph.session`), view model только слушает `sessionState`: `Online` → `loadLibraryLists()`, `Expired` → очистить очередь, `TokenStore` и списки, открыть вход с `LoginUi.notice = login_expired` и запросить новый код. Вход (`applyToken`) идёт через `session.signIn(token)`; токен сохраняется только после успеха. «Выйти» делает то же, что `Expired`, без сообщения. Собирает `queue.events` и рендерит их через `QueueEvent.render`. Заголовки источников (`library_liked`, `library_my_wave`, `queue_search_title`) берёт из ресурсов и передаёт в очередь как данные.
+`AppViewModel` — навигация (`screen`, `section`), вход (`login`), списки библиотеки (`forYou`, `playlists`, `artists`, `albums`, `stations`, `wheel` — по `ListLoader` на каждый; `libraryUi` хранит только текст поиска и `wheelMatchesCurrent`), тост (`toast`, 1.8 с). При старте: есть токен → `Screen.PLAYER`, иначе `Screen.LOGIN` и `startDeviceLogin()`. Подключением управляет `yandex/Session` (`AppGraph.session`), view model только слушает `sessionState`: `Online` → `loadLibraryLists()`, `Expired` → очистить очередь, `TokenStore` и списки, открыть вход с `LoginUi.notice = login_expired` и запросить новый код. Вход (`applyToken`) идёт через `session.signIn(token)`; токен сохраняется только после успеха. «Выйти» делает то же, что `Expired`, без сообщения. Оба заканчивают джем хозяина; гостя `Expired` только выводит из комнаты (`jamGuest.leave()`, членства остаются: это тот же человек на том же устройстве, GUEST-03), а «Выйти» забывает все членства (`jamGuest.forgetAll()`). Стартовый экран с токеном — `Screen.JAM_GUEST`, если `jamGuest.restore()` поднял сессию гостя (GUEST-19), иначе `Screen.PLAYER`. Собирает `queue.events` и рендерит их через `QueueEvent.render`. Заголовки источников (`library_liked`, `library_my_wave`, `queue_search_title`) берёт из ресурсов и передаёт в очередь как данные.
 
 `PlayerViewModel` — `MediaController` к `PlaybackService`, снимок `PlayerUi` (позиция тикает каждые 250 мс, пока играет), транспорт, громкость/баланс/визуализатор/тема, EQ, флаг «продолжать волной» текущей очереди. Свои сообщения (shuffle, повтор, тема, EQ) публикует в `notices`, которые `AppRoot` перекладывает в `AppViewModel.say`. Громкость, баланс и EQ только записывает в `Settings`; к плееру и `AudioBus` их применяют `AppGraph` и `PlaybackService`, так что настройки действуют и без открытого экрана (см. `data/README.md`).
 
@@ -77,7 +82,7 @@ fun likeOrUnlikePicked();  fun dislikePicked()
 
 `AppRoot` при `SessionState.Offline` показывает над экраном строку `session_offline` («НЕТ СЕТИ · ПОВТОРЮ САМ») с красным `LedDot`; на экране входа строки нет. Повторы идут сами, кнопки «повторить» нет.
 
-**«Назад».** `Screen.backTarget`: с вкладок EQ, Плейлист и Библиотека — на вкладку «Плеер» (`AppRoot`, `BackHandler`), с «Плеера» и экрана входа — системное поведение, то есть выход из приложения. Обработчики, объявленные позже, важнее: открытый раздел библиотеки сначала закрывается (`LibrarySectionScreen`), открытый лист пресетов EQ — тоже (`closePresets`), лист действий с треком — тоже (`closeTrackActions`, объявлен после пресетов), и только потом срабатывает переход на «Плеер».
+**«Назад».** `Screen.backTarget`: с вкладок EQ, Плейлист и Библиотека — на вкладку «Плеер» (`AppRoot`, `BackHandler`), с комнаты гостя (`JAM_GUEST`) — тоже на «Плеер», с «Добавить треки» гостя (`JAM_GUEST_ADD`) — в комнату, а открытый там плейлист сначала закрывается; с «Плеера» и экрана входа — системное поведение, то есть выход из приложения. Обработчики, объявленные позже, важнее: открытый раздел библиотеки сначала закрывается (`LibrarySectionScreen`), открытый лист пресетов EQ — тоже (`closePresets`), лист действий с треком — тоже (`closeTrackActions`, объявлен после пресетов), и только потом срабатывает переход на «Плеер».
 
 `PlaylistScreen` показывает внизу списка строку `playlist_loading_more`, пока `QueueState.loadingMore`, а не всё время, пока играет волна. Когда это так, решает очередь (`queue/README.md`, «Ждёт продолжения»): у своей волны — пока идёт догрузка, у волны по истории — только пока очередь ждёт её треков после конца головы; тихий запрос за два трека до конца головы строку не показывает (CONT-04: без статуса).
 
@@ -99,6 +104,104 @@ fun likeOrUnlikePicked();  fun dislikePicked()
 - **Поиск в библиотеке во время джема** (HOST-21) ищет треки для джема и открывает экран джема, а не заменяет очередь. Выбор источника (плейлист, альбом, волна) очередь не заменяет: `QueueEvent.JamActive` → тост `queue_jam_active`.
 - «Выйти» заканчивает джем: гости ищут через аккаунт хозяина.
 - **`JamSettingsScreen`**: сервер (по умолчанию `qiyaaJamUrl`) и «Учить волну джема» (`jam/waveFeedback`, HOST-16). Ключа хозяина нет.
+
+## Гость в чужом джеме
+
+Гость QiYaa (Kickoman/QiYaa-android#63, сценарии GUEST-01…21 в `spec/jam/guest.md`). Логика — `jam/JamGuest` (`AppGraph.jamGuest`), разбор ссылки — `jam/JamLink`. Здесь входы, куда ведёт ссылка, экраны, свои поиск, лайки и плейлисты, «лайк себе» и тексты. Гость ничего не играет и не трогает ни очередь, ни плеер (GUEST-13):
+
+```bash
+grep -nE 'graph\.queue|QueueController|PlayerViewModel|MediaController' app/src/main/java/io/github/kickoman/qiyaa/ui/JamGuestViewModel.kt app/src/main/java/io/github/kickoman/qiyaa/ui/screens/JamGuestScreen.kt   # ничего не печатает
+```
+
+**Входы.**
+- «Войти в джем» (`JoinJamSection`) на экране джема в фазе `NONE`, под «Начать джем»: поле (`KeyboardType.Uri`), «Вставить» читает буфер обмена только по нажатию (иначе Android 12+ показывает тост о чтении буфера в случайный момент), «Войти» — `AppViewModel.openJamLink(text)`; принятая ссылка очищает поле. Тот же блок — на комнате гостя без сессии (`None`).
+- Строка «Джем» библиотеки во время гостевой сессии (`GuestPhase.isSession`): мета `jam_library_guest` («Гость · <хозяин>», до первого `state` — «…»), тап — `Screen.JAM_GUEST`, а не `Screen.JAM`.
+
+**Куда ведёт ссылка** — чистая функция в `LinkRouting.kt` (`LinkRoutingTest`):
+
+```kotlin
+data class HostSide(val roomId: String? = null, val active: Boolean = false, val storedSession: Boolean = false)
+data class GuestSide(val serverUrl: String? = null, val roomId: String? = null, val phase: GuestPhase = GuestPhase.None)
+enum class LinkRefusal { NOT_A_LINK, HOSTING }
+sealed interface LinkAction   // Ignore, Refuse(reason), AskSignIn(link), OpenHostJam, ShowGuest, OpenGuest(link)
+fun route(link: JamLink?, host: HostSide, guest: GuestSide, signedIn: Boolean, launchedFromHistory: Boolean): LinkAction
+val GuestPhase.isSession: Boolean   // isActive, NeedName или NoSecret
+```
+
+Первая подходящая строка:
+
+| Условие | `LinkAction` | Что делает `AppViewModel` |
+|---|---|---|
+| `launchedFromHistory` | `Ignore` | ничего (GUEST-21) |
+| в тексте нет ссылки `https://…/j/<roomId>` (`JamLink.find` вернул `null`; `http://` тоже) | `Refuse(NOT_A_LINK)` | тост `jam_join_bad_link` |
+| нет токена | `AskSignIn(link)` | ссылка ждёт в `pendingLink`; после входа — маршрут заново (GUEST-01, D8) |
+| `link.roomId` — комната, которую ведёт приложение (`JamLink.find(joinUrl)`) | `OpenHostJam` | `Screen.JAM` |
+| джем хозяина идёт, создаётся или ждёт «Продолжить джем?» | `Refuse(HOSTING)` | тост `jam_join_while_hosting`, `Screen.JAM` (GUEST-20, D1) |
+| та же комната (сервер и `roomId`) в `Joining`, `InRoom`, `WaitingForRoom` или `NeedName` | `ShowGuest` | `Screen.JAM_GUEST` |
+| иначе | `OpenGuest(link)` | `jamGuest.open(link)` (сессия другой комнаты уходит, как `leave`, D7), `Screen.JAM_GUEST` |
+
+`HostSide` и `GuestSide` строит `AppViewModel.routeLink` из `jamHost.state` и `jamGuest.state`. `signedIn` — есть ли токен в `TokenStore`, а не `Library.isLoggedIn`: на холодном старте аккаунт ещё не загружен. `openJamLink(text, launchedFromHistory = false): Boolean` — `true`, когда ссылка принята (`AskSignIn`, `OpenHostJam`, `ShowGuest`, `OpenGuest`). Обратное исключение (D1): `JamViewModel.start()` во время гостевой сессии — тост `jam_host_while_guest`, джем не создаётся.
+
+**`JamGuestScreen`** по `GuestPhase`:
+
+| Фаза | Экран |
+|---|---|
+| `None` | `JoinJamSection` |
+| `NeedName` | приглашение `jam_guest_invited`, сервер ссылки моноширинным, поле имени, «Войти» (`join`; отказ — тост `jam_guest_name_invalid`), «Отмена». Имя (GUEST-02) — `lastName`, иначе `displayName` или `login` аккаунта, через `GuestNames.prefill` (≤ 24 кодовых точки) |
+| `Joining`, а также `InRoom` до первого `state` | `jam_guest_joining` и «Отмена» |
+| `InRoom`, `WaitingForRoom` | комната |
+| `NoSecret`, `Refused`, `Ended`, `Kicked`, `UpdateRequired` | `GuestPhase.endText()` и «Закрыть» |
+
+«Отмена», «Закрыть» и «Выйти» — `jamGuest.leave()` (закрытие 1000, членство остаётся, GUEST-18) и `Screen.PLAYER`.
+
+**Комната** (`LazyColumn`: очередь бывает до 300 элементов):
+- Шапка «Джем · <хозяин>» и светодиод: `connected` — «На связи», соединение открыто или открывается — «Подключаюсь…», иначе «Нет связи». В концах сессии светодиода нет.
+- Строка состояния: `WaitingForRoom` — `jam_guest_waiting_for_room` (GUEST-16); нет `connected` — `jam_offline_strip` (GUEST-15); `!hostOnline` — `jam_guest_host_offline` (GUEST-09).
+- «Сейчас играет» (GUEST-14): обложка 64 dp (`JamTracks.fromJam(track).coverUrl`; у трека `source: host` обложки нет), название, исполнители и кто добавил: у `ITEM` — «Добавлено вами» или имя из `participants` (неизвестный — «кто-то»), у `WAVE` — `jam_guest_from_host` (D9). Время — `formatTime(positionMsAt(serverNow()))` из `jam/`, тикает раз в секунду (`LaunchedEffect` экрана; `serverNow` — часы сервера) и стоит на паузе. `IDLE` — `jam_guest_silence`. Справа ♥ (GUEST-12; только у трека каталога) и «Пропустить», пока `JamGuestState.canSkip` (GUEST-11).
+- «Добавить треки» → `JAM_GUEST_ADD`. Без связи или без хозяина приглушена, но открывается: списки работают и так (D10).
+- Очередь в порядке игры: «Очередь» и «Ваши N/max» (`waitingOfYours`, `maxPendingPerGuest`); свои строки — акцентом и с «×» (`remove`, GUEST-10; для TalkBack — `jam_guest_remove`), чужие — с именем добавившего; закреплённые — «следующий»; пусто — `jam_guest_queue_empty`; на пределе — plurals `jam_guest_limit_hint`.
+- «Участники · N»: светодиод «в сети», имя, вид (`jam_kind_*`), «вы».
+- «Выйти» с подтверждением вторым нажатием за 3 с (`jam_guest_leave_confirm`).
+
+**`JamGuestAddScreen`**: вкладки `PillToggle` «Поиск · Мне нравится · Плейлисты» (ряд прокручивается вбок: «Мне падабаецца» длинное), та же строка состояния (на пределе — подсказка лимита) и список в `LazyColumn`:
+- «Поиск» — `Library.searchTracks` своим аккаунтом (GUEST-06; `search` на сервер джема не уходит никогда, ROOM-27).
+- «Мне нравится» — `ListLoader` над `Library.likedTracks()` (чанки по 250, как «Мне нравится» библиотеки) и локальный фильтр по названию и исполнителям (`likedShown`).
+- «Плейлисты» — `ListLoader` над `Library.userPlaylists()`; тап по плейлисту — `Library.playlistTracks`, строка «‹ <плейлист>» и «назад» его закрывают.
+
+В списках только `available` треки, для которых `JamTracks.toJam` не `null`. Упавший список — `library_error` и `library_retry` (`retry()` повторяет текущую вкладку). Кнопка строки — по `JamGuestState.addAction(track.id)` (GUEST-08):
+
+| `AddAction` | Показ |
+|---|---|
+| `Add`, `Failed(reason)` | «Добавить»; у `Failed` под строкой `guestRefusedText(reason)` |
+| `Sending` | «…» (`jam_guest_sending`, не переводится) |
+| `HostOffline`; `null` — комнаты нет | «Добавить», приглушена |
+| `Limit(max)` | «Лимит» |
+| `Yours` | «Ваш, в очереди» |
+| `QueuedBy(name)` | «В очереди: имя», без имени — «В очереди» |
+
+«Добавить», в том числе приглушённая, — `JamGuestViewModel.add(track)` = `JamTracks.toJam(track)?.let(jamGuest::add)`; всё, кроме `SENT`, — тост `GuestAddResult.text()`: `NOT_CONNECTED` — `jam_no_connection`, `HOST_OFFLINE` — `jam_guest_host_offline`, `INVALID` (и `toJam` = `null`) — `jam_guest_add_invalid`.
+
+```kotlin
+enum class GuestTab { SEARCH, LIKED, PLAYLISTS }
+data class JamGuestUi(val name: String, val tab: GuestTab, val searchText: String, val results: ListState<Track>,
+                      val likedFilter: String, val playlist: PlaylistRef?, val playlistTracks: ListState<Track>)
+val state: StateFlow<JamGuestState>;  val ui: StateFlow<JamGuestUi>;  val notices: SharedFlow<String>
+val likedIds: StateFlow<Set<String>>;  val playlists: ListLoader<PlaylistRef>;  val likedShown: StateFlow<ListState<Track>>
+fun serverNow(): Long
+fun setName(text: String);  fun join();  fun leave();  fun add(track: Track);  fun remove(itemId: String);  fun skip()
+fun toggleLike();  fun setTab(tab: GuestTab);  fun retry();  fun setSearchText(text: String);  fun search()
+fun setLikedFilter(text: String);  fun openPlaylist(playlist: PlaylistRef);  fun closePlaylist()
+```
+
+`JamGuestViewModel` заполняет `ui.name` при каждом входе в `NeedName` и ещё раз, когда приходит аккаунт, пока пользователь имя не трогал (`setName`). `JamGuestEvent.Refused` (отказ в `remove`, `skip`) и свои отказы идут в `notices` → `AppViewModel.say`. Когда аккаунт становится пустым (выход), списки и вкладки сбрасываются: следующий аккаунт чужих лайков не увидит. `AppViewModel` следит за `jamGuest.state` и с `JAM_GUEST_ADD` переходит в комнату, когда фаза уже не `InRoom`/`WaitingForRoom`, чтобы конец сессии был виден.
+
+**Лайк себе** (GUEST-12, D12): `toggleLike()` берёт текущий трек комнаты, если он из каталога, и зовёт `Library.setLiked(id, !isLiked(id))` на `Dispatchers.IO`; тост `queue_liked` / `queue_unliked`, ошибка — в logcat и тост `error_generic` с видом ошибки. Сердце — `track.id in library.likedIds`. Не через `QueueController`. Второй тап, пока запрос в полёте, ничего не делает.
+
+**Traps:**
+- `graph.jamGuest` живёт на `Dispatchers.Main.immediate`: его зовут с главного потока (view model, колбэки Compose).
+- `jamGuest.open(link)` для знакомой комнаты подключается сразу, поэтому ссылку до входа держит `AppViewModel.pendingLink`, а не `JamGuest`.
+- `restore()` даёт `true` и для конца сессии, который ещё не закрыли кнопкой (фаза не `None`), — тогда стартовый экран показывает текст конца.
+- Ключей у строк списков треков нет: в плейлисте один трек может стоять дважды, а одинаковые ключи `LazyColumn` роняют приложение.
 
 ## Тема
 
@@ -200,11 +303,11 @@ class ListLoader<T>(scope: CoroutineScope, io: CoroutineContext, fetch: suspend 
 
 ## Строки
 
-Все тексты — `res/values/strings.xml` (английский), `res/values-be/strings.xml` (белорусский) и `res/values-ru/strings.xml`; `queue_loaded` и `queue_stopped_after_failures` — `plurals` (у белорусского и русского формы `one`, `few`, `many`, `other`). «Волна» Яндекса по-английски — **vibe** («My Vibe», «Jam vibe», «Wheel of vibes»), не wave; ключи (`library_my_wave`…) остались прежними. Слова те же, что на ПК: таблица в `translations/README.md` репозитория QiYaa. `StringsTest` проверяет, что каждый текст переведён на оба языка с теми же подстановками, формы plurals и что ни один английский текст не говорит «wave».
+Все тексты — `res/values/strings.xml` (английский), `res/values-be/strings.xml` (белорусский) и `res/values-ru/strings.xml`; `queue_loaded`, `queue_stopped_after_failures` и `jam_guest_limit_hint` — `plurals` (у белорусского и русского формы `one`, `few`, `many`, `other`). «Волна» Яндекса по-английски — **vibe** («My Vibe», «Jam vibe», «Wheel of vibes»), не wave; ключи (`library_my_wave`…) остались прежними. Слова те же, что на ПК: таблица в `translations/README.md` репозитория QiYaa. `StringsTest` проверяет, что каждый текст переведён на оба языка с теми же подстановками, формы plurals и что ни один английский текст не говорит «wave».
 
 **Качество звука** (`spec/player/quality.md`). Внизу библиотеки, над выбором языка: заголовок `quality_title`, строки «Wi-Fi» (`quality_wifi`) и «Мобильная сеть» (`quality_mobile`) с двумя `PillToggle` — `quality_standard` и `quality_economy` — и пояснение `quality_note`. Выбор уходит в `AppViewModel.setQuality` / `setQualityMetered` и действует со следующей подписи ссылки (см. `playback/README.md`, кэш ссылок). Примечание к «Слушать вместе» (`jam_share_audio_note`) говорит, что слушатели получают файлы только при стандартном качестве (LISTEN-13).
 
-**Язык интерфейса — свой, не системный.** `data/Settings.language` (по умолчанию белорусский). `AppLocale` даёт его приложению и `PlaybackService` в `attachBaseContext` (контекст с локалью) и активности — через `applyOverrideConfiguration`, чтобы она по-прежнему следила за экраном и тёмной темой. `LanguageSwitch` (коды `BE RU EN`, текущий подсвечен) стоит на экране входа (сменить язык можно до входа) и внизу библиотеки с подписью `language_title` и английским словом «LANGUAGE», чтобы непонятный язык можно было отменить. Выбор: `AppViewModel.setLanguage` сохраняет язык и переводит ресурсы приложения (`AppLocale.apply`), экран пересоздаёт активность; сервис перестраивает кнопки уведомления под новый язык. Системная смена конфигурации сбрасывает локаль ресурсов приложения и сервиса — `onConfigurationChanged` применяет язык заново. В сборке `bundle.language.enableSplit = false`: все языки должны быть в установке. Ключи `jam_*` — экраны джема; `toggle_on` / `toggle_off` — подписи `OnOffPills` по умолчанию (до #79 — `jam_on` / `jam_off`, тексты те же: On / Off, Да / Нет, Так / Не); `vibe_continue_*` — «Продолжать волной» в плейлисте и библиотеке; `jam_refused_*` — причины отказа сервера, неизвестная причина — `jam_refused_other`; `playlist_hold_hint`, `playlist_actions` (подпись долгого нажатия для TalkBack), `playlist_unlike`, `playlist_open` — долгое нажатие и лист действий с треком, а дизлайк в листе берёт готовые `library_dislike` и `player_dislike_skip`. Ключи `queue_*` рендерят `QueueEvent` (в том числе `queue_waiting_for_network` и plurals `queue_stopped_after_failures`), `theme_*` — подписи `AccentTheme`.
+**Язык интерфейса — свой, не системный.** `data/Settings.language` (по умолчанию белорусский). `AppLocale` даёт его приложению и `PlaybackService` в `attachBaseContext` (контекст с локалью) и активности — через `applyOverrideConfiguration`, чтобы она по-прежнему следила за экраном и тёмной темой. `LanguageSwitch` (коды `BE RU EN`, текущий подсвечен) стоит на экране входа (сменить язык можно до входа) и внизу библиотеки с подписью `language_title` и английским словом «LANGUAGE», чтобы непонятный язык можно было отменить. Выбор: `AppViewModel.setLanguage` сохраняет язык и переводит ресурсы приложения (`AppLocale.apply`), экран пересоздаёт активность; сервис перестраивает кнопки уведомления под новый язык. Системная смена конфигурации сбрасывает локаль ресурсов приложения и сервиса — `onConfigurationChanged` применяет язык заново. В сборке `bundle.language.enableSplit = false`: все языки должны быть в установке. Ключи `jam_*` — экраны джема; `toggle_on` / `toggle_off` — подписи `OnOffPills` по умолчанию (до #79 — `jam_on` / `jam_off`, тексты те же: On / Off, Да / Нет, Так / Не); `vibe_continue_*` — «Продолжать волной» в плейлисте и библиотеке; `jam_refused_*` — причины отказа сервера: все 18 значений `reason` из `spec/jam/protocol/schemas/defs.schema.json` (`JamEventTextTest`), `kicked` — `jam_guest_kicked`, неизвестная причина — `jam_refused_other`, а `queue-limit` гостю — `jam_refused_guest_queue_limit` (его собственный лимит), хозяину — `jam_refused_queue_limit`; `jam_join_*` — «Войти в джем» и отказы ссылки, `jam_host_while_guest`, `jam_library_guest`, `jam_guest_*` — экраны гостя (`jam_guest_sending` — «…», `translatable="false"`); `playlist_hold_hint`, `playlist_actions` (подпись долгого нажатия для TalkBack), `playlist_unlike`, `playlist_open` — долгое нажатие и лист действий с треком, а дизлайк в листе берёт готовые `library_dislike` и `player_dislike_skip`. Ключи `queue_*` рендерят `QueueEvent` (в том числе `queue_waiting_for_network` и plurals `queue_stopped_after_failures`), `theme_*` — подписи `AccentTheme`.
 
 ## Not here
 

@@ -138,6 +138,12 @@ object GuestNames {
         val cleaned = name.replace(JAVASCRIPT_SPACES, " ").trim(' ')
         return cleaned.takeIf { it.codePointCount(0, it.length) in 1..MAX_NAME }
     }
+
+    fun prefill(name: String): String {
+        val cleaned = name.replace(JAVASCRIPT_SPACES, " ").trim(' ')
+        if (cleaned.codePointCount(0, cleaned.length) <= MAX_NAME) return cleaned
+        return cleaned.substring(0, cleaned.offsetByCodePoints(0, MAX_NAME)).trimEnd(' ')
+    }
 }
 
 class JamGuest(

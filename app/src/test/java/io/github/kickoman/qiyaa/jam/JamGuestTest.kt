@@ -65,6 +65,17 @@ class JamGuestTest {
     }
 
     @Test
+    fun `GUEST-02 the prefilled name is cleaned and cut to 24 code points`() {
+        assertEquals("Аня Ковалёва", GuestNames.prefill(" Аня　 Ковалёва"))
+        assertEquals(GUITAR.repeat(24), GuestNames.prefill(GUITAR.repeat(30)))
+        assertEquals("x".repeat(23), GuestNames.prefill("x".repeat(23) + " " + "y".repeat(10)))
+        assertEquals("", GuestNames.prefill("   "))
+        for (name in listOf("Аня Ковалёва", GUITAR.repeat(30), "x".repeat(40))) {
+            assertEquals(name, GuestNames.prefill(name), GuestNames.clean(GuestNames.prefill(name)))
+        }
+    }
+
+    @Test
     fun `GUEST-02 a name that breaks the name rule is not sent`() = runTest {
         val h = Harness(this)
         h.guest.open(LINK)
