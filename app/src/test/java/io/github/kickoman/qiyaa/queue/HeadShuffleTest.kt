@@ -54,6 +54,52 @@ class HeadShuffleTest {
     }
 
     @Test
+    fun `items inserted after an index of the head follow it in the head, which goes on behind them`() {
+        val shuffle = HeadShuffle(listOf(2, 0, 1), 5)
+        val inserted = shuffle.insertedAfter(1, 2)
+        assertEquals(HeadShuffle(listOf(4, 0, 1, 2, 3), 7), inserted)
+        assertEquals(listOf(4, 0, 1, 2, 3, 5, 6), inserted.order)
+        assertEquals(listOf(2, 3, 4, 0, 1, 5, 6), shuffle.insertedAfter(3, 2).order)
+    }
+
+    @Test
+    fun `items inserted after an index of the rest follow it in index order, as plain inserted ones`() {
+        val shuffle = HeadShuffle(listOf(1, 0), 5)
+        assertEquals(shuffle.inserted(3, 1), shuffle.insertedAfter(3, 1))
+        assertEquals(listOf(1, 0, 2, 3, 4, 5), shuffle.insertedAfter(3, 1).order)
+        assertEquals(shuffle.inserted(5, 2), shuffle.insertedAfter(5, 2))
+        assertEquals(shuffle.inserted(0, 2), shuffle.insertedAfter(0, 2))
+    }
+
+    @Test
+    fun `items inserted after nothing into an empty order become the head`() {
+        assertEquals(HeadShuffle(listOf(0, 1, 2), 3), HeadShuffle.EMPTY.insertedAfter(0, 3))
+    }
+
+    @Test
+    fun `a pass over any head is the lead, then the rest of the head shuffled, then the other indices`() {
+        repeat(20) { seed ->
+            val shuffle = HeadShuffle.pass(listOf(1, 3, 4, 5), length = 7, lead = listOf(3, 6), Random(seed))
+            assertEquals(listOf(3, 6), shuffle.order.take(2))
+            assertEquals(setOf(1, 4, 5), shuffle.order.subList(2, 5).toSet())
+            assertEquals(listOf(0, 2), shuffle.order.drop(5))
+        }
+        val empty = HeadShuffle.pass(listOf(0, 1), length = 3, lead = emptyList(), Random(0))
+        assertEquals(setOf(0, 1), empty.head.toSet())
+        assertEquals(2, empty.order.last())
+    }
+
+    @Test
+    fun `the pass of a head size and a first track is the pass of the head prefix led by that track`() {
+        for (first in listOf(-1, 2, 5)) {
+            assertEquals(
+                HeadShuffle.pass(listOf(0, 1, 2, 3), 6, listOf(first).filter { it < 4 }, Random(3)),
+                HeadShuffle.pass(headSize = 4, length = 6, first = first, random = Random(3)),
+            )
+        }
+    }
+
+    @Test
     fun `removing drops the removed indices from the head and shifts the ones after them`() {
         val shuffle = HeadShuffle(listOf(3, 0, 4, 1), 6)
         assertEquals(HeadShuffle(listOf(1, 0, 2), 4), shuffle.removed(1, 3))

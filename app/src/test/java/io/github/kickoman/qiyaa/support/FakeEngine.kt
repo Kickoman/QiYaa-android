@@ -71,13 +71,14 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
         playWhenReady: Boolean,
         startIndex: Int,
         startPositionMs: Long,
-        headSize: Int,
+        head: List<Int>,
+        lead: List<Int>,
     ) {
         val start = if (startIndex == 0 && startPositionMs == 0L) "" else " at $startIndex:$startPositionMs"
         commands += "set ${tracks.map { it.id }} play=$playWhenReady$start"
         this.tracks.clear()
         this.tracks += tracks
-        shuffle = pass(headSize, startIndex)
+        shuffle = pass(head, lead)
         currentIndex = startIndex
         positionMs = startPositionMs
         isEnded = false
@@ -85,29 +86,30 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
         report(tracks.getOrNull(startIndex), Transition.NEW_QUEUE)
     }
 
-    override fun shuffleHead(headSize: Int, first: Int) {
-        shuffle = pass(headSize, first)
+    override fun shuffleHead(head: List<Int>, lead: List<Int>) {
+        shuffle = pass(head, lead)
     }
 
-    private fun pass(headSize: Int, first: Int): HeadShuffle {
-        val head = (0 until headSize.coerceIn(0, tracks.size)).toList()
-        return HeadShuffle(if (first in head) listOf(first) + (head - first) else head, tracks.size)
+    private fun pass(head: List<Int>, lead: List<Int>): HeadShuffle {
+        val front = lead.filter { it in tracks.indices }.distinct()
+        val rest = head.filter { it in tracks.indices && it !in front }.distinct().sorted()
+        return HeadShuffle(front + rest, tracks.size)
     }
 
     override fun appendTracks(tracks: List<Track>) {
         commands += "append ${tracks.map { it.id }}"
-        insert(this.tracks.size, tracks)
+        insert(this.tracks.size, tracks, shuffle.inserted(this.tracks.size, tracks.size))
     }
 
     override fun insertTracks(index: Int, tracks: List<Track>) {
         commands += "insert $index ${tracks.map { it.id }}"
-        insert(index, tracks)
+        insert(index, tracks, shuffle.insertedAfter(index, tracks.size))
     }
 
-    private fun insert(index: Int, added: List<Track>) {
+    private fun insert(index: Int, added: List<Track>, order: HeadShuffle) {
         val wasEmpty = tracks.isEmpty()
         tracks.addAll(index, added)
-        shuffle = shuffle.inserted(index, added.size)
+        shuffle = order
         if (!wasEmpty && index <= currentIndex) currentIndex += added.size
         if (wasEmpty && tracks.isNotEmpty()) {
             currentIndex = 0

@@ -22,10 +22,11 @@ interface PlayerEngine {
         playWhenReady: Boolean,
         startIndex: Int = 0,
         startPositionMs: Long = 0,
-        headSize: Int = tracks.size,
+        head: List<Int> = tracks.indices.toList(),
+        lead: List<Int> = listOf(startIndex),
     )
 
-    fun shuffleHead(headSize: Int, first: Int)
+    fun shuffleHead(head: List<Int>, lead: List<Int>)
 
     fun appendTracks(tracks: List<Track>)
 

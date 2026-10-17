@@ -18,7 +18,7 @@ grep -rln 'qiyaa\.\(playback\|ui\|data\)\.' app/src/main/java/io/github/kickoman
 | `PlayerEngine.kt` | `PlayerEngine` — что очереди нужно от плеера |
 | `QueueWalk.kt` | `QueueWalk` — обход очереди: какая запись играет следующей и сколько осталось; порядок движка — его быстрый путь |
 | `StartHistory.kt` | `StartHistory` — сиды волны по истории: последние 5 разных треков головы, которые начинались, последний первым |
-| `HeadShuffle.kt` | `HeadShuffle` — порядок shuffle: проход головы, за ним остальные индексы по возрастанию; вставка, удаление и новый проход (чистая арифметика для `playback/HeadShuffleOrder` и `support/FakeEngine`) |
+| `HeadShuffle.kt` | `HeadShuffle` — порядок shuffle: проход головы, за ним остальные индексы по возрастанию; вставка в остаток или сразу за соседом, удаление и новый проход по любым индексам головы с заданным началом (чистая арифметика для `playback/HeadShuffleOrder` и `support/FakeEngine`) |
 | `MusicSource.kt` | `MusicSource` — какие запросы к библиотеке делает очередь |
 | `LibraryMusicSource.kt` | `LibraryMusicSource` — `MusicSource` поверх `yandex/Library` |
 | `QueueEvent.kt` | `QueueEvent` — что очередь сообщает наружу |
@@ -147,15 +147,17 @@ interface PlayerEngine {
     var shuffleEnabled: Boolean;  var repeatEnabled: Boolean
     var pauseAtEndOfCurrent: Boolean   // встать на паузу в конце текущего трека и сообщить onPausedAtEnd()
     fun hasNext(): Boolean;  fun hasPrevious(): Boolean;  fun playOrder(): List<Int>
-    fun setTracks(tracks: List<Track>, playWhenReady: Boolean, startIndex: Int = 0, startPositionMs: Long = 0, headSize: Int = tracks.size)
-    fun shuffleHead(headSize: Int, first: Int)   // новый проход головы; first = -1, когда курсор не в голове
-    fun appendTracks(tracks);  fun insertTracks(index, tracks);  fun removeAt(index);  fun clear()
+    fun setTracks(tracks: List<Track>, playWhenReady: Boolean, startIndex: Int = 0, startPositionMs: Long = 0, head: List<Int> = tracks.indices.toList(), lead: List<Int> = listOf(startIndex))
+    fun shuffleHead(head: List<Int>, lead: List<Int>)   // новый проход головы: сначала lead, затем остальная голова
+    fun appendTracks(tracks)              // после всего, головой не становятся (продолжение, CONT-09)
+    fun insertTracks(index, tracks)       // сразу за треком index - 1 в порядке воспроизведения («играть следующим»)
+    fun removeAt(index);  fun clear()
     fun seekTo(index);  fun seekToPosition(positionMs);  fun skipToNext();  fun skipToPrevious()
     fun prepare();  fun play();  fun pause();  fun stop()
 }
 ```
 
-Голова — первые `headSize` индексов плейлиста; контроллер передаёт число записей `HEAD` в начале очереди (у волны 0, у обычной очереди — все). Контракт порядка: с shuffle `playOrder()` — проход головы, который начинается с `startIndex` (`setTracks`) или `first` (`shuffleHead`), если тот в голове, затем остальные индексы по возрастанию. Вставленные позже треки головой не становятся; вставка в пустой плейлист делает вставленные треки головой. Удаление сохраняет порядок остальных. Движок держит этот порядок уже тогда, когда сообщает о смене трека, вызванной правкой (`onItemChanged` из `setTracks`): контроллер читает `playOrder()` прямо в колбэке. Вставка в пустой плейлист сообщает новый текущий трек (`onItemChanged`, `NEW_QUEUE`), а `seekTo` на текущий индекс — только перемотку (`onSeeked()`), как ExoPlayer. `pauseAtEndOfCurrent`: дойдя до конца текущего трека, движок не переходит к следующему, а ставит `playWhenReady = false` и зовёт `onPausedAtEnd()`; контроллер держит флаг включённым, пока цель обхода не совпадает с естественным следующим движка («Что играет следующим»), и пересчитывает его в `applyModes()`. Адаптер Media3 и `HeadShuffleOrder` — в `playback/README.md`.
+Голова — индексы `head`, не обязательно префикс; контроллер передаёт индексы записей `HEAD` (у волны их нет, у обычной очереди — все, кроме продолжения). `lead` — с чего начинается проход: контроллер передаёт трек, с которого очередь играет (`startIndex` в `setTracks`, текущий трек в `shuffleHead`), если это запись `HEAD`, иначе пусто. Контракт порядка: с shuffle `playOrder()` — сначала `lead`, затем остальная голова в случайном порядке, затем остальные индексы по возрастанию. `appendTracks` дописывает треки в конец: головой они не становятся, и продолжение идёт за всей головой. `insertTracks(index, …)` ставит треки сразу за треком `index - 1` в порядке воспроизведения: если тот в проходе головы, вставленные встают в проход прямо за ним, и проход идёт дальше за ними; если в остатке — они и так следуют за ним по возрастанию. Так вставленный трек — следующий и для ExoPlayer, который заранее грузит следующий. Вставка в пустой плейлист делает вставленные треки головой. Удаление сохраняет порядок остальных. Движок держит этот порядок уже тогда, когда сообщает о смене трека, вызванной правкой (`onItemChanged` из `setTracks`): контроллер читает `playOrder()` прямо в колбэке. Вставка в пустой плейлист сообщает новый текущий трек (`onItemChanged`, `NEW_QUEUE`), а `seekTo` на текущий индекс — только перемотку (`onSeeked()`), как ExoPlayer. `pauseAtEndOfCurrent`: дойдя до конца текущего трека, движок не переходит к следующему, а ставит `playWhenReady = false` и зовёт `onPausedAtEnd()`; контроллер держит флаг включённым, пока цель обхода не совпадает с естественным следующим движка («Что играет следующим»), и пересчитывает его в `applyModes()`. Адаптер Media3 и `HeadShuffleOrder` — в `playback/README.md`.
 
 ## Режим джема
 

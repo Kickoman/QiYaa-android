@@ -140,8 +140,9 @@ class QueueController(
         if (state.tracks.isEmpty()) return
         applyModes()
         val index = restore.index.coerceIn(0, state.tracks.lastIndex)
-        val headSize = headSizeOf(state.entries)
-        engine.setTracks(state.tracks, restore.playWhenReady, index, restore.positionMs, headSize)
+        val head = headOf(state.entries)
+        val lead = leadAt(state.entries, index)
+        engine.setTracks(state.tracks, restore.playWhenReady, index, restore.positionMs, head, lead)
         jam?.let(::applyJamQueue)
     }
 
@@ -374,14 +375,16 @@ class QueueController(
 
     private fun startShufflePass() {
         val current = engine ?: return
-        val headSize = headSizeOf(mutableState.value.entries)
-        val inHead = current.itemCount > 0 && current.currentIndex < headSize
-        val first = if (inHead) current.currentIndex else -1
-        current.shuffleHead(headSize, first)
+        val entries = mutableState.value.entries
+        val lead = if (current.itemCount > 0) leadAt(entries, current.currentIndex) else emptyList()
+        current.shuffleHead(headOf(entries), lead)
     }
 
-    private fun headSizeOf(entries: List<QueueEntry>): Int =
-        entries.takeWhile { it.part == EntryPart.HEAD }.size
+    private fun headOf(entries: List<QueueEntry>): List<Int> =
+        entries.indices.filter { entries[it].part == EntryPart.HEAD }
+
+    private fun leadAt(entries: List<QueueEntry>, index: Int): List<Int> =
+        listOf(index).filter { entries.getOrNull(it)?.part == EntryPart.HEAD }
 
     fun setRepeat(on: Boolean) {
         repeatRule.onUserChanged(on, modesLocked())
@@ -615,7 +618,7 @@ class QueueController(
         }
         restorePoint = null
         val tracks = playable.map(QueueEntry::track)
-        current.setTracks(tracks, playWhenReady = autoplay, headSize = headSizeOf(playable))
+        current.setTracks(tracks, autoplay, head = headOf(playable), lead = leadAt(playable, 0))
         save()
     }
 
@@ -1003,7 +1006,8 @@ class QueueController(
             state.copy(entries = state.entries.map { QueueEntry(it.track) }, jamSlots = null)
         }
         if (current != null && current.itemCount > 0) {
-            current.shuffleHead(current.itemCount, current.currentIndex)
+            val entries = mutableState.value.entries
+            current.shuffleHead(headOf(entries), leadAt(entries, current.currentIndex))
         }
         applyModes()
         save()

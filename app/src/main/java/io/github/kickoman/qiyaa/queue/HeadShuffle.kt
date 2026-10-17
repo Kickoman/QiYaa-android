@@ -18,6 +18,16 @@ data class HeadShuffle(val head: List<Int>, val length: Int) {
         return HeadShuffle(head.map { if (it >= at) it + count else it }, length + count)
     }
 
+    fun insertedAfter(at: Int, count: Int): HeadShuffle {
+        val shifted = inserted(at, count)
+        val split = head.indexOf(at - 1) + 1
+        if (split == 0) return shifted
+        return HeadShuffle(
+            shifted.head.take(split) + (at until at + count) + shifted.head.drop(split),
+            length + count,
+        )
+    }
+
     fun removed(from: Int, until: Int): HeadShuffle {
         require(from in 0..until && until <= length) {
             "Cannot remove $from until $until from a length of $length"
@@ -30,10 +40,15 @@ data class HeadShuffle(val head: List<Int>, val length: Int) {
     companion object {
         val EMPTY = HeadShuffle(emptyList(), 0)
 
+        fun pass(head: List<Int>, length: Int, lead: List<Int>, random: Random): HeadShuffle {
+            val front = lead.filter { it in 0 until length }.distinct()
+            val rest = head.filter { it in 0 until length && it !in front }.distinct().shuffled(random)
+            return HeadShuffle(front + rest, length)
+        }
+
         fun pass(headSize: Int, length: Int, first: Int, random: Random): HeadShuffle {
-            val size = headSize.coerceIn(0, length)
-            val rest = (0 until size).filter { it != first }.shuffled(random)
-            return HeadShuffle(if (first in 0 until size) listOf(first) + rest else rest, length)
+            val head = (0 until headSize.coerceIn(0, length)).toList()
+            return pass(head, length, listOf(first).filter(head::contains), random)
         }
     }
 }
