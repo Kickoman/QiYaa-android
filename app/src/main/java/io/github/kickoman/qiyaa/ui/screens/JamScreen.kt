@@ -1,5 +1,6 @@
 package io.github.kickoman.qiyaa.ui.screens
 
+import android.content.ClipData
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -20,15 +21,16 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -69,6 +71,7 @@ import io.github.kickoman.qiyaa.ui.theme.mono
 import io.github.kickoman.qiyaa.ui.theme.sans
 import io.github.kickoman.qiyaa.yandex.Track
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private const val END_CONFIRM_MS = 3_000L
 private val ROW_BUTTON_WIDTH = 76.dp
@@ -172,7 +175,8 @@ private fun Connecting(viewModel: JamViewModel) {
 private fun ActiveJam(viewModel: JamViewModel, state: JamHostState) {
     val colors = Qi.colors
     val context = LocalContext.current
-    val clipboard = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
     val joinUrl = state.joinUrl.orEmpty()
     val room = state.room
     val enabled = state.connected
@@ -208,7 +212,7 @@ private fun ActiveJam(viewModel: JamViewModel, state: JamHostState) {
                 context.startActivity(Intent.createChooser(send, shareTitle))
             }
             ActionButton(stringResource(R.string.jam_copy).uppercase(), Modifier.weight(1f)) {
-                clipboard.setText(AnnotatedString(joinUrl))
+                scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(null, joinUrl))) }
                 viewModel.say(copied)
             }
         }

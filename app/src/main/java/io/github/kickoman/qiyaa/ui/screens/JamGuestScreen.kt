@@ -28,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -35,7 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
@@ -89,6 +90,7 @@ import io.github.kickoman.qiyaa.ui.theme.sans
 import io.github.kickoman.qiyaa.yandex.PlaylistRef
 import io.github.kickoman.qiyaa.yandex.Track
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private const val LEAVE_CONFIRM_MS = 3_000L
 private const val TICK_MS = 1_000L
@@ -98,7 +100,8 @@ private val ADD_CELL_WIDTH = 104.dp
 @Composable
 fun JoinJamSection(onJoin: (String) -> Boolean) {
     val colors = Qi.colors
-    val clipboard = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
     var text by rememberSaveable { mutableStateOf("") }
     val join = { if (onJoin(text)) text = "" }
     SectionLabel(stringResource(R.string.jam_join_title))
@@ -115,7 +118,10 @@ fun JoinJamSection(onJoin: (String) -> Boolean) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         ActionButton(stringResource(R.string.jam_join_paste).uppercase(), Modifier.weight(1f)) {
-            clipboard.getText()?.text?.let { text = it.replace('\n', ' ').trim() }
+            scope.launch {
+                val clip = clipboard.getClipEntry()?.clipData?.takeIf { it.itemCount > 0 }
+                clip?.getItemAt(0)?.text?.let { text = it.toString().replace('\n', ' ').trim() }
+            }
         }
         ActionButton(
             stringResource(R.string.jam_join_go).uppercase(),
