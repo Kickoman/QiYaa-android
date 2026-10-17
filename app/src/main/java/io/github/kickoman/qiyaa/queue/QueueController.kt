@@ -258,8 +258,14 @@ class QueueController(
 
     fun stop() {
         val current = engine ?: return
+        stopWaiting()
         current.pause()
         restart(current)
+    }
+
+    private fun stopWaiting() {
+        continueAtEnd = false
+        publishLoadingMore()
     }
 
     private fun restart(current: PlayerEngine) {
@@ -302,7 +308,10 @@ class QueueController(
     fun onItemChanged(track: Track?, transition: Transition, isPlaying: Boolean) {
         val current = engine ?: return
         playing = isPlaying
-        if (track != null) stoppedAtEnd = false
+        if (track != null) {
+            stoppedAtEnd = false
+            stopWaiting()
+        }
         applyModes()
         apply(playTracker.onItemChanged(track, transition, isPlaying))
         save()
@@ -382,6 +391,7 @@ class QueueController(
     }
 
     fun onSeeked() {
+        stopWaiting()
         reportJam()
         save()
     }

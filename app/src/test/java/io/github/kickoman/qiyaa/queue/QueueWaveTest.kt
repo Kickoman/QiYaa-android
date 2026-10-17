@@ -246,6 +246,26 @@ class QueueWaveTest {
     }
 
     @Test
+    fun `WAVE-08 a track picked while the wave waits for a load-more keeps playing when the reply comes`() =
+        runTest {
+            val harness = startedWave(this, "w1", "w2")
+            val reply = CompletableDeferred<WaveBatch>()
+            var requests = 0
+            harness.source.onMoreWave =
+                { _, _ -> if (++requests == 1) reply.await() else CompletableDeferred<WaveBatch>().await() }
+            harness.engine.finishTrack()
+            harness.engine.finishTrack()
+            runCurrent()
+            assertTrue(harness.engine.isEnded)
+            harness.engine.seekTo(0)
+            harness.engine.commands.clear()
+            reply.complete(WaveBatch("S1", "B2", tracks("m1", "m2")))
+            runCurrent()
+            assertEquals(listOf("append [m1, m2]"), harness.engine.commands)
+            assertEquals(0, harness.engine.currentIndex)
+        }
+
+    @Test
     fun `WAVE-08 with rows removed during a load-more, the reply plays its first new track`() = runTest {
         val harness = startedWave(this, "w1", "w2", "w3")
         val reply = CompletableDeferred<WaveBatch>()

@@ -512,6 +512,24 @@ class QueueJamTest {
         assertEquals(listOf("startWave [track:X, track:a]"), h.source.calls)
     }
 
+    @Test
+    fun `HOST-14 HOST-32 a vibe request in flight at the jam start does not stop the vibe after the jam`() =
+        runTest {
+            val h = QueueHarness(this, continueWithVibe = true)
+            h.source.onStartWave = { CompletableDeferred<WaveBatch>().await() }
+            h.controller.loadSource("Likes") { tracks("a", "b") }
+            runCurrent()
+            h.engine.startPlaying()
+            runCurrent()
+            assertEquals(listOf("startWave [track:a]"), h.source.calls)
+            h.startJam()
+            h.state(item("i1", "X"))
+            h.controller.endJam()
+            h.engine.finishTrack()
+            runCurrent()
+            assertEquals(listOf("startWave [track:a]", "startWave [track:X, track:a]"), h.source.calls)
+        }
+
     private class Recorder : JamPlaybackListener {
         val started = mutableListOf<String>()
         val playbacks = mutableListOf<JamPlayback>()

@@ -96,7 +96,7 @@ class Media3Engine(
 
     fun attach() {
         player.addListener(listener)
-        order = installed()
+        order = HeadShuffleOrder.fitted(order, player.mediaItemCount)
         player.setShuffleOrder(HeadShuffleOrder(order, random))
         controller.attach(this)
     }
@@ -145,7 +145,7 @@ class Media3Engine(
     override fun appendTracks(tracks: List<Track>) = insertTracks(player.mediaItemCount, tracks)
 
     override fun insertTracks(index: Int, tracks: List<Track>) {
-        val inserted = installed().inserted(index, tracks.size)
+        val inserted = HeadShuffleOrder.afterInsert(order, player.mediaItemCount, index, tracks.size)
         if (player.mediaItemCount == 0) {
             player.setShuffleOrder(HeadShuffleOrder.staging(order, 0, inserted, random))
         }
@@ -154,7 +154,7 @@ class Media3Engine(
     }
 
     override fun removeAt(index: Int) {
-        order = installed().removed(index, index + 1)
+        order = HeadShuffleOrder.afterRemove(order, player.mediaItemCount, index)
         player.removeMediaItem(index)
     }
 
@@ -162,9 +162,6 @@ class Media3Engine(
         order = HeadShuffle.EMPTY
         player.clearMediaItems()
     }
-
-    private fun installed(): HeadShuffle =
-        order.takeIf { it.length == player.mediaItemCount } ?: HeadShuffle(emptyList(), player.mediaItemCount)
 
     override fun seekTo(index: Int) = player.seekTo(index, 0L)
 

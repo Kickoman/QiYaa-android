@@ -84,6 +84,31 @@ class HeadShuffleOrderTest {
         assertEquals(listOf(3, 1, 0, 2, 4, 5), walk(installed.cloneAndRemove(0, 2).cloneAndInsert(0, 6)))
     }
 
+    @Test
+    fun `the engine's copy changes as ExoPlayer's order does on an insert or a removal`() {
+        val copy = HeadShuffle(listOf(2, 0), 3)
+        assertEquals(copy.inserted(1, 2), HeadShuffleOrder.afterInsert(copy, 3, 1, 2))
+        assertEquals(copy.removed(0, 1), HeadShuffleOrder.afterRemove(copy, 3, 0))
+        assertEquals(HeadShuffle(listOf(0, 1), 2), HeadShuffleOrder.afterInsert(HeadShuffle.EMPTY, 0, 0, 2))
+    }
+
+    @Test
+    fun `an insert past the end goes to the end and a removal past it changes nothing, as in ExoPlayer`() {
+        val copy = HeadShuffle(listOf(2, 0), 3)
+        assertEquals(HeadShuffle(listOf(2, 0), 5), HeadShuffleOrder.afterInsert(copy, 3, 7, 2))
+        assertEquals(copy, HeadShuffleOrder.afterRemove(copy, 3, 3))
+    }
+
+    @Test
+    fun `over a playlist changed from outside, the copy takes the player's length before an edit`() {
+        val copy = HeadShuffle(listOf(2, 0, 1), 3)
+        assertEquals(HeadShuffle(emptyList(), 2), HeadShuffleOrder.fitted(copy, 2))
+        assertEquals(HeadShuffle(emptyList(), 2), HeadShuffleOrder.afterRemove(copy, 2, 2))
+        assertEquals(HeadShuffle(emptyList(), 1), HeadShuffleOrder.afterRemove(copy, 2, 1))
+        assertEquals(HeadShuffle(emptyList(), 4), HeadShuffleOrder.afterInsert(copy, 2, 3, 2))
+        assertEquals(copy, HeadShuffleOrder.fitted(copy, 3))
+    }
+
     private fun walk(order: ShuffleOrder): List<Int> =
         generateSequence(order.firstIndex.takeIf { it != C.INDEX_UNSET }) { index ->
             order.getNextIndex(index).takeIf { it != C.INDEX_UNSET }

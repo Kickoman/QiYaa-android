@@ -49,9 +49,17 @@ class HeadShuffleOrder(
             itemCount: Int,
             pass: HeadShuffle,
             random: Random,
-        ): HeadShuffleOrder {
-            val current = installed.takeIf { it.length == itemCount } ?: HeadShuffle(emptyList(), itemCount)
-            return HeadShuffleOrder(current, random, pass)
+        ): HeadShuffleOrder = HeadShuffleOrder(fitted(installed, itemCount), random, pass)
+
+        fun fitted(copy: HeadShuffle, itemCount: Int): HeadShuffle =
+            copy.takeIf { it.length == itemCount } ?: HeadShuffle(emptyList(), itemCount)
+
+        fun afterInsert(copy: HeadShuffle, itemCount: Int, index: Int, count: Int): HeadShuffle =
+            fitted(copy, itemCount).inserted(index.coerceAtMost(itemCount), count)
+
+        fun afterRemove(copy: HeadShuffle, itemCount: Int, index: Int): HeadShuffle {
+            val current = fitted(copy, itemCount)
+            return if (index >= itemCount) current else current.removed(index, index + 1)
         }
     }
 }

@@ -202,6 +202,68 @@ class QueueContinuationTest {
     }
 
     @Test
+    fun `CONT-03 WAVE-08 a track picked while waiting for the vibe keeps playing when the reply comes`() =
+        runTest {
+            val harness = head(this, "a", "b")
+            val reply = CompletableDeferred<WaveBatch>()
+            harness.source.onStartWave = { reply.await() }
+            harness.engine.startPlaying()
+            harness.engine.finishTrack()
+            harness.engine.finishTrack()
+            runCurrent()
+            assertTrue(harness.controller.state.value.loadingMore)
+            harness.engine.seekTo(0)
+            assertFalse("the footer goes with the wait", harness.controller.state.value.loadingMore)
+            harness.engine.commands.clear()
+            reply.complete(WaveBatch("V1", "B1", tracks("v1", "v2")))
+            runCurrent()
+            assertEquals(listOf("append [v1, v2]"), harness.engine.commands)
+            assertEquals(0, harness.engine.currentIndex)
+        }
+
+    @Test
+    fun `CONT-03 WAVE-08 Play at the end that replays the last track keeps it when the reply comes`() =
+        runTest {
+            val harness = head(this, "a", "b")
+            val reply = CompletableDeferred<WaveBatch>()
+            harness.source.onStartWave = { reply.await() }
+            harness.engine.startPlaying()
+            harness.engine.finishTrack()
+            harness.engine.finishTrack()
+            runCurrent()
+            assertTrue(harness.controller.state.value.loadingMore)
+            harness.engine.seekTo(1)
+            assertFalse(harness.controller.state.value.loadingMore)
+            harness.engine.commands.clear()
+            reply.complete(WaveBatch("V1", "B1", tracks("v1", "v2")))
+            runCurrent()
+            assertEquals(listOf("append [v1, v2]"), harness.engine.commands)
+            assertEquals(1, harness.engine.currentIndex)
+        }
+
+    @Test
+    fun `CONT-03 WAVE-08 Stop while waiting for the vibe stays stopped when the reply comes`() = runTest {
+        val harness = head(this, "a", "b")
+        val reply = CompletableDeferred<WaveBatch>()
+        harness.source.onStartWave = { reply.await() }
+        harness.engine.startPlaying()
+        harness.engine.finishTrack()
+        runCurrent()
+        harness.controller.next()
+        runCurrent()
+        assertEquals(QueueEvent.LoadingMore, harness.events.last())
+        assertTrue(harness.controller.state.value.loadingMore)
+        harness.controller.stop()
+        assertFalse(harness.controller.state.value.loadingMore)
+        harness.engine.commands.clear()
+        reply.complete(WaveBatch("V1", "B1", tracks("v1", "v2")))
+        runCurrent()
+        assertEquals(listOf("append [v1, v2]"), harness.engine.commands)
+        assertEquals(1, harness.engine.currentIndex)
+        assertFalse(harness.engine.playWhenReady)
+    }
+
+    @Test
     fun `CONT-04 two from the end the vibe starts on the started tracks, after the head, with no status`() =
         runTest {
             val harness = head(this, "a", "b", "c", "d")
@@ -294,6 +356,18 @@ class QueueContinuationTest {
         assertEquals(listOf("c"), harness.engine.ids())
         assertEquals(emptyList<String>(), harness.source.feedback)
     }
+
+    @Test
+    fun `CONT-04 WAVE-07 a queue that replaced one with a request in flight asks for its own vibe`() =
+        runTest {
+            val harness = head(this, "a", "b")
+            harness.source.onStartWave = { CompletableDeferred<WaveBatch>().await() }
+            harness.engine.startPlaying()
+            runCurrent()
+            harness.controller.loadSource("Album") { tracks("c", "d") }
+            runCurrent()
+            assertEquals(listOf("startWave [track:a]", "startWave [track:c]"), harness.source.calls)
+        }
 
     @Test
     fun `CONT-04 WAVE-08 the head ends before the reply`() = runTest {
@@ -518,6 +592,26 @@ class QueueContinuationTest {
     }
 
     @Test
+    fun `ERR-07 a track picked after a broken last head track keeps playing when the vibe comes`() = runTest {
+        val harness = head(this, "a", "b")
+        val reply = CompletableDeferred<WaveBatch>()
+        harness.source.onStartWave = { reply.await() }
+        harness.engine.startPlaying()
+        harness.engine.finishTrack()
+        runCurrent()
+        harness.engine.fail(FailureKind.TRACK)
+        runCurrent()
+        assertTrue(harness.controller.state.value.loadingMore)
+        harness.engine.seekTo(0)
+        harness.engine.commands.clear()
+        reply.complete(WaveBatch("V1", "B1", tracks("v1")))
+        runCurrent()
+        assertEquals(listOf("append [v1]"), harness.engine.commands)
+        assertEquals(0, harness.engine.currentIndex)
+        assertFalse(harness.controller.state.value.loadingMore)
+    }
+
+    @Test
     fun `ERR-07 a broken last head track stops when the vibe cannot start, with no seeds or stalled`() =
         runTest {
             val unplayed = head(this, "a")
@@ -571,6 +665,19 @@ class QueueContinuationTest {
             }
             assertEquals(listOf("c", "a", "b", "d", "v1"), harness.source.reports.map { it.first })
         }
+
+    @Test
+    fun `CONT-09 shuffle switched on again while on keeps the pass`() = runTest {
+        val harness = head(this, "a", "b", "c", "d")
+        harness.source.onStartWave = { CompletableDeferred<WaveBatch>().await() }
+        harness.controller.setShuffle(true)
+        harness.engine.shuffleOrder = listOf(0, 3, 1, 2)
+        harness.engine.startPlaying()
+        harness.engine.finishTrack()
+        assertEquals(3, harness.engine.currentIndex)
+        harness.controller.setShuffle(true)
+        assertEquals(listOf(0, 3, 1, 2), harness.engine.playOrder())
+    }
 
     @Test
     fun `CONT-09 WAVE-10 shuffle stays on for a head queue with a vibe, and is off for My Vibe`() = runTest {
@@ -761,6 +868,69 @@ class QueueContinuationTest {
             assertEquals(1, harness.engine.currentIndex)
             runCurrent()
             assertEquals(listOf("a", "c", "b", "a", "b", "a", "b"), harness.source.reports.map { it.first })
+        }
+
+    @Test
+    fun `CONT-10 removing every vibe track behind a repeated head gives the engine its repeat back`() =
+        runTest {
+            val harness = head(this, "a", "b", "c")
+            harness.source.onStartWave = { WaveBatch("V1", "B1", tracks("v1", "v2")) }
+            harness.engine.startPlaying()
+            harness.engine.finishTrack()
+            runCurrent()
+            harness.controller.setRepeat(true)
+            harness.engine.finishTrack()
+            assertFalse(harness.engine.repeatEnabled)
+            assertTrue(harness.engine.pauseAtEndOfCurrent)
+            harness.controller.removeIndices(setOf(3, 4))
+            assertTrue(harness.engine.repeatEnabled)
+            assertFalse(harness.engine.pauseAtEndOfCurrent)
+            harness.engine.finishTrack()
+            assertEquals(0, harness.engine.currentIndex)
+        }
+
+    @Test
+    fun `CONT-10 removing the head's last track pauses at the end of the one before it`() = runTest {
+        val harness = head(this, "a", "b", "c")
+        harness.source.onStartWave = { WaveBatch("V1", "B1", tracks("v1", "v2")) }
+        harness.engine.startPlaying()
+        harness.engine.finishTrack()
+        runCurrent()
+        harness.controller.setRepeat(true)
+        assertFalse(harness.engine.pauseAtEndOfCurrent)
+        harness.controller.removeIndices(setOf(2))
+        assertTrue(harness.engine.pauseAtEndOfCurrent)
+        harness.engine.finishTrack()
+        assertEquals(0, harness.engine.currentIndex)
+        assertEquals(listOf("a", "b", "v1", "v2"), harness.engine.ids())
+    }
+
+    @Test
+    fun `CONT-10 TR-02 Previous after 3 s on the head's first track restarts it and does not wrap`() =
+        runTest {
+            val harness = head(this, "a", "b", "c")
+            harness.source.onStartWave = { WaveBatch("V1", "B1", tracks("v1", "v2")) }
+            harness.engine.startPlaying()
+            harness.engine.finishTrack()
+            runCurrent()
+            harness.controller.setRepeat(true)
+            harness.engine.seekTo(0)
+            harness.engine.positionMs = 5_000
+            harness.engine.commands.clear()
+            harness.controller.previous()
+            assertEquals(listOf("seek to 0"), harness.engine.commands)
+            assertEquals(0, harness.engine.currentIndex)
+        }
+
+    @Test
+    fun `CONT-10 repeat chosen on an empty queue reaches the engine at once and holds the next head`() =
+        runTest {
+            val harness = QueueHarness(this, continueWithVibe = true)
+            harness.controller.setRepeat(true)
+            assertTrue(harness.engine.repeatEnabled)
+            harness.controller.loadSource("Liked") { tracks("a", "b") }
+            runCurrent()
+            assertEquals(listOf("repeat true", "set [a, b] play=true"), harness.engine.commands)
         }
 
     @Test
