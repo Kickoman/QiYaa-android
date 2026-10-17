@@ -71,6 +71,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val auth = graph.deviceAuth
     val queue = graph.queue
     val settings = graph.settings
+    val telemetryAvailable: Boolean = graph.telemetry != null
 
     private val jamGuest = graph.jamGuest
     private var pendingLink: JamLink? = null
@@ -240,6 +241,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     mutableLogin.update {
                         it.copy(status = LoginStatus.Failed(kindOf("Device sign-in", failed)))
                     }
+                    graph.telemetry?.loginFailed()
                 }
             }
     }
@@ -268,6 +270,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun setQualityMetered(quality: AudioQuality) = settings.setQualityMetered(quality)
 
     fun setContinueWithVibe(on: Boolean) = settings.setContinueWithVibe(on)
+
+    fun setTelemetryEnabled(on: Boolean) = settings.setTelemetryEnabled(on)
 
     fun signOut() {
         leaveSession(notice = null, forgetJams = true)
@@ -366,6 +370,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         } catch (failed: Exception) {
             val error = kindOf("Sign-in", failed)
             mutableLogin.update { it.copy(status = LoginStatus.Failed(error), tokenError = false) }
+            graph.telemetry?.loginFailed()
             say(string(R.string.login_error, error.render(getApplication())))
         }
     }

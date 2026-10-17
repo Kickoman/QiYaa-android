@@ -98,16 +98,21 @@ Writing rules for READMEs:
   | `queue` | What plays next: sources, waves, the jam mode, error policy, shuffle rule | `yandex` (pure JVM) |
   | `playback` | ExoPlayer, MediaSession, the Media3 adapter for `queue`, audio processors, the jam host and its WebSocket transport | `queue`, `jam`, `yandex`, `audio`, `data` |
   | `ui` | Compose screens, view models, theme | everything above |
-  | root | `AppGraph`, `QiYaaApp` (composition root), `NetworkMonitor` (platform signals) | everything |
+  | `telemetry` | Anonymous statistics and crash reports: events, the crash handler, the run's files, sending, the schedule and the switch | — (pure JVM; only root imports it) |
+  | root | `AppGraph`, `QiYaaApp` (composition root), `NetworkMonitor` (platform signals), `AppTelemetry`, `TelemetryCodes` (telemetry wiring) | everything |
 
   Dependencies point down the table only. `yandex` and `audio` are pure JVM
   and must not import `android.*` or `androidx.*`; that keeps them testable on
   the JVM without Robolectric:
 
   ```bash
-  grep -rlnE '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiyaa/{yandex,audio,queue,jam}/   # must print nothing
-  grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/{yandex,audio,data,queue,playback}/      # must print nothing
+  grep -rlnE --include='*.kt' '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiyaa/{yandex,audio,queue,jam,telemetry}/   # must print nothing
+  grep -rln --include='*.kt' 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/{yandex,audio,data,queue,playback}/                 # must print nothing
+  grep -rlnE --include='*.kt' 'qiyaa\.(yandex|audio|data|jam|queue|playback|ui)\.' app/src/main/java/io/github/kickoman/qiyaa/telemetry/   # must print nothing
   ```
+
+  The greps walk each package with its subfolders but read `*.kt` files only: a README may quote
+  a class name (`telemetry/README.md` shows a crash frame `io.github.kickoman.qiyaa.queue.…`).
 
   Android entry points (`MainActivity`, `PlaybackService`) reach the graph
   through `Context.appGraph`; that is the only upward reference allowed.

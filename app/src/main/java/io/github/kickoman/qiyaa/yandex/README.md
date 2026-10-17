@@ -12,6 +12,7 @@ grep -rlnE '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiy
 |---|---|
 | `Errors.kt` | `YandexException` и его наследники |
 | `ErrorKind.kt` | `ErrorKind` — вид ошибки для пользователя по типу исключения |
+| `RequestFailure.kt` | `RequestFailure` — неудачный запрос для телеметрии: `NETWORK`, `HTTP` со статусом, `CONTENT` |
 | `JsonFields.kt` | мягкий доступ к JSON: `objectOrEmpty`, `arrayOrEmpty`, `string`, `int`, `long`, `boolean`, `scalarString`, `idString`, `parseJsonObjectOrNull` |
 | `Models.kt` | `Account`, `Track`, `NamedRef`, `PlaylistRef`, `Station`, `WheelWave`, `WaveBatch`, `SearchResult`, `DownloadVariant`, `DownloadInfo`, `ResolvedUrl`, `WaveEvent`, `WaveContext` |
 | `YandexApi.kt` | `YandexApi` — транспорт (OkHttp), конверт, `accountStatus`, `tracks`, `resolveTrackUrl`, `reportPlayStarted` |
@@ -81,6 +82,7 @@ class YandexApi(
 ) {
     @Volatile var token: String                                  // "" = без Authorization
     val tokenRejections: SharedFlow<HttpException>               // 401/403 от API на запросе с токеном
+    val requestFailures: SharedFlow<RequestFailure>              // каждый неудачный запрос и откат экономии
     suspend fun getJson(path: String, query: Map<String, String> = emptyMap()): JsonElement
     suspend fun postForm(path: String, form: List<Pair<String, String>>): JsonElement
     suspend fun postJson(path: String, body: JsonObject, query: Map<String, String> = emptyMap(), unwrapResult: Boolean = true): JsonElement
@@ -100,6 +102,20 @@ class YandexApi(
 
 `tokenRejections` получает каждое `HttpException` с `isTokenRejected`, если запрос ушёл с заголовком `Authorization`, до того как исключение брошено. Так `Session` узнаёт об отозванном токене на **любом** запросе, а не только при старте. Не эмитят: запросы без токена (вход), 5xx, `getText()` — у хранилища свой 403, не про токен. Поток — `MutableSharedFlow(extraBufferCapacity = 1)` с `tryEmit`: без подписчика событие теряется.
 
+`requestFailures` — для телеметрии (`error api/…`, корневой `TelemetryCodes`), как `ApiClient::requestFailed` десктопа:
+
+```kotlin
+data class RequestFailure(val kind: Kind, val status: Int? = null) {
+    enum class Kind { NETWORK, HTTP, CONTENT }
+    companion object {
+        fun of(failed: YandexException): RequestFailure?   // Network → NETWORK, Http → HTTP(status), MalformedResponse → CONTENT, иначе null
+        fun unusable(status: Int): RequestFailure          // ≥ 400 → HTTP(status), иначе CONTENT
+    }
+}
+```
+
+Каждое `NetworkException`, `HttpException` и `MalformedResponseException`, которое бросает `YandexApi`, проходит через один приватный `reported(…)` и эмитится до броска: `execute` (`getJson`, `postForm`, `postJson`), `getText`, `resolveTrackUrl` (нет вариантов, `download-info` без `host`/`path`/`s`) и обрыв сети у `get-file-info`. Откат экономии на стандартную ссылку (QUAL-03) тоже эмитит, хотя ничего не бросает: статус ≥ 400 — `HTTP(status)`, ответ 2xx без пригодного файла — `CONTENT` (`RequestFailure.unusable`). Обрыв сети у `get-file-info` не откатывается, а бросается (QUAL-04), поэтому считается один раз. `AuthException` (аккаунт без `uid`), `NotSignedInException` и ошибки `DeviceAuth` сюда не попадают. Поток — `MutableSharedFlow(extraBufferCapacity = 16)` с `tryEmit`: без подписчика и при переполнении событие теряется.
+
 `resolveTrackUrl` при `Quality.STANDARD` делает два запроса: `GET /tracks/{id}/download-info` → список вариантов; затем `GET <downloadInfoUrl>?format=json` → `{host, path, ts, s}` → подпись (см. `TrackUrl`). `ResolvedUrl.codec` — кодек выбранного варианта.
 
 При `Quality.ECONOMY` сначала `GET /get-file-info` (см. `FileInfo`) с заголовками `Authorization` и `X-Yandex-Music-Client: YandexMusicDesktopAppWindows/5.95.0`. Пригодный ответ даёт `ResolvedUrl(url, bitrate, codec)`. Обрыв сети — `NetworkException` (QUAL-04: ждать сеть, как для любой ссылки). Всё остальное (любой HTTP-статус, ответ без `https`-ссылки, `encraw`, кодек не из запроса) — строка в `log` и тот же трек по стандартному пути (QUAL-03). Этот запрос идёт мимо `execute`: его 401 и 403 — отказ в подписи, а не в токене, и в `tokenRejections` не попадают (иначе экономия выкидывала бы на экран входа). `accountStatus` без `uid` в ответе — `AuthException` (токен не принят).
@@ -112,7 +128,7 @@ class YandexApi(
 - `token` читается в момент сборки запроса; смена токена не влияет на уже отправленные вызовы.
 - `getText` не распаковывает конверт и не парсит JSON — только для второго прыжка `download-info`.
 - Подпись `get-file-info` содержит `+` и `/`. `addQueryParameter` кодирует их (`%2B`, `%2F`); голый `+` сервер прочтёт как пробел и ответит 403 `not-allowed`, как на любую неверную подпись. Тест `QUAL-02 …` проверяет, что в закодированном запросе нет `+`.
-- Ключ подписи — от Windows-приложения Яндекса; ключ их Android-приложения уже отвечает 403. Если отзовут и этот, вся экономия молча уйдёт в стандарт: в логе будет `GET /get-file-info … HTTP 403`.
+- Ключ подписи — от Windows-приложения Яндекса; ключ их Android-приложения уже отвечает 403. Если отзовут и этот, вся экономия молча уйдёт в стандарт: в логе будет `GET /get-file-info … HTTP 403`, а в телеметрии — `error api/http` с `httpStatus` 403 (`requestFailures`).
 - `formatSeconds` эмулирует Qt: целые секунды без `.0`. Так делает десктопный QiYaa, и сервер это принимает.
 
 ## `TrackParsing`

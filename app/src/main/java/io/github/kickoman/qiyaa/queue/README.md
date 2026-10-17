@@ -22,6 +22,7 @@ grep -rln 'qiyaa\.\(playback\|ui\|data\)\.' app/src/main/java/io/github/kickoman
 | `MusicSource.kt` | `MusicSource` — какие запросы к библиотеке делает очередь |
 | `LibraryMusicSource.kt` | `LibraryMusicSource` — `MusicSource` поверх `yandex/Library` |
 | `QueueEvent.kt` | `QueueEvent` — что очередь сообщает наружу |
+| `QueueActivity.kt` | `QueueActivity` — что очередь сообщает телеметрии: `TrackStarted`, `PlayingChanged(playing)`, `PlaybackFailed(kind)` |
 | `ErrorPolicy.kt` | `ErrorAction`, `ErrorPolicy` — что делать с ошибкой; ожидание сети перед повтором |
 | `FailureKind.kt` | `FailureKind` — `NETWORK`, `SESSION`, `TRACK` (определяет `playback/PlaybackFailures`) |
 | `WaveModeRule.kt` | `WaveModeRule` — выбор пользователя (shuffle, повтор), который в запертой очереди («Моя волна», станция) не действует и потом возвращается |
@@ -49,6 +50,7 @@ data class PlayModes(shuffle: Boolean = false, repeat: Boolean = false, locked: 
 
 class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: CoroutineScope, io: CoroutineContext, newPlayId: () -> String = UUID, clock: () -> Long = монотонные мс, store: QueueStore? = null, logFailure: (Stage, Throwable) -> Unit = {}, continueWithVibeByDefault: () -> Boolean = { true }) {
     val state: StateFlow<QueueState>;  val events: SharedFlow<QueueEvent>;  val engine: PlayerEngine?
+    val activity: SharedFlow<QueueActivity>   // для телеметрии, см. ниже
     val modes: StateFlow<PlayModes>
     fun attach(engine: PlayerEngine);  fun detach(engine: PlayerEngine)
     fun resumePoint(): ResumePoint?   // треки, индекс и позиция для «играть» после выгрузки процесса; null — очередь пуста
@@ -119,6 +121,16 @@ class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: C
 **Ошибки источников и лайков.** Упавший запрос даёт `QueueEvent.Failed(stage, error)`, где `error` — `yandex/ErrorKind.of(failed)`, а само исключение уходит в `logFailure(stage, failed)`; в приложении это `Log.w` из `AppGraph`. Текста исключения в событии нет. Ошибка воспроизведения приходит уже с видом: `onFailure(kind, error)` от `playback/PlaybackFailures`. Ошибка догрузки заменённой волны пишется в лог, но события не даёт (WAVE-07).
 
 `events` — `MutableSharedFlow(extraBufferCapacity = 8)` с `tryEmit`: без подписчика события теряются, это нормально для тостов.
+
+**`activity`** — то, что считает телеметрия (корневой `AppTelemetry`, `telemetry/README.md`); `MutableSharedFlow(extraBufferCapacity = 64)` с `tryEmit`:
+
+| Событие | Когда |
+|---|---|
+| `TrackStarted` | трек начался — в `onStarted`, в те же моменты, что `/play-audio` (TRK-01, TRK-02), и для треков джема, хотя они `/play-audio` не шлют |
+| `PlayingChanged(playing)` | каждый `onPlayingChanged` |
+| `PlaybackFailed(kind)` | в начале `onFailure`, на каждую ошибку, кроме `NETWORK`, пока уже идёт ожидание сети (`networkRetryAttempt > 0`): `Hold`, `SkipToNext`, `WaitForMore` и `Stop` считаются каждый (и у удержанного элемента джема на паузе), одно ожидание ERR-09 — один раз, как бы ни падали повторы. Счётчик сбрасывает начавшееся воспроизведение (`resetFailures`), так что следующее ожидание — снова одна ошибка |
+
+Это не `QueueEvent`: экран разбирает `QueueEvent` исчерпывающим `when`, а эти события ему не нужны.
 
 ## Что играет следующим: `QueueWalk`
 
@@ -276,7 +288,7 @@ object ErrorPolicy {
 
 ## Тесты
 
-`app/src/test/.../queue/`: `QueueSourcesTest`, `QueueWaveTest`, `QueueContinuationTest`, `QueueErrorsTest`, `QueueEditingTest`, `QueueJamTest` гоняют контроллер с `support/FakeEngine` (плейлист, курсор, конец, проход головы по контракту `PlayerEngine`, синхронные колбэки, в том числе `onSeeked()` внутри `seekToPosition` и `seekTo` на текущий индекс — как ExoPlayer) и `support/FakeMusicSource` (ответы — лямбды, в том числе отложенные `CompletableDeferred`). Имена тестов начинаются с ID сценария. `support/QueueHarness` по умолчанию собирает контроллер с выключенной настройкой «продолжать волной» (`continueWithVibe = false`), чтобы короткие очереди старых тестов (TR-04, TRK, ERR) кончались, как раньше; тесты продолжения включают её явно.
+`app/src/test/.../queue/`: `QueueSourcesTest`, `QueueWaveTest`, `QueueContinuationTest`, `QueueErrorsTest`, `QueueEditingTest`, `QueueJamTest`, `QueueActivityTest` гоняют контроллер с `support/FakeEngine` (плейлист, курсор, конец, проход головы по контракту `PlayerEngine`, синхронные колбэки, в том числе `onSeeked()` внутри `seekToPosition` и `seekTo` на текущий индекс — как ExoPlayer) и `support/FakeMusicSource` (ответы — лямбды, в том числе отложенные `CompletableDeferred`). Имена тестов начинаются с ID сценария. `support/QueueHarness` по умолчанию собирает контроллер с выключенной настройкой «продолжать волной» (`continueWithVibe = false`), чтобы короткие очереди старых тестов (TR-04, TRK, ERR) кончались, как раньше; тесты продолжения включают её явно.
 
 **Traps:**
 - Отыгранные записи (`OTHER`, элементы, которые уже не ждут) остаются в плейлисте ExoPlayer, и сам он их сыграл бы. Их пропускает только обход: пауза в конце и переход к цели. Этот стык не бесшовный, и ExoPlayer заранее грузит строку, которую не сыграет. «Плей» сразу после такой паузы, когда цели нет (остались только отыгранные), играет следующую отыгранную строку.

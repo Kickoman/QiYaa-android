@@ -4,7 +4,7 @@
 
 | Файл | Содержит |
 |---|---|
-| `Settings.kt` | `Settings` — громкость, баланс, визуализатор, EQ, тема, язык, качество звука, «продолжать волной» |
+| `Settings.kt` | `Settings` — громкость, баланс, визуализатор, EQ, тема, язык, качество звука, «продолжать волной», телеметрия |
 | `AudioQuality.kt` | `AudioQuality` — стандарт / экономия (`spec/player/quality.md`) |
 | `AppLanguage.kt` | `AppLanguage` — языки интерфейса: белорусский (по умолчанию), русский, английский |
 | `TokenStore.kt` | `TokenStore` — токен |
@@ -50,10 +50,17 @@
 | `playback/quality` | string (`AudioQuality.key`: `standard`, `economy`), качество на Wi-Fi и другой безлимитной сети | `standard` (и любое другое значение) | `quality` |
 | `playback/qualityMetered` | string, то же на мобильной и другой лимитной сети (QUAL-07) | `standard` (и любое другое значение) | `qualityMetered` |
 | `playback/continueWithVibe` | bool, новые очереди без своего продолжения идут дальше волной по истории (CONT-01, `spec/player/continuation.md`) | `true` | `continueWithVibe` |
+| `telemetry/enabled` | bool, отправлять ли статистику (TEL-02, `docs/telemetry.md`); переключатель внизу библиотеки | `true` | `telemetryEnabled` |
+| `telemetry/machine` | string, UUID, из которого считается `machine`, — только если у телефона нет `ANDROID_ID` (`telemetry/README.md`, `MachineId`) | нет | `telemetryMachine` (не поток), `setTelemetryMachine` |
+| `telemetry/firstStart` | string, дата первого запуска телеметрии `yyyy-MM-dd` (`LocalDate.toString()`) | нет | `markTelemetryFirstStart()` |
 
 Ключи и умолчания те же, что в десктопном QiYaa, где они применимы (`playback/quality` там единственный: у ПК нет мобильной сети; `playback/continueWithVibe` там есть только в `settings.ini`, здесь — блок в библиотеке). Какое из двух качеств действует, решает `AppGraph` по `NetworkMonitor.isMetered()`; `data` про сеть не знает. `jam/server`
 обрезается по краям при записи; ключ `jam/hostKey` из 0.2.3 (ключи хозяина отменены) `Settings` удаляет при создании; адрес по умолчанию передаёт `AppGraph` в конструктор, потому что
 `data` не видит `BuildConfig`. `setEq(settings, presetName)` пишет четыре ключа одной транзакцией. Строка полос с числом элементов ≠ 10 или с нечисловыми значениями читается как плоский EQ.
+
+Ключи `telemetry/*` те же, что у десктопа. Без сборки с телеметрией (`-PqiyaaWithTelemetry=true`, `docs/release.md`) их никто не пишет и не читает. `telemetry/machine` пишется через `apply()` один раз, когда `MachineId.resolve` не нашёл ни `ANDROID_ID`, ни сохранённого id. `markTelemetryFirstStart()` пишет дату, только если ключа ещё нет, через `commit()` и возвращает его результат (`true`, если ключ уже был): запись синхронная, чтобы убитый первый запуск не сделал первым и следующий. Зовёт его `AppTelemetry` на `Dispatchers.IO` и пишет в logcat, если `false`. Это же снимает lint `ApplySharedPref`: он ругается только на `commit()`, результат которого не использован.
+
+`wasEmpty` — был ли файл `settings` пустым при создании `Settings` (до удаления `jam/hostKey`): поле `firstRun` события `start`, как `settings.allKeys().isEmpty()` у десктопа. Пользователь, который ничего не менял, оставил бы файл пустым навсегда; первая запись `telemetry/firstStart` это исправляет.
 
 `Settings.storedLanguage(context)` читает язык без графа: `AppLocale` зовёт его в `attachBaseContext`, раньше `QiYaaApp.onCreate`.
 

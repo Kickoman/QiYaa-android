@@ -7,7 +7,14 @@ Workflow `.github/workflows/ci.yml` устроен так же, как в [QiYaa
 `build` (Ubuntu 24.04, Temurin 17, кэш Gradle через `gradle/actions/setup-gradle`) выполняет ту же проверку, что требует `CLAUDE.md`, и собирает release-APK:
 
 ```sh
-./gradlew ktlintCheck testDebugUnitTest lintDebug assembleRelease [-PqiyaaVersion=<тег>]
+./gradlew ktlintCheck testDebugUnitTest lintDebug assembleRelease -PqiyaaWithTelemetry=true [-PqiyaaVersion=<тег>]
+```
+
+`-PqiyaaWithTelemetry=true` — на каждом прогоне, как в десктопном CI: APK из веток неподписанные и никем не ставятся, а APK тега — это релиз, и в нём должна быть телеметрия ([telemetry.md](telemetry.md)). Флаг даёт `BuildConfig.TELEMETRY = true` и `BuildConfig.TELEMETRY_URL` — Gradle-свойство `qiyaaTelemetryUrl`, по умолчанию `<qiyaaJamUrl>/api/telemetry` (`https://qiyaa.kanstancin.net/api/telemetry`). Адрес обязан быть `https://` с хостом, иначе конфигурация Gradle падает: в манифесте `usesCleartextTraffic="false"`. Без флага `TELEMETRY = false`, `TELEMETRY_URL = ""`, и приложение телеметрию не запускает (TEL-01).
+
+```sh
+./gradlew assembleRelease -PqiyaaWithTelemetry=true
+grep TELEMETRY app/build/generated/source/buildConfig/release/io/github/kickoman/qiyaa/BuildConfig.java
 ```
 
 Результат загружается артефактом `QiYaa-Android`:
@@ -77,6 +84,14 @@ git push origin v0.1.0
 - Тег без секретов не публикуется: job `build` падает на шаге «Release signing key» с именем недостающего секрета, `release` не запускается.
 - Секреты недоступны в PR из форков; такие PR собираются неподписанными, как и любая ветка.
 - Перевыпустить тот же тег: удалить релиз и тег на GitHub (`git push --delete origin v0.1.0`), затем поставить тег заново.
+- Первый релиз с телеметрией примет только сервер QiYaa-jam, который знает пакеты `app: "android"`: PR Kickoman/QiYaa-jam#19 (ждёт Kickoman/QiYaa-jam#17; на 2026-10-17 не смержен и не задеплоен). Пока на `qiyaa.kanstancin.net` старый сервер, каждый пакет получает 400, а 400 приложение по спеке выбрасывает: события и отчёты о падениях этого периода теряются молча, ничего не ломается и не повторяется. Перед тегом проверить сервер (204 — принимает, 400 — ещё нет):
+
+  ```sh
+  curl -s -o /dev/null -w '%{http_code}\n' -H 'content-type: application/json' \
+      --data @spec/telemetry/examples/android-start.json https://qiyaa.kanstancin.net/api/telemetry
+  ```
+
+  Проверка оставляет на сервере одно событие примера под машиной примеров спеки.
 
 ## App Links
 

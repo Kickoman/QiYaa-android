@@ -59,6 +59,9 @@ class QueueController(
     private val mutableEvents = MutableSharedFlow<QueueEvent>(extraBufferCapacity = EVENT_BUFFER)
     val events: SharedFlow<QueueEvent> = mutableEvents.asSharedFlow()
 
+    private val mutableActivity = MutableSharedFlow<QueueActivity>(extraBufferCapacity = ACTIVITY_BUFFER)
+    val activity: SharedFlow<QueueActivity> = mutableActivity.asSharedFlow()
+
     @Volatile
     var engine: PlayerEngine? = null
         private set
@@ -298,6 +301,7 @@ class QueueController(
     }
 
     private fun onStarted(track: Track) {
+        mutableActivity.tryEmit(QueueActivity.TrackStarted)
         if (jam == null) reportPlay(track)
         val entry = currentEntry()?.takeIf { it.track.id == track.id }
         val context = entry?.takeIf(::learnsFrom)?.wave
@@ -449,6 +453,7 @@ class QueueController(
     }
 
     fun onPlayingChanged(isPlaying: Boolean) {
+        mutableActivity.tryEmit(QueueActivity.PlayingChanged(isPlaying))
         playing = isPlaying
         if (isPlaying) {
             if (consecutiveTrackFailures > 0) stopWaiting()
@@ -468,6 +473,8 @@ class QueueController(
     }
 
     fun onFailure(kind: FailureKind, error: ErrorKind) {
+        val waiting = kind == FailureKind.NETWORK && networkRetryAttempt > 0
+        if (!waiting) mutableActivity.tryEmit(QueueActivity.PlaybackFailed(kind))
         val current = engine ?: return
         val target = walkNext(current)
         when (
@@ -1358,5 +1365,6 @@ class QueueController(
         const val PLAYING_REPORT_MS = 10_000L
         private const val NANOS_PER_MILLI = 1_000_000L
         private const val EVENT_BUFFER = 8
+        private const val ACTIVITY_BUFFER = 64
     }
 }

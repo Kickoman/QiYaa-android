@@ -82,6 +82,7 @@ fun LibraryScreen(
     val quality by viewModel.settings.quality.collectAsStateWithLifecycle()
     val qualityMetered by viewModel.settings.qualityMetered.collectAsStateWithLifecycle()
     val continueWithVibe by viewModel.settings.continueWithVibe.collectAsStateWithLifecycle()
+    val telemetryEnabled by viewModel.settings.telemetryEnabled.collectAsStateWithLifecycle()
     val track = playerUi.current
 
     LaunchedEffect(account.uid) { if (account.isValid) viewModel.loadLibraryLists() }
@@ -311,6 +312,28 @@ fun LibraryScreen(
                 color = colors.dim,
             )
             LanguageSwitch(language, viewModel::setLanguage)
+        }
+
+        if (viewModel.telemetryAvailable) {
+            Row(
+                Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp).fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                QiText(
+                    stringResource(R.string.telemetry_title),
+                    LabelStyle,
+                    Modifier.weight(1f),
+                    color = colors.dim,
+                )
+                OnOffPills(telemetryEnabled, onChange = viewModel::setTelemetryEnabled)
+            }
+            QiText(
+                stringResource(R.string.telemetry_note),
+                HintStyle,
+                Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 16.dp),
+                color = colors.dim,
+            )
         }
     }
 }

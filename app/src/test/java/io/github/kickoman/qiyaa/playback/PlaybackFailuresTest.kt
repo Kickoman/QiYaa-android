@@ -91,6 +91,40 @@ class PlaybackFailuresTest {
         assertEquals(ErrorKind.TrackUnplayable, kind(PlaybackException.ERROR_CODE_DECODING_FAILED))
     }
 
+    @Test
+    fun `audio failures are sorted by code into init, device and undecodable, others are none`() {
+        val expected =
+            mapOf(
+                5001 to AudioFailure.INIT,
+                5004 to AudioFailure.INIT,
+                5002 to AudioFailure.DEVICE,
+                5003 to AudioFailure.DEVICE,
+                4006 to AudioFailure.DEVICE,
+                3001 to AudioFailure.UNDECODABLE,
+                3002 to AudioFailure.UNDECODABLE,
+                3003 to AudioFailure.UNDECODABLE,
+                3004 to AudioFailure.UNDECODABLE,
+                4001 to AudioFailure.UNDECODABLE,
+                4002 to AudioFailure.UNDECODABLE,
+                4003 to AudioFailure.UNDECODABLE,
+                4004 to AudioFailure.UNDECODABLE,
+                4005 to AudioFailure.UNDECODABLE,
+            )
+        for ((code, failure) in expected) assertEquals("$code", failure, PlaybackFailures.audioFailure(code))
+        val others =
+            listOf(
+                PlaybackException.ERROR_CODE_UNSPECIFIED,
+                PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
+                PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+                PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
+                PlaybackException.ERROR_CODE_DRM_UNSPECIFIED,
+                4_007,
+                5_005,
+                -1,
+            )
+        for (code in others) assertEquals("$code", null, PlaybackFailures.audioFailure(code))
+    }
+
     private fun kind(errorCode: Int, cause: Throwable? = null) = PlaybackFailures.errorKind(errorCode, cause)
 
     private fun classify(errorCode: Int, cause: Throwable? = null) =

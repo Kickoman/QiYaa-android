@@ -20,6 +20,7 @@ class Media3Engine(
     private val player: ExoPlayer,
     private val controller: QueueController,
     private val random: Random = Random.Default,
+    private val onAudioFailure: (AudioFailure) -> Unit = {},
 ) : PlayerEngine {
     private var order = HeadShuffle.EMPTY
 
@@ -57,6 +58,7 @@ class Media3Engine(
 
             override fun onPlayerError(error: PlaybackException) {
                 Log.w(LOG_TAG, "Playback failed: ${error.errorCodeName}", error)
+                PlaybackFailures.audioFailure(error.errorCode)?.let(onAudioFailure)
                 controller.onFailure(
                     PlaybackFailures.classify(error.errorCode, error.cause),
                     PlaybackFailures.errorKind(error.errorCode, error.cause),
