@@ -15,6 +15,21 @@ fun formatTime(ms: Long): String {
     }
 }
 
+fun positionAt(fraction: Float, durationMs: Long): Long? =
+    if (durationMs > 0) (durationMs * fraction.coerceIn(0f, 1f)).toLong() else null
+
+fun timeLabel(
+    positionMs: Long,
+    durationMs: Long,
+    hasTrack: Boolean,
+    remaining: Boolean,
+    dragFraction: Float?,
+): String {
+    if (!hasTrack) return "00:00"
+    val shownMs = dragFraction?.let { positionAt(it, durationMs) } ?: positionMs
+    return if (remaining) "-" + formatTime(durationMs - shownMs) else formatTime(shownMs)
+}
+
 fun balanceLabel(balance: Int): String = when {
     balance == 0 -> "C"
     balance < 0 -> "L${abs(balance)}"

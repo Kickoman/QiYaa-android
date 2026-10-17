@@ -26,7 +26,7 @@ ui/
 | `JamEventText.kt` | `JamHostEvent.render(context)`, `refusedText(reason)` — отказы сервера и конец джема → строки |
 | `QueueEventText.kt` | `QueueEvent.render(context)` — событие очереди → строка из ресурсов |
 | `ErrorText.kt` | `ErrorKind.text()` — строка вида ошибки (`error_*`, у `ServerError` со статусом), `render(context)` и `@Composable render()`; `LOG_TAG = "QiYaa"` |
-| `Format.kt` | `formatTime`, `balanceLabel`, `formatReadout`, `formatDb` |
+| `Format.kt` | `formatTime`, `positionAt` (доля полосы перемотки → мс), `timeLabel` (подпись времени плеера), `balanceLabel`, `formatReadout`, `formatDb` |
 | `components/Components.kt` | `QiText`, `Modifier.tap`, `ScreenHeader`, `ActionButton`, `IconActionButton`, `IconWideButton` (широкая кнопка с иконкой и описанием для экранного диктора), `LikeButton`, `PillToggle`, `OnOffPills` (пара `PillToggle` «вкл / выкл»), `RoundButton`, `LedDot`, `Chip` |
 | `components/Sliders.kt` | `HorizontalSlider` (0…1), `VerticalFader` (дБ) |
 | `components/Icons.kt` | `IconPaths`, `PathIcon` — SVG-пути (viewBox 24): транспорт из макета; сердце, палец вниз и «открыть снаружи» для кнопок лайка, дизлайка и браузера, контуром (`strokeWidth = IconPaths.OUTLINE`), сердце лайкнутого трека — заливкой. Подписи у этих кнопок нет (по-белорусски и по-русски она не помещается), текст — их `contentDescription` |
@@ -49,6 +49,8 @@ ui/
 
 `PlayerViewModel` — `MediaController` к `PlaybackService`, снимок `PlayerUi` (позиция тикает каждые 250 мс, пока играет), транспорт, громкость/баланс/визуализатор/тема, EQ, флаг «продолжать волной» текущей очереди. Свои сообщения (shuffle, повтор, тема, EQ) публикует в `notices`, которые `AppRoot` перекладывает в `AppViewModel.say`. Громкость, баланс и EQ только записывает в `Settings`; к плееру и `AudioBus` их применяют `AppGraph` и `PlaybackService`, так что настройки действуют и без открытого экрана (см. `data/README.md`).
 
+`seekToFraction(fraction)` переводит долю полосы в миллисекунды через `positionAt` из `Format.kt` (тот же расчёт, что у подписи времени), перематывает и в том же `update {}` пишет цель в `positionMs`, чтобы ни один кадр не показал старую позицию (TR-08). При неизвестной длительности (`positionAt` вернул `null`) ничего не делает. Перетаскивания полосы view model не видит: оно живёт в `PlayerScreen` (см. «Компоненты и экраны»).
+
 `toggleShuffle()` и `toggleRepeat()` зовут `QueueController.setShuffle`/`setRepeat` (не `MediaController`) и показывают тост по выбору после команды (`queue.modes`); во время волны очередь не трогают и показывают `player_shuffle_wave` / `player_repeat_wave`. Кнопки SHF и RPT на экране плеера читают `queue.modes`, а не режим ExoPlayer: подсвечены, когда режим выбран и очередь не заперта, приглушены (`dimmer`), когда заперта (волна, станция, джем). Правило живёт в `queue/WaveModeRule`.
 
 `next()` и `previous()` вызывают `seekToNext`/`seekToPrevious` у `MediaController`, `stop()` — `queue.stop()`; правила (3 с, конец очереди, конец волны) живут в `queue/QueueController` и одинаковы для приложения, уведомления и гарнитуры (см. `playback/README.md`, «Один хозяин плеера»). «Loading more…» показывает событие `QueueEvent.LoadingMore`.
@@ -56,6 +58,7 @@ ui/
 **Traps:**
 - Обе view model — `AndroidViewModel` с областью Activity; `PlayerViewModel.onCleared` освобождает контроллер.
 - `PlayerUi.durationMs` берёт длительность из `MediaItem.extras`, пока ExoPlayer её не знает.
+- `refresh` на каждое событие плеера строит `PlayerUi` заново (`PlayerUi(...)`, не `copy`), а тикер каждые 250 мс переписывает `positionMs`. Поле, которое не приходит из плеера, первое же событие сбросит в значение по умолчанию. Поэтому чисто экранное состояние (перетаскивание полосы и подобное) в `PlayerUi` не хранится никогда: оно живёт в `remember` экрана. Когда предпросмотр перетаскивания писался в `positionMs`, подпись времени мигала между пальцем и плеером (#90).
 - `LoginStatus.Failed(error)` и `ListState.Failed(error)` хранят `yandex/ErrorKind`, а не текст; на экране — `error.render()` заглавными. Исключение пишется в logcat (`Log.w(LOG_TAG, …)`) там же, где поймано: `AppViewModel.kindOf`, отказ подключения `MediaController` в `PlayerViewModel`. Тост «сервис недоступен» текста исключения не показывает.
 - `sessionState` меняется с `Dispatchers.Default` (`AppGraph.applicationScope`); коллектор во view model работает на главном потоке, поэтому `queue.clear()` там безопасен.
 
@@ -100,7 +103,45 @@ ui/
 
 ## Компоненты и экраны
 
-`QiText` — `BasicText` без отступов Material. `Modifier.tap` — `clickable` без индикации. `OnOffPills(value, onText, offText, onChange)` — две `PillToggle` (подписи заглавными, по умолчанию `toggle_on` / `toggle_off`); `onChange` зовётся только при смене значения, тап по горящей пилюле ничего не делает. Ею пользуются настройки джема («Гости могут пропускать», «Новые гости» со своими подписями, «Учить волну джема», «Гости могут слушать»), строка плейлиста и блок библиотеки «Продолжать волной». `Chip` с `onLongClick` использует `combinedClickable` (тоже без индикации); в этой версии Compose он `@ExperimentalFoundationApi`, отсюда `@OptIn` на `Chip`. `HorizontalSlider` отдаёт `onChange` во время перетаскивания и `onChangeFinished` при отпускании; `PlayerScreen` пользуется этим для предпросмотра позиции. `VerticalFader` округляет до 0.1 дБ, тап по значению над фейдером сбрасывает полосу в 0.
+`QiText` — `BasicText` без отступов Material. `Modifier.tap` — `clickable` без индикации. `OnOffPills(value, onText, offText, onChange)` — две `PillToggle` (подписи заглавными, по умолчанию `toggle_on` / `toggle_off`); `onChange` зовётся только при смене значения, тап по горящей пилюле ничего не делает. Ею пользуются настройки джема («Гости могут пропускать», «Новые гости» со своими подписями, «Учить волну джема», «Гости могут слушать»), строка плейлиста и блок библиотеки «Продолжать волной». `Chip` с `onLongClick` использует `combinedClickable` (тоже без индикации); в этой версии Compose он `@ExperimentalFoundationApi`, отсюда `@OptIn` на `Chip`. `VerticalFader` округляет до 0.1 дБ, тап по значению над фейдером сбрасывает полосу в 0.
+
+```kotlin
+fun HorizontalSlider(
+    value: Float,
+    onChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+    height: Dp = 28.dp,
+    accent: Color = Qi.colors.accent,
+    onChangeFinished: ((Float) -> Unit)? = null,
+    onChangeCancelled: (() -> Unit)? = null,
+)
+```
+
+`value` и доля в колбэках — от 0 до 1. `HorizontalSlider` держит своё `dragging`/`dragValue`: во время перетаскивания ползунок рисуется по пальцу, а не по `value`, поэтому сам он не мигает, что бы ни приходило в `value`. Перетаскивание (`detectDragGestures`) зовёт `onChange` с начала и на каждом движении, `onChangeFinished` при отпускании, `onChangeCancelled` из `onDragCancel`. Тап (`detectTapGestures`) зовёт `onChange` и сразу `onChangeFinished` в одном стеке вызовов; отмены у тапа не бывает, а перетаскивание, начавшись, тап отменяет. Все три колбэка идут через `rememberUpdatedState`: `pointerInput(Unit)` не перезапускается и иначе держал бы первые лямбды. Громкость и баланс отмену не передают.
+
+**Traps (`HorizontalSlider`):**
+- Уход пальца с полосы перетаскивание **не** отменяет: в `detectDragGestures` (Compose foundation 1.7) нет проверки границ, доля зажимается в 0 или 1, и отпускание перематывает туда. Так перематывают в начало и в конец; проверку границ не добавлять.
+- `onChangeCancelled` приходит только при отмене касания системой (`ACTION_CANCEL`): кнопка питания или «Домой» в трёхкнопочной навигации во время перетаскивания, начатый и брошенный жест «назад» (если перетаскивание началось у левого края полосы, в зоне жеста), уход окна. Родительский `verticalScroll` перехватить перетаскивание не успевает.
+- Если ползунок уходит из композиции посреди перетаскивания (вкладка, нажатая вторым пальцем, вход при `SessionState.Expired`, смена ключа `key(…)`), корутина `pointerInput` отменяется молча: ни `onChangeFinished`, ни `onChangeCancelled`. Состояние перетаскивания у вызывающего должно кончаться вместе с композицией.
+
+**Перетаскивание полосы перемотки** (Kickoman/QiYaa-android#90) живёт в `PlayerScreen`, а не во view model:
+
+```kotlin
+val trackId = track?.id
+var dragFraction by remember(trackId) { mutableStateOf<Float?>(null) }
+key(trackId) { HorizontalSlider(value = fraction, onChange = …, onChangeFinished = …, onChangeCancelled = …) }
+```
+
+`dragFraction` — `null`, пока полосу не тащат. `onChange` пишет его; `onChangeFinished` сначала сбрасывает его, потом зовёт `seekToFraction` (так перетаскивание не остаётся висеть, даже если перемотки не будет); `onChangeCancelled` сбрасывает, и подпись возвращается к позиции плеера, без перемотки. `value` ползунка — позиция плеера, `positionMs / durationMs`.
+
+Подпись времени — `timeLabel(positionMs, durationMs, hasTrack, remaining, dragFraction)`:
+- без трека — `00:00`;
+- пока тащат и длительность известна — позиция под пальцем `positionAt(dragFraction, durationMs)`, иначе позиция плеера;
+- прошедшее или `-` и оставшееся по `settings.timeRemaining`.
+
+Тикер и `refresh` пишут только `PlayerUi.positionMs`, поэтому подпись под пальцем не прыгает. `positionAt` общий с `seekToFraction`, так что подпись под пальцем — ровно цель перемотки, и при отпускании она не сдвигается (TR-08). Хранится доля, а не миллисекунды: длительность может уточниться посреди перетаскивания (пока ExoPlayer её не знает, она берётся из `extras`, потом тикер пишет настоящую), и подпись идёт за ней так же, как цель при отпускании. При неизвестной длительности подпись перетаскивание не показывает, как и `seekToFraction` не перематывает.
+
+Перетаскивание не переживает свой трек: при другом `track.id` `remember(trackId)` сбрасывает подпись, а `key(trackId)` пересоздаёт ползунок и обрывает его перетаскивание (без колбэков), так что старая доля не перемотает новый трек — до следующего касания новый ползунок ничего не получает. Тот же трек дважды подряд (повтор очереди из одного трека) ключ не меняет, и перетаскивание продолжается: длительность та же. Уход с экрана посреди перетаскивания забывает его вместе с композицией.
 
 `EqScreen`: подписи полос `BAND_LABELS` живут здесь, а не в `audio`. График соединяет значения полос в координатах макета (x = 10 + i·344/9 из 364, y = 44 ∓ 36 из 88). `PresetsSheet` рисуется поверх всего приложения из `AppRoot`.
 

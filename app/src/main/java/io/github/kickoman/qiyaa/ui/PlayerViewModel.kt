@@ -114,20 +114,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun seekToFraction(fraction: Float) {
         val current = controller ?: return
-        val durationMs = mutableUi.value.durationMs
-        if (durationMs <= 0) return
-        val positionMs = (durationMs * fraction.coerceIn(0f, 1f)).toLong()
+        val positionMs = positionAt(fraction, mutableUi.value.durationMs) ?: return
         current.seekTo(positionMs)
         mutableUi.update { it.copy(positionMs = positionMs) }
-    }
-
-    fun previewPosition(fraction: Float) {
-        val durationMs = mutableUi.value.durationMs
-        if (durationMs >
-            0
-        ) {
-            mutableUi.update { it.copy(positionMs = (durationMs * fraction.coerceIn(0f, 1f)).toLong()) }
-        }
     }
 
     fun toggleShuffle() {

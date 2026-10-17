@@ -18,6 +18,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -51,6 +55,7 @@ import io.github.kickoman.qiyaa.ui.theme.CaptionStyle
 import io.github.kickoman.qiyaa.ui.theme.Qi
 import io.github.kickoman.qiyaa.ui.theme.ReadoutStyle
 import io.github.kickoman.qiyaa.ui.theme.mono
+import io.github.kickoman.qiyaa.ui.timeLabel
 import io.github.kickoman.qiyaa.ui.visualizer.VisualizerStrip
 import io.github.kickoman.qiyaa.yandex.Track
 import kotlin.math.roundToInt
@@ -194,23 +199,26 @@ fun PlayerScreen(viewModel: PlayerViewModel, onJam: (() -> Unit)? = null) {
         }
 
         Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp)) {
+            val trackId = track?.id
+            var dragFraction by remember(trackId) { mutableStateOf<Float?>(null) }
             val fraction = if (ui.durationMs > 0) ui.positionMs.toFloat() / ui.durationMs else 0f
-            HorizontalSlider(
-                value = fraction,
-                onChange = viewModel::previewPosition,
-                onChangeFinished = viewModel::seekToFraction,
-            )
+            key(trackId) {
+                HorizontalSlider(
+                    value = fraction,
+                    onChange = { dragFraction = it },
+                    onChangeFinished = {
+                        dragFraction = null
+                        viewModel.seekToFraction(it)
+                    },
+                    onChangeCancelled = { dragFraction = null },
+                )
+            }
             Row(
                 Modifier.fillMaxWidth().padding(top = 2.dp),
                 verticalAlignment = Alignment.Bottom,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                val timeMain =
-                    when {
-                        track == null -> "00:00"
-                        remaining -> "-" + formatTime(ui.durationMs - ui.positionMs)
-                        else -> formatTime(ui.positionMs)
-                    }
+                val timeMain = timeLabel(ui.positionMs, ui.durationMs, ui.hasTrack, remaining, dragFraction)
                 QiText(
                     timeMain,
                     mono(

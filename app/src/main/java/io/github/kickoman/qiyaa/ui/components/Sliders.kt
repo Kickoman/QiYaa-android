@@ -37,10 +37,12 @@ fun HorizontalSlider(
     height: Dp = 28.dp,
     accent: Color = Qi.colors.accent,
     onChangeFinished: ((Float) -> Unit)? = null,
+    onChangeCancelled: (() -> Unit)? = null,
 ) {
     val colors = Qi.colors
     val latestChange by rememberUpdatedState(onChange)
     val latestFinished by rememberUpdatedState(onChangeFinished)
+    val latestCancelled by rememberUpdatedState(onChangeCancelled)
     var dragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(value) }
     val shown = if (dragging) dragValue else value.coerceIn(0f, 1f)
@@ -67,7 +69,10 @@ fun HorizontalSlider(
                         dragging = false
                         latestFinished?.invoke(dragValue)
                     },
-                    onDragCancel = { dragging = false },
+                    onDragCancel = {
+                        dragging = false
+                        latestCancelled?.invoke()
+                    },
                 ) { change, _ ->
                     change.consume()
                     dragValue = horizontalFraction(change.position.x, size.width)
