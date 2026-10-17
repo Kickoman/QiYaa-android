@@ -240,6 +240,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     mutableLogin.update {
                         it.copy(status = LoginStatus.Failed(kindOf("Device sign-in", failed)))
                     }
+                    graph.telemetry?.loginFailed()
                 }
             }
     }
@@ -366,6 +367,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         } catch (failed: Exception) {
             val error = kindOf("Sign-in", failed)
             mutableLogin.update { it.copy(status = LoginStatus.Failed(error), tokenError = false) }
+            graph.telemetry?.loginFailed()
             say(string(R.string.login_error, error.render(getApplication())))
         }
     }

@@ -4,16 +4,22 @@ import android.content.Context
 import android.content.SharedPreferences
 import io.github.kickoman.qiyaa.audio.AudioBus
 import io.github.kickoman.qiyaa.audio.EqSettings
+import java.time.LocalDate
 import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 class Settings(context: Context, defaultJamServer: String = "") {
-    private val preferences: SharedPreferences =
-        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).also { stored ->
-            if (stored.contains(KEY_OLD_JAM_HOST_KEY)) stored.edit().remove(KEY_OLD_JAM_HOST_KEY).apply()
+    private val preferences: SharedPreferences = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+
+    val wasEmpty: Boolean = preferences.all.isEmpty()
+
+    init {
+        if (preferences.contains(KEY_OLD_JAM_HOST_KEY)) {
+            preferences.edit().remove(KEY_OLD_JAM_HOST_KEY).apply()
         }
+    }
 
     private val mutableVolume = MutableStateFlow(preferences.getInt(KEY_VOLUME, DEFAULT_VOLUME))
     val volume: StateFlow<Int> = mutableVolume.asStateFlow()
@@ -74,6 +80,12 @@ class Settings(context: Context, defaultJamServer: String = "") {
     private val mutableContinueWithVibe =
         MutableStateFlow(preferences.getBoolean(KEY_CONTINUE_WITH_VIBE, true))
     val continueWithVibe: StateFlow<Boolean> = mutableContinueWithVibe.asStateFlow()
+
+    private val mutableTelemetryEnabled =
+        MutableStateFlow(preferences.getBoolean(KEY_TELEMETRY_ENABLED, true))
+    val telemetryEnabled: StateFlow<Boolean> = mutableTelemetryEnabled.asStateFlow()
+
+    val telemetryMachine: String? get() = preferences.getString(KEY_TELEMETRY_MACHINE, null)
 
     fun setVolume(value: Int) {
         mutableVolume.value = value.coerceIn(0, AudioBus.MAX_VOLUME)
@@ -146,6 +158,20 @@ class Settings(context: Context, defaultJamServer: String = "") {
         preferences.edit().putBoolean(KEY_CONTINUE_WITH_VIBE, value).apply()
     }
 
+    fun setTelemetryEnabled(value: Boolean) {
+        mutableTelemetryEnabled.value = value
+        preferences.edit().putBoolean(KEY_TELEMETRY_ENABLED, value).apply()
+    }
+
+    fun setTelemetryMachine(id: String) {
+        preferences.edit().putString(KEY_TELEMETRY_MACHINE, id).apply()
+    }
+
+    fun markTelemetryFirstStart(): Boolean {
+        if (preferences.contains(KEY_TELEMETRY_FIRST_START)) return true
+        return preferences.edit().putString(KEY_TELEMETRY_FIRST_START, LocalDate.now().toString()).commit()
+    }
+
     fun setTheme(theme: AccentTheme) {
         mutableTheme.value = theme
         preferences.edit().putString(KEY_THEME, theme.key).apply()
@@ -187,6 +213,9 @@ class Settings(context: Context, defaultJamServer: String = "") {
         const val KEY_QUALITY = "playback/quality"
         const val KEY_QUALITY_METERED = "playback/qualityMetered"
         const val KEY_CONTINUE_WITH_VIBE = "playback/continueWithVibe"
+        const val KEY_TELEMETRY_ENABLED = "telemetry/enabled"
+        const val KEY_TELEMETRY_MACHINE = "telemetry/machine"
+        const val KEY_TELEMETRY_FIRST_START = "telemetry/firstStart"
         const val DEFAULT_VOLUME = 75
         const val DEFAULT_EQ_PRESET = "Flat"
 

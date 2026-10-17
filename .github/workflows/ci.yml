@@ -51,11 +51,12 @@ jobs:
             echo "QIYAA_KEY_PASSWORD=$KEY_PASSWORD"
           } >> "$GITHUB_ENV"
 
+      # Every build carries telemetry, as on the desktop: branch APKs are unsigned, a tag's is the release.
       - name: Check and build
         run: |
           VERSION_ARG=""
           [ "$IS_RELEASE" = "true" ] && VERSION_ARG="-PqiyaaVersion=$GITHUB_REF_NAME"
-          ./gradlew ktlintCheck testDebugUnitTest lintDebug assembleRelease $VERSION_ARG
+          ./gradlew ktlintCheck testDebugUnitTest lintDebug assembleRelease -PqiyaaWithTelemetry=true $VERSION_ARG
 
       - name: Package
         run: |

@@ -100,7 +100,9 @@ class PlaybackService : MediaSessionService() {
         serviceScope.launch(start = CoroutineStart.UNDISPATCHED) {
             graph.settings.volume.collect { player.volume = AudioBus.volumeGain(it) }
         }
-        engine = Media3Engine(player, graph.queue).also { it.attach() }
+        engine =
+            Media3Engine(player, graph.queue, onAudioFailure = { graph.telemetry?.audioFailed(it) })
+                .also { it.attach() }
         graph.jamHost.onServiceStarted()
 
         val builder =

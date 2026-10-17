@@ -1,5 +1,6 @@
 package io.github.kickoman.qiyaa
 
+import android.app.Application
 import android.content.Context
 import android.os.Build
 import android.os.SystemClock
@@ -47,6 +48,18 @@ class AppGraph(val context: Context) {
             .build()
 
     val settings = Settings(context, defaultJamServer = BuildConfig.JAM_URL)
+    val telemetry: AppTelemetry? =
+        if (BuildConfig.TELEMETRY && BuildConfig.TELEMETRY_URL.startsWith("https://")) {
+            AppTelemetry(
+                application = context.applicationContext as Application,
+                settings = settings,
+                httpClient = httpClient,
+                endpoint = BuildConfig.TELEMETRY_URL,
+                scope = applicationScope,
+            ).also { it.start() }
+        } else {
+            null
+        }
     val tokenStore = TokenStore(context)
     val api =
         YandexApi(httpClient, log = { message -> Log.i(LOG_TAG, message) }).also {
@@ -124,6 +137,10 @@ class AppGraph(val context: Context) {
             appVersion = BuildConfig.VERSION_NAME,
             log = { message, failed -> Log.w(LOG_TAG, message, failed) },
         )
+
+    init {
+        telemetry?.connect(api, session.state, queue, jamHost, networkMonitor.available)
+    }
 
     companion object {
         const val HTTP_TIMEOUT_SECONDS = 20L

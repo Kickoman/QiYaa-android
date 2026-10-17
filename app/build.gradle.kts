@@ -52,6 +52,26 @@ android {
         val jamUri = runCatching { URI(jamUrl) }.getOrNull()
         manifestPlaceholders["jamHost"] = jamUri?.host ?: "jam.invalid"
         manifestPlaceholders["jamPathPrefix"] = (jamUri?.path?.trimEnd('/') ?: "") + "/j/"
+        val telemetryFlag = providers.gradleProperty("qiyaaWithTelemetry").orNull
+        val withTelemetry =
+            telemetryFlag?.let {
+                it.toBooleanStrictOrNull()
+                    ?: throw GradleException("qiyaaWithTelemetry must be true or false, got \"$it\"")
+            } ?: false
+        val telemetryUrl =
+            if (withTelemetry) {
+                providers.gradleProperty("qiyaaTelemetryUrl").orNull ?: "${jamUrl.trimEnd('/')}/api/telemetry"
+            } else {
+                ""
+            }
+        val telemetryUri = runCatching { URI(telemetryUrl) }.getOrNull()
+        if (withTelemetry && (telemetryUri?.scheme != "https" || telemetryUri?.host.isNullOrEmpty())) {
+            throw GradleException(
+                "qiyaaTelemetryUrl must be an https URL with a host (cleartext is off), got \"$telemetryUrl\"",
+            )
+        }
+        buildConfigField("boolean", "TELEMETRY", "$withTelemetry")
+        buildConfigField("String", "TELEMETRY_URL", "\"$telemetryUrl\"")
     }
 
     signingConfigs {

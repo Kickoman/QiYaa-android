@@ -254,9 +254,92 @@ class TelemetrySession(enabled: Flow<Boolean>, onScreen: Flow<Boolean>, playing:
 - Подписка запускается `UNDISPATCHED`: если первое значение `enabled` — `true` (`StateFlow` настройки), обработчик падения стоит уже к возврату из `start()`, до остальной сборки графа.
 - `beginning()` с исключением не роняет приложение: строка в `log`, и этот `Reporter` так и не начнётся (события копятся в памяти, ничего не уходит).
 
+## В корне: `AppTelemetry`, `TelemetryCodes`
+
+Не часть пакета (они знают Android и типы приложения), но описаны здесь: своего README у корня нет.
+
+```kotlin
+class AppTelemetry(application: Application, settings: Settings, httpClient: OkHttpClient, endpoint: String,
+    scope: CoroutineScope) {
+    fun start()                                     // обработчик падения ставится здесь же, если telemetry/enabled
+    fun connect(api: YandexApi, sessionState: StateFlow<SessionState>, queue: QueueController, jamHost: JamHost,
+        network: StateFlow<Boolean>)
+    fun loginFailed();  fun audioFailed(failure: AudioFailure)
+}
+data class ErrorCode(area: ErrorArea, kind: String, httpStatus: Int? = null)
+data class ProcessExit(summary: String?, reason: Int, status: Int)
+object TelemetryCodes {
+    fun error(kind: FailureKind / failure: AudioFailure / failure: RequestFailure): ErrorCode
+    fun error(event: JamHostEvent): ErrorCode?;  val LOGIN_FAILED: ErrorCode
+    fun onOff / language / theme / vis / quality / packaging / arch / locale / device
+    fun exitInfo(reason: Int, status: Int): ExitInfo;  fun exits(newestFirst: List<ProcessExit>): Map<String, ExitInfo>
+}
+```
+
+`AppGraph` создаёт `AppTelemetry` сразу после `settings`, только если `BuildConfig.TELEMETRY` и `BuildConfig.TELEMETRY_URL` начинается с `https://` (сборка с `-PqiyaaWithTelemetry=true`, `docs/release.md`), иначе `telemetry = null` и ничего из этого пакета не создаётся (TEL-01). `start()` зовётся тут же: при включённой настройке обработчик падения стоит раньше остальной сборки графа. `connect(…)` — в конце `init` графа, до сервиса и экранов. Входы `TelemetrySession`:
+
+| Вход | Откуда |
+|---|---|
+| `enabled` | `Settings.telemetryEnabled` |
+| `onScreen` | `registerActivityLifecycleCallbacks`: запущенных (`onStart` без `onStop`) активностей больше нуля; `onStop` при смене конфигурации (`isChangingConfigurations`) уходом с экрана не считается |
+| `playing` | `QueueActivity.PlayingChanged` |
+| `online` | `NetworkMonitor.available` |
+| `store` | `File(noBackupFilesDir, "telemetry")` |
+| `newReporter` | `Reporter(BuildConfig.VERSION_NAME, store, Sender(httpClient, endpoint)::post, applicationScope, Dispatchers.IO, Instant::now, { elapsedRealtime() - Process.getStartElapsedRealtime() }, logcat)`; на Android 11+ ещё `ActivityManager.setProcessStateSummary(session)` — по этой метке следующий запуск найдёт причину выхода |
+| `beginning` (на `io`) | ждёт `connect` (`loggedIn` — `api.token` не пустой), `Settings.markTelemetryFirstStart()`, `MachineId.resolve(ANDROID_ID, telemetry/machine)`, на Android 11+ `getHistoricalProcessExitReasons(пакет, 0, 16)` → `TelemetryCodes.exits`, поля `start` |
+
+Строки отправки идут в logcat с тегом `QiYaa`: `Telemetry: HTTP 204, 3 events sent`; «не начался» и несохранённый `telemetry/firstStart` — предупреждением.
+
+Поля `start`:
+
+| Поле | Откуда |
+|---|---|
+| `osVersion`, `sdk` | `Build.VERSION.RELEASE`, `Build.VERSION.SDK_INT` |
+| `device` | `TelemetryCodes.device(Build.MANUFACTURER, Build.MODEL)` |
+| `kernel` | `System.getProperty("os.version")` |
+| `arch` | `TelemetryCodes.arch(Build.SUPPORTED_ABIS[0])` |
+| `package` | `apk` для `BuildConfig.BUILD_TYPE == "release"`, иначе `debug` |
+| `locale` | системная: `Resources.getSystem().configuration.locales[0]`, не `Locale.getDefault()` — его `AppLocale.wrap` подменяет языком приложения |
+| `language`, `theme`, `vis`, `equalizer`, `quality`, `qualityMetered` | `Settings` |
+| `dpr` | `resources.displayMetrics.density` |
+| `loggedIn` | `api.token` не пустой |
+| `firstRun` | `Settings.wasEmpty` (`data/README.md`) |
+
+События из типов приложения:
+
+| Источник | Событие |
+|---|---|
+| `QueueActivity.TrackStarted` | `countTrack()` |
+| `QueueActivity.PlayingChanged(playing)` | поток `playing` |
+| `QueueActivity.PlaybackFailed(NETWORK / SESSION / TRACK)` | `error playback/network`, `auth`, `track` |
+| `AudioFailure` (`PlaybackService` → `audioFailed`) `INIT` / `DEVICE` / `UNDECODABLE` | `error audio/init`, `device`, `undecodable` |
+| `YandexApi.requestFailures`: `NETWORK` / `HTTP` / `CONTENT` | `error api/network`, `http` с `httpStatus`, `content` |
+| `AppViewModel`: вход по коду устройства или токеном не удался; `Session.state` стал `Expired` | `error login/failed` |
+| `JamHostEvent.Refused(reason)` | `error jam/<reason>`; причина вне `^[a-z0-9-]{1,32}$` — `other` |
+| `JamHostEvent.Ended(GONE / EXPIRED / BY_SERVER)` | `error jam/gone`, `expired`, `ended-by-server`; `BY_HOST` — ничего |
+| `JamHostEvent.NotConnected` (хозяин убирает элементы без связи, HOST-36, HOST-25) | ничего: это подсказка на экране, среди видов ошибок `jam` спеки её нет |
+| `jamHost.state.phase` стал / перестал быть `ACTIVE` | `feature jam on` и `countJam()` / `feature jam off`; как у десктопа, до первого «вкл» «выкл» не шлётся |
+| `Settings.language`, `eq.enabled`, `visualizerMode` — смена после старта | `feature language be/ru/en`, `equalizer on/off`, `vis spectrum/oscilloscope/off` |
+
+`TelemetryCodes`:
+- `arch`: `arm64-v8a` → `arm64`, `armeabi-v7a` → `arm`, `x86` → `i386` (как у десктопа), остальное как есть — его приводит `EventCodec.arch` (`x86_64`).
+- `locale(language, country)`: `be_BY`, `es_419`; `sr-Latn-RS` даёт `sr_RS` (`Locale.country` без письменности); без страны — язык; без языка — `C`.
+- `device(manufacturer, model)`: «производитель модель», но без производителя, если модель с него уже начинается (без учёта регистра): `Google Pixel 7`, `samsung SM-S911B`, `Xiaomi 13`.
+- `exitInfo(reason, status)` — по числам `ApplicationExitInfo` (свои константы: `telemetry` и `TelemetryCodes` без `android.*`, а `TelemetryCodesTest` сверяет их с константами Android): 4 `REASON_CRASH` → `CRASH`, 5 `REASON_CRASH_NATIVE` → `NATIVE_CRASH` с `status` как номером сигнала, 6 `REASON_ANR` → `ANR`, остальное → `OTHER`.
+- `exits`: записи от новых к старым (так их отдаёт Android); `summary` — `session` процесса, не UUID v4 — запись пропускается; у одного запуска берётся самая новая.
+
+`TelemetryCodesTest` проверяет каждую строку этих таблиц, кроме подписок `AppTelemetry`: это Android-класс без логики, он не тестируется на JVM.
+
+**Traps:**
+- `connect` обязан идти до первых событий: у `queue.activity`, `requestFailures` и `jamHost.events` нет `replay`, раньше подписки события теряются. `AppGraph` зовёт его в конце `init`, до сервиса и экранов.
+- `beginning` ждёт `connect`: до него `loggedIn` неизвестен. Если бы `connect` не позвали, `Reporter` так и не начался бы (события копятся в памяти, ничего не уходит).
+- `ANDROID_ID` читается только на `io` и только в `beginning`; `@SuppressLint("HardwareIds")` с причиной в той же строке.
+- Процесс без активностей (сервис поднят кнопкой гарнитуры) в использовании, только пока играет.
+- `noBackupFilesDir` при первом обращении создаёт папку `no_backup` — один `mkdir` на главном потоке при сборке графа; сама папка `telemetry` создаётся уже на `io` или в обработчике падения.
+- `BuildConfig.TELEMETRY` — `boolean`-константа: без флага `AppGraph.telemetry` всегда `null`, и R8 (после Kickoman/QiYaa-android#22) может выбросить весь пакет.
+
 ## Not here
 
 - Что и когда отправляется в терминах пользователя, сборка с `-PqiyaaWithTelemetry=true`, рецепт `retrace` — `docs/telemetry.md`.
-- Чтение `ANDROID_ID`, `ApplicationExitInfo`, состояние для `start`, коды из типов приложения — корневые `AppTelemetry` и `TelemetryCodes`.
 - Ключи настроек `telemetry/*` — `data/README.md`; переключатель в Library — `ui/README.md`.
 - Сервер и схема — `spec/telemetry/README.md`, QiYaa-jam `server/src/net/telemetry.ts`.
