@@ -393,6 +393,49 @@ class QueueJamTest {
         }
 
     @Test
+    fun `HOST-14 a load-more reply in flight at the jam start is dropped, with no JamActive and no seek`() =
+        runTest {
+            val h = QueueHarness(this)
+            val reply = CompletableDeferred<WaveBatch>()
+            h.source.onStartWave = { WaveBatch("S1", "B1", tracks("w1", "w2", "w3")) }
+            h.source.onMoreWave = { _, _ -> reply.await() }
+            h.controller.playWave(listOf("user:onyourwave"), "My Wave")
+            runCurrent()
+            h.engine.startPlaying()
+            repeat(3) { h.engine.finishTrack() }
+            runCurrent()
+            assertTrue(h.engine.isEnded)
+            assertTrue(h.controller.state.value.loadingMore)
+            h.startJam()
+            h.engine.commands.clear()
+            reply.complete(WaveBatch("S1", "B2", tracks("m1", "m2")))
+            runCurrent()
+            assertEquals(listOf("w1", "w2", "w3"), h.engine.ids())
+            assertEquals(emptyList<String>(), h.engine.commands)
+            assertFalse(h.events.contains(QueueEvent.JamActive))
+            assertFalse(h.controller.state.value.loadingMore)
+        }
+
+    @Test
+    fun `a stored jam keeps its jam wave tracks as continuation entries, which never come from the head`() =
+        runTest {
+            val first = QueueHarness(this)
+            first.startJam()
+            first.source.onStartWave = { WaveBatch("SJ", "B1", tracks("w1", "w2")) }
+            first.state(item("i1", "A"), seeds = listOf("track:A"), seedsVersion = 1)
+            first.state(seeds = listOf("track:A"), seedsVersion = 1)
+            runCurrent()
+            assertEquals(listOf("A", "w1", "w2"), first.engine.ids())
+            val parts = listOf(EntryPart.HEAD, EntryPart.CONTINUATION, EntryPart.CONTINUATION)
+            assertEquals(parts, first.controller.state.value.entries.map { it.part })
+            assertEquals(parts, first.store.snapshot()!!.parts)
+            val restored = QueueHarness(this, store = first.store)
+            assertEquals(parts, restored.controller.state.value.entries.map { it.part })
+            restored.startJam()
+            assertEquals(parts, restored.controller.state.value.entries.map { it.part })
+        }
+
+    @Test
     fun `a stored queue keeps its jam slots, and a new jam picks them up`() = runTest {
         val first = QueueHarness(this)
         first.startJam()
@@ -409,6 +452,83 @@ class QueueJamTest {
         restored.controller.endJam()
         assertNull(restored.controller.state.value.jamSlots)
     }
+
+    @Test
+    fun `HOST-14 CONT-04 no vibe from history is asked during a jam`() = runTest {
+        val h = QueueHarness(this, continueWithVibe = true)
+        h.source.onStartWave = { CompletableDeferred<WaveBatch>().await() }
+        h.controller.loadSource("Likes") { tracks("a", "b", "c", "d") }
+        runCurrent()
+        h.engine.startPlaying()
+        h.startJam()
+        assertTrue(h.controller.state.value.continueWithVibe)
+        h.state(item("i1", "X"), item("i2", "Y"), seeds = listOf("genre:jam"), seedsVersion = 1)
+        h.engine.finishTrack()
+        h.state(item("i2", "Y"), seeds = listOf("genre:jam"), seedsVersion = 1)
+        h.engine.finishTrack()
+        h.engine.fail(FailureKind.TRACK)
+        runCurrent()
+        assertEquals(listOf("startWave [genre:jam]"), h.source.calls)
+    }
+
+    @Test
+    fun `HOST-14 a vibe reply in flight at the jam start is dropped, with no JamActive and no seek`() =
+        runTest {
+            val h = QueueHarness(this, continueWithVibe = true)
+            val reply = CompletableDeferred<WaveBatch>()
+            h.source.onStartWave = { reply.await() }
+            h.controller.loadSource("Likes") { tracks("a", "b") }
+            runCurrent()
+            h.engine.startPlaying()
+            h.engine.finishTrack()
+            h.engine.finishTrack()
+            runCurrent()
+            assertTrue(h.controller.state.value.loadingMore)
+            h.startJam()
+            h.engine.commands.clear()
+            reply.complete(WaveBatch("V1", "B1", tracks("v1")))
+            runCurrent()
+            assertEquals(listOf("a", "b"), h.engine.ids())
+            assertEquals(emptyList<String>(), h.engine.commands)
+            assertEquals(emptyList<String>(), h.source.feedback)
+            assertFalse(h.events.contains(QueueEvent.JamActive))
+            assertFalse(h.controller.state.value.loadingMore)
+        }
+
+    @Test
+    fun `HOST-32 CONT-05 after the jam the flag and the history go on`() = runTest {
+        val h = QueueHarness(this, continueWithVibe = true)
+        h.source.onStartWave = { CompletableDeferred<WaveBatch>().await() }
+        h.controller.loadSource("Likes") { tracks("a", "b", "c") }
+        runCurrent()
+        h.engine.startPlaying()
+        h.startJam()
+        h.state(item("i1", "X"))
+        h.controller.endJam()
+        assertTrue(h.controller.state.value.continueWithVibe)
+        assertEquals(listOf("a", "X"), h.engine.ids())
+        h.engine.finishTrack()
+        runCurrent()
+        assertEquals(listOf("startWave [track:X, track:a]"), h.source.calls)
+    }
+
+    @Test
+    fun `HOST-14 HOST-32 a vibe request in flight at the jam start does not stop the vibe after the jam`() =
+        runTest {
+            val h = QueueHarness(this, continueWithVibe = true)
+            h.source.onStartWave = { CompletableDeferred<WaveBatch>().await() }
+            h.controller.loadSource("Likes") { tracks("a", "b") }
+            runCurrent()
+            h.engine.startPlaying()
+            runCurrent()
+            assertEquals(listOf("startWave [track:a]"), h.source.calls)
+            h.startJam()
+            h.state(item("i1", "X"))
+            h.controller.endJam()
+            h.engine.finishTrack()
+            runCurrent()
+            assertEquals(listOf("startWave [track:a]", "startWave [track:X, track:a]"), h.source.calls)
+        }
 
     private class Recorder : JamPlaybackListener {
         val started = mutableListOf<String>()

@@ -204,6 +204,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setQualityMetered(quality: AudioQuality) = settings.setQualityMetered(quality)
 
+    fun setContinueWithVibe(on: Boolean) = settings.setContinueWithVibe(on)
+
     fun signOut() {
         leaveSession(notice = null)
     }

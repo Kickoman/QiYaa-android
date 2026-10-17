@@ -176,6 +176,17 @@ fun PillToggle(text: String, active: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
+fun OnOffPills(
+    value: Boolean,
+    onText: String = stringResource(R.string.toggle_on),
+    offText: String = stringResource(R.string.toggle_off),
+    onChange: (Boolean) -> Unit,
+) {
+    PillToggle(onText.uppercase(), value) { if (!value) onChange(true) }
+    PillToggle(offText.uppercase(), !value) { if (value) onChange(false) }
+}
+
+@Composable
 fun RoundButton(
     size: Dp,
     background: Color,

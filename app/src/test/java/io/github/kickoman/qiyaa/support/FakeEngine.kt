@@ -1,6 +1,7 @@
 package io.github.kickoman.qiyaa.support
 
 import io.github.kickoman.qiyaa.queue.FailureKind
+import io.github.kickoman.qiyaa.queue.HeadShuffle
 import io.github.kickoman.qiyaa.queue.PlayOrder
 import io.github.kickoman.qiyaa.queue.PlayerEngine
 import io.github.kickoman.qiyaa.queue.QueueController
@@ -18,7 +19,13 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
         private set
     var playing = false
         private set
-    var shuffleOrder: List<Int>? = null
+    var shuffle = HeadShuffle.EMPTY
+        private set
+    var shuffleOrder: List<Int>
+        get() = shuffle.head
+        set(value) {
+            shuffle = HeadShuffle(value, tracks.size)
+        }
 
     override var currentIndex = 0
         private set
@@ -33,7 +40,6 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
             if (field == value) return
             field = value
             commands += "shuffle $value"
-            controller.onShuffleChanged(value)
         }
 
     override var repeatEnabled = false
@@ -41,14 +47,19 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
             if (field == value) return
             field = value
             commands += "repeat $value"
-            controller.onRepeatChanged(value)
+        }
+
+    override var pauseAtEndOfCurrent = false
+        set(value) {
+            if (field == value) return
+            field = value
+            commands += "pause at end $value"
         }
 
     override fun hasNext(): Boolean =
         PlayOrder.remainingAfter(playOrder(), currentIndex) > 0 || (repeatEnabled && tracks.isNotEmpty())
 
-    override fun playOrder(): List<Int> =
-        if (shuffleEnabled) shuffleOrder ?: tracks.indices.toList() else tracks.indices.toList()
+    override fun playOrder(): List<Int> = if (shuffleEnabled) shuffle.order else tracks.indices.toList()
 
     override fun hasPrevious(): Boolean {
         val order = playOrder()
@@ -60,58 +71,87 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
         playWhenReady: Boolean,
         startIndex: Int,
         startPositionMs: Long,
+        headSize: Int,
     ) {
         val start = if (startIndex == 0 && startPositionMs == 0L) "" else " at $startIndex:$startPositionMs"
         commands += "set ${tracks.map { it.id }} play=$playWhenReady$start"
         this.tracks.clear()
         this.tracks += tracks
+        shuffle = pass(headSize, startIndex)
         currentIndex = startIndex
         positionMs = startPositionMs
         isEnded = false
         this.playWhenReady = playWhenReady
-        controller.onItemChanged(tracks.getOrNull(startIndex), Transition.NEW_QUEUE, playing)
+        report(tracks.getOrNull(startIndex), Transition.NEW_QUEUE)
+    }
+
+    override fun shuffleHead(headSize: Int, first: Int) {
+        shuffle = pass(headSize, first)
+    }
+
+    private fun pass(headSize: Int, first: Int): HeadShuffle {
+        val head = (0 until headSize.coerceIn(0, tracks.size)).toList()
+        return HeadShuffle(if (first in head) listOf(first) + (head - first) else head, tracks.size)
     }
 
     override fun appendTracks(tracks: List<Track>) {
         commands += "append ${tracks.map { it.id }}"
-        this.tracks += tracks
+        insert(this.tracks.size, tracks)
     }
 
     override fun insertTracks(index: Int, tracks: List<Track>) {
         commands += "insert $index ${tracks.map { it.id }}"
-        this.tracks.addAll(index, tracks)
-        if (index <= currentIndex && this.tracks.size > tracks.size) currentIndex += tracks.size
+        insert(index, tracks)
+    }
+
+    private fun insert(index: Int, added: List<Track>) {
+        val wasEmpty = tracks.isEmpty()
+        tracks.addAll(index, added)
+        shuffle = shuffle.inserted(index, added.size)
+        if (!wasEmpty && index <= currentIndex) currentIndex += added.size
+        if (wasEmpty && tracks.isNotEmpty()) {
+            currentIndex = 0
+            report(tracks[0], Transition.NEW_QUEUE)
+        }
     }
 
     override fun removeAt(index: Int) {
         commands += "remove $index"
         tracks.removeAt(index)
+        shuffle = shuffle.removed(index, index + 1)
         if (index < currentIndex) {
             currentIndex--
         } else if (index == currentIndex) {
-            controller.onItemChanged(tracks.getOrNull(currentIndex), Transition.NEW_QUEUE, playing)
+            report(tracks.getOrNull(currentIndex), Transition.NEW_QUEUE)
         }
     }
 
     override fun clear() {
         commands += "clear"
         tracks.clear()
+        shuffle = HeadShuffle.EMPTY
         currentIndex = 0
     }
 
     override fun seekTo(index: Int) {
         commands += "seek $index"
-        currentIndex = index
         positionMs = 0
         isEnded = false
-        controller.onItemChanged(tracks[index], Transition.SEEK, playing)
+        if (index == currentIndex) {
+            controller.onSeeked()
+            return
+        }
+        currentIndex = index
+        report(tracks[index], Transition.SEEK)
     }
 
     override fun skipToNext() {
         commands += "next"
         nextInOrder()?.let { next ->
             currentIndex = next
-            controller.onItemChanged(tracks[currentIndex], Transition.SEEK, playing)
+            positionMs = 0
+            isEnded = false
+            report(tracks[currentIndex], Transition.SEEK)
         }
     }
 
@@ -131,7 +171,7 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
         if (previous != null) {
             currentIndex = previous
             positionMs = 0
-            controller.onItemChanged(tracks[currentIndex], Transition.SEEK, playing)
+            report(tracks[currentIndex], Transition.SEEK)
         }
     }
 
@@ -162,17 +202,30 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
     }
 
     fun finishTrack() {
+        if (pauseAtEndOfCurrent) {
+            playWhenReady = false
+            controller.onPausedAtEnd()
+            if (!playWhenReady && playing) stopPlaying()
+            return
+        }
         val next = nextInOrder()
         if (next != null) {
             val transition = if (next == currentIndex) Transition.REPEAT else Transition.AUTO
             currentIndex = next
             positionMs = 0
-            controller.onItemChanged(tracks[currentIndex], transition, playing)
+            report(tracks[currentIndex], transition)
         } else {
             isEnded = true
             controller.onEnded()
             if (playing) stopPlaying()
         }
+    }
+
+    private fun report(track: Track?, transition: Transition) {
+        check(shuffle.length == tracks.size) {
+            "The shuffle order has ${shuffle.length} items, the playlist ${tracks.size}: $track"
+        }
+        controller.onItemChanged(track, transition, playing)
     }
 
     private fun nextInOrder(): Int? {

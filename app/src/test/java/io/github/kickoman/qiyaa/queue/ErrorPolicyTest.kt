@@ -41,15 +41,15 @@ class ErrorPolicyTest {
     fun `ERR-07 a broken last track of a wave waits for more, unless it is the third in a row`() {
         assertEquals(
             ErrorAction.WaitForMore,
-            ErrorPolicy.decide(FailureKind.TRACK, 0, hasNext = false, isWave = true),
+            ErrorPolicy.decide(FailureKind.TRACK, 0, hasNext = false, endless = true),
         )
         assertEquals(
             ErrorAction.WaitForMore,
-            ErrorPolicy.decide(FailureKind.TRACK, 1, hasNext = false, isWave = true),
+            ErrorPolicy.decide(FailureKind.TRACK, 1, hasNext = false, endless = true),
         )
         assertEquals(
             ErrorAction.Stop,
-            ErrorPolicy.decide(FailureKind.TRACK, 2, hasNext = false, isWave = true),
+            ErrorPolicy.decide(FailureKind.TRACK, 2, hasNext = false, endless = true),
         )
     }
 

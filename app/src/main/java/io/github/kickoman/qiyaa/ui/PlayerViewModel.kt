@@ -40,8 +40,6 @@ data class PlayerUi(
     val playbackState: Int = Player.STATE_IDLE,
     val positionMs: Long = 0,
     val durationMs: Long = 0,
-    val shuffle: Boolean = false,
-    val repeat: Boolean = false,
     val current: Track? = null,
 ) {
     val hasTrack: Boolean get() = current != null
@@ -133,28 +131,29 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun toggleShuffle() {
-        val current = controller ?: return
         if (queue.state.value.isWave) {
             notify(string(R.string.player_shuffle_wave))
             return
         }
-        current.shuffleModeEnabled = !current.shuffleModeEnabled
-        notify(
-            string(
-                if (current.shuffleModeEnabled) R.string.player_shuffle_on else R.string.player_shuffle_off,
-            ),
-        )
+        queue.setShuffle(!queue.modes.value.shuffle)
+        val on = queue.modes.value.shuffle
+        notify(string(if (on) R.string.player_shuffle_on else R.string.player_shuffle_off))
     }
 
     fun toggleRepeat() {
-        val current = controller ?: return
         if (queue.state.value.isWave) {
             notify(string(R.string.player_repeat_wave))
             return
         }
-        val on = current.repeatMode == Player.REPEAT_MODE_OFF
-        current.repeatMode = if (on) Player.REPEAT_MODE_ALL else Player.REPEAT_MODE_OFF
+        queue.setRepeat(!queue.modes.value.repeat)
+        val on = queue.modes.value.repeat
         notify(string(if (on) R.string.player_repeat_on else R.string.player_repeat_off))
+    }
+
+    fun setQueueContinuesWithVibe(on: Boolean) {
+        queue.setContinueWithVibe(on)
+        val now = queue.state.value.continueWithVibe
+        notify(string(if (now) R.string.vibe_continue_on else R.string.vibe_continue_off))
     }
 
     fun toggleMiniPlay() {
@@ -258,8 +257,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 playbackState = player.playbackState,
                 positionMs = player.currentPosition.coerceAtLeast(0),
                 durationMs = player.duration.takeIf { it > 0 } ?: knownDuration,
-                shuffle = player.shuffleModeEnabled,
-                repeat = player.repeatMode != Player.REPEAT_MODE_OFF,
                 current = item?.let(MediaItems::toTrack),
             )
         if (player.isPlaying) startTicker() else ticker?.cancel()

@@ -4,7 +4,7 @@
 
 | Файл | Содержит |
 |---|---|
-| `Settings.kt` | `Settings` — громкость, баланс, визуализатор, EQ, тема, язык, качество звука |
+| `Settings.kt` | `Settings` — громкость, баланс, визуализатор, EQ, тема, язык, качество звука, «продолжать волной» |
 | `AudioQuality.kt` | `AudioQuality` — стандарт / экономия (`spec/player/quality.md`) |
 | `AppLanguage.kt` | `AppLanguage` — языки интерфейса: белорусский (по умолчанию), русский, английский |
 | `TokenStore.kt` | `TokenStore` — токен |
@@ -35,8 +35,9 @@
 | `language` | string (`AppLanguage.tag`: `be`, `ru`, `en`) | `be` (и любое другое значение) | `language` |
 | `playback/quality` | string (`AudioQuality.key`: `standard`, `economy`), качество на Wi-Fi и другой безлимитной сети | `standard` (и любое другое значение) | `quality` |
 | `playback/qualityMetered` | string, то же на мобильной и другой лимитной сети (QUAL-07) | `standard` (и любое другое значение) | `qualityMetered` |
+| `playback/continueWithVibe` | bool, новые очереди без своего продолжения идут дальше волной по истории (CONT-01, `spec/player/continuation.md`) | `true` | `continueWithVibe` |
 
-Ключи и умолчания те же, что в десктопном QiYaa, где они применимы (`playback/quality` там единственный: у ПК нет мобильной сети). Какое из двух качеств действует, решает `AppGraph` по `NetworkMonitor.isMetered()`; `data` про сеть не знает. `jam/server`
+Ключи и умолчания те же, что в десктопном QiYaa, где они применимы (`playback/quality` там единственный: у ПК нет мобильной сети; `playback/continueWithVibe` там есть только в `settings.ini`, здесь — блок в библиотеке). Какое из двух качеств действует, решает `AppGraph` по `NetworkMonitor.isMetered()`; `data` про сеть не знает. `jam/server`
 обрезается по краям при записи; ключ `jam/hostKey` из 0.2.3 (ключи хозяина отменены) `Settings` удаляет при создании; адрес по умолчанию передаёт `AppGraph` в конструктор, потому что
 `data` не видит `BuildConfig`. `setEq(settings, presetName)` пишет четыре ключа одной транзакцией. Строка полос с числом элементов ≠ 10 или с нечисловыми значениями читается как плоский EQ.
 

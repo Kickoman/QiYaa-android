@@ -170,8 +170,6 @@
     <string name="jam_join">Новыя госці</string>
     <string name="jam_join_open">Пускаць</string>
     <string name="jam_join_closed">Зачынена</string>
-    <string name="jam_on">Так</string>
-    <string name="jam_off">Не</string>
     <string name="jam_new_link">Новая спасылка</string>
     <string name="jam_end">Скончыць джэм</string>
     <string name="jam_end_confirm">Націсніце яшчэ раз</string>
@@ -243,4 +241,11 @@
     <string name="quality_standard">Стандарт</string>
     <string name="quality_economy">Эканомія</string>
     <string name="quality_note">Эканомія: HE-AAC 64 kbps, утрая менш трафіку. З наступнага трэка.</string>
+    <string name="toggle_on">Так</string>
+    <string name="toggle_off">Не</string>
+    <string name="vibe_continue_title">ПРАЦЯГВАЦЬ ХВАЛЯЙ</string>
+    <string name="vibe_continue_new_queues">Новыя чэргі</string>
+    <string name="vibe_continue_note">Калі лайкі, плэйліст, альбом, выканаўца ці пошук заканчваюцца, далей грае хваля па тым, што гучала. У плэйлісце гэта пераключаецца для бягучай чаргі.</string>
+    <string name="vibe_continue_on">За гэтай чаргой пойдзе хваля</string>
+    <string name="vibe_continue_off">Гэтая чарга спыніцца ў канцы</string>
 </resources>

@@ -52,6 +52,7 @@ import io.github.kickoman.qiyaa.ui.JamViewModel
 import io.github.kickoman.qiyaa.ui.ListState
 import io.github.kickoman.qiyaa.ui.components.ActionButton
 import io.github.kickoman.qiyaa.ui.components.LedDot
+import io.github.kickoman.qiyaa.ui.components.OnOffPills
 import io.github.kickoman.qiyaa.ui.components.PillToggle
 import io.github.kickoman.qiyaa.ui.components.QiText
 import io.github.kickoman.qiyaa.ui.components.QrCodeImage
@@ -389,11 +390,16 @@ private fun RoomSettings(viewModel: JamViewModel, room: JamRoom, enabled: Boolea
         }
         Divider()
         SettingRow(stringResource(R.string.jam_guests_can_skip)) {
-            OnOff(settings.guestsCanSkip, R.string.jam_on, R.string.jam_off, viewModel::setGuestsCanSkip)
+            OnOffPills(settings.guestsCanSkip, onChange = viewModel::setGuestsCanSkip)
         }
         Divider()
         SettingRow(stringResource(R.string.jam_join)) {
-            OnOff(settings.joinOpen, R.string.jam_join_open, R.string.jam_join_closed, viewModel::setJoinOpen)
+            OnOffPills(
+                settings.joinOpen,
+                stringResource(R.string.jam_join_open),
+                stringResource(R.string.jam_join_closed),
+                viewModel::setJoinOpen,
+            )
         }
     }
     ActionButton(
@@ -424,7 +430,7 @@ fun JamSettingsScreen(viewModel: JamViewModel, onDone: () -> Unit) {
             Modifier.padding(start = 16.dp, end = 16.dp).fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            OnOff(feedback, R.string.jam_on, R.string.jam_off, viewModel::setWaveFeedback)
+            OnOffPills(feedback, onChange = viewModel::setWaveFeedback)
         }
         Note(stringResource(R.string.jam_wave_feedback_note))
         SectionLabel(stringResource(R.string.jam_share_audio))
@@ -432,7 +438,7 @@ fun JamSettingsScreen(viewModel: JamViewModel, onDone: () -> Unit) {
             Modifier.padding(start = 16.dp, end = 16.dp).fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            OnOff(share, R.string.jam_on, R.string.jam_off, viewModel::setShareAudio)
+            OnOffPills(share, onChange = viewModel::setShareAudio)
         }
         Note(stringResource(R.string.jam_share_audio_note))
         ActionButton(
@@ -490,12 +496,6 @@ fun JamContinueDialog(onContinue: () -> Unit, onEnd: () -> Unit) {
             }
         }
     }
-}
-
-@Composable
-private fun OnOff(value: Boolean, onText: Int, offText: Int, onChange: (Boolean) -> Unit) {
-    PillToggle(stringResource(onText).uppercase(), value) { if (!value) onChange(true) }
-    PillToggle(stringResource(offText).uppercase(), !value) { if (value) onChange(false) }
 }
 
 @Composable

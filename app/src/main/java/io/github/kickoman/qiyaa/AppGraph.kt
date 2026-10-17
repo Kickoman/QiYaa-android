@@ -72,6 +72,7 @@ class AppGraph(val context: Context) {
             io = Dispatchers.IO,
             store = QueueFile(context).asQueueStore(),
             logFailure = { stage, failed -> Log.w(LOG_TAG, "Queue $stage failed", failed) },
+            continueWithVibeByDefault = { settings.continueWithVibe.value },
         )
 
     /** Signed track links, shared by the player and the jam host's listeners (LISTEN-02). */

@@ -23,7 +23,7 @@ import io.github.kickoman.qiyaa.queue.QueueController
 // available at the end of a queue, because Next there still means something (WAVE-09, TR-04).
 @UnstableApi
 class QueueForwardingPlayer(player: Player, private val queue: QueueController) : ForwardingPlayer(player) {
-    private val wrappers = HashMap<Player.Listener, Player.Listener>()
+    private val wrappers = LinkedHashMap<Player.Listener, Player.Listener>()
 
     override fun seekToNext() = queue.next()
 
@@ -32,6 +32,20 @@ class QueueForwardingPlayer(player: Player, private val queue: QueueController) 
     override fun seekToPrevious() = queue.previous()
 
     override fun seekToPreviousMediaItem() = queue.previous()
+
+    override fun setShuffleModeEnabled(shuffleModeEnabled: Boolean) {
+        queue.setShuffle(shuffleModeEnabled)
+        val effective = wrappedPlayer.shuffleModeEnabled
+        if (effective == shuffleModeEnabled) return
+        for (listener in wrappers.keys.toList()) listener.onShuffleModeEnabledChanged(effective)
+    }
+
+    override fun setRepeatMode(repeatMode: Int) {
+        queue.setRepeat(repeatMode != Player.REPEAT_MODE_OFF)
+        val effective = wrappedPlayer.repeatMode
+        if (effective == repeatMode) return
+        for (listener in wrappers.keys.toList()) listener.onRepeatModeChanged(effective)
+    }
 
     override fun getAvailableCommands(): Player.Commands = withTransport(super.getAvailableCommands())
 

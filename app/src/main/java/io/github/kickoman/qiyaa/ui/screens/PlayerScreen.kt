@@ -70,6 +70,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onJam: (() -> Unit)? = null) {
     val colors = Qi.colors
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val queue by viewModel.queue.state.collectAsStateWithLifecycle()
+    val modes by viewModel.queue.modes.collectAsStateWithLifecycle()
     val liked by viewModel.library.likedIds.collectAsStateWithLifecycle()
     val visualizerMode by viewModel.settings.visualizerMode.collectAsStateWithLifecycle()
     val remaining by viewModel.settings.timeRemaining.collectAsStateWithLifecycle()
@@ -239,7 +240,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onJam: (() -> Unit)? = null) {
         ) {
             RoundButton(
                 52.dp,
-                if (ui.shuffle && !queue.isWave) colors.accentBackground else colors.surface,
+                if (modes.shuffle && !modes.locked) colors.accentBackground else colors.surface,
                 onClick = viewModel::toggleShuffle,
             ) {
                 QiText(
@@ -247,8 +248,8 @@ fun PlayerScreen(viewModel: PlayerViewModel, onJam: (() -> Unit)? = null) {
                     TransportLabelStyle,
                     color =
                     when {
-                        queue.isWave -> colors.dimmer
-                        ui.shuffle -> colors.accent
+                        modes.locked -> colors.dimmer
+                        modes.shuffle -> colors.accent
                         else -> colors.muted
                     },
                 )
@@ -276,7 +277,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onJam: (() -> Unit)? = null) {
             }
             RoundButton(
                 52.dp,
-                if (ui.repeat && !queue.isWave) colors.accentBackground else colors.surface,
+                if (modes.repeat && !modes.locked) colors.accentBackground else colors.surface,
                 onClick = viewModel::toggleRepeat,
             ) {
                 QiText(
@@ -284,8 +285,8 @@ fun PlayerScreen(viewModel: PlayerViewModel, onJam: (() -> Unit)? = null) {
                     TransportLabelStyle,
                     color =
                     when {
-                        queue.isWave -> colors.dimmer
-                        ui.repeat -> colors.accent
+                        modes.locked -> colors.dimmer
+                        modes.repeat -> colors.accent
                         else -> colors.muted
                     },
                 )

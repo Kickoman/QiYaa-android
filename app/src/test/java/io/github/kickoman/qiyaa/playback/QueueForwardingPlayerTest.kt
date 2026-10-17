@@ -7,15 +7,22 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Metadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import io.github.kickoman.qiyaa.queue.PlayModes
+import io.github.kickoman.qiyaa.support.FakeEngine
 import io.github.kickoman.qiyaa.support.QueueHarness
+import io.github.kickoman.qiyaa.support.QueueHarness.Companion.tracks
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
 import java.lang.reflect.Proxy
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class QueueForwardingPlayerTest {
     @Test
     fun `a listener of the session gets every player event that a plain ForwardingPlayer passes on`() =
@@ -40,19 +47,95 @@ class QueueForwardingPlayerTest {
         assertTrue(player.listeners.isEmpty())
     }
 
-    private class FakePlayer {
+    @Test
+    fun `shuffle and repeat from the session go to the queue, not to the player`() = runTest {
+        val harness = QueueHarness(this)
+        harness.controller.loadSource("Liked") { tracks("a", "b") }
+        runCurrent()
+        val player = FakePlayer(modesOf(harness.engine))
+        val forwarding = QueueForwardingPlayer(player.proxy, harness.controller)
+        val heard = modeEvents(forwarding)
+
+        forwarding.shuffleModeEnabled = true
+        forwarding.repeatMode = Player.REPEAT_MODE_ALL
+
+        assertEquals(PlayModes(shuffle = true, repeat = true), harness.controller.modes.value)
+        assertTrue(harness.engine.shuffleEnabled)
+        assertTrue(harness.engine.repeatEnabled)
+        assertEquals(emptyList<String>(), player.calls.filter { it.startsWith("set") })
+        assertEquals("the player itself reports what changed", emptyList<String>(), heard)
+    }
+
+    @Test
+    fun `TR-06 repeat of one track from the session is repeat of the queue, and the session hears so`() =
+        runTest {
+            val harness = QueueHarness(this)
+            harness.controller.loadSource("Liked") { tracks("a", "b") }
+            runCurrent()
+            val forwarding =
+                QueueForwardingPlayer(FakePlayer(modesOf(harness.engine)).proxy, harness.controller)
+            val heard = modeEvents(forwarding)
+
+            forwarding.repeatMode = Player.REPEAT_MODE_ONE
+
+            assertTrue(harness.controller.modes.value.repeat)
+            assertEquals(listOf("repeat ${Player.REPEAT_MODE_ALL}"), heard)
+        }
+
+    @Test
+    fun `WAVE-10 WAVE-12 a toggle refused in a wave reaches the session's listeners as the mode in effect`() =
+        runTest {
+            val harness = QueueHarness.wave(this, "w1", "w2", "w3")
+            val forwarding =
+                QueueForwardingPlayer(FakePlayer(modesOf(harness.engine)).proxy, harness.controller)
+            val heard = modeEvents(forwarding)
+
+            forwarding.shuffleModeEnabled = true
+            forwarding.repeatMode = Player.REPEAT_MODE_ALL
+
+            assertEquals(PlayModes(locked = true), harness.controller.modes.value)
+            assertFalse(harness.engine.shuffleEnabled)
+            assertFalse(harness.engine.repeatEnabled)
+            assertEquals(listOf("shuffle false", "repeat ${Player.REPEAT_MODE_OFF}"), heard)
+        }
+
+    private fun modeEvents(forwarding: Player): List<String> {
+        val heard = ArrayList<String>()
+        forwarding.addListener(
+            object : Player.Listener {
+                override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
+                    heard += "shuffle $shuffleModeEnabled"
+                }
+
+                override fun onRepeatModeChanged(repeatMode: Int) {
+                    heard += "repeat $repeatMode"
+                }
+            },
+        )
+        return heard
+    }
+
+    private fun modesOf(engine: FakeEngine): Map<String, () -> Any> = mapOf(
+        "getShuffleModeEnabled" to { engine.shuffleEnabled },
+        "getRepeatMode" to { if (engine.repeatEnabled) Player.REPEAT_MODE_ALL else Player.REPEAT_MODE_OFF },
+    )
+
+    private class FakePlayer(answers: Map<String, () -> Any> = emptyMap()) {
         val listeners = ArrayList<Player.Listener>()
+        val calls = ArrayList<String>()
         val proxy: Player =
             Proxy.newProxyInstance(Player::class.java.classLoader, arrayOf(Player::class.java)) {
                     self,
                     method,
                     args,
                 ->
+                calls += method.name
                 when (method.name) {
                     "addListener" -> listeners += args[0] as Player.Listener
                     "removeListener" -> listeners.remove(args[0])
                 }
-                objectMethod(self, method, args) ?: defaultOf(method.returnType)
+                objectMethod(self, method, args) ?: answers[method.name]?.invoke()
+                    ?: defaultOf(method.returnType)
             } as Player
     }
 

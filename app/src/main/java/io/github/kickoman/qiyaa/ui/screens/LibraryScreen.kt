@@ -48,6 +48,7 @@ import io.github.kickoman.qiyaa.ui.components.IconPaths
 import io.github.kickoman.qiyaa.ui.components.IconWideButton
 import io.github.kickoman.qiyaa.ui.components.LanguageSwitch
 import io.github.kickoman.qiyaa.ui.components.LikeButton
+import io.github.kickoman.qiyaa.ui.components.OnOffPills
 import io.github.kickoman.qiyaa.ui.components.PathIcon
 import io.github.kickoman.qiyaa.ui.components.PillToggle
 import io.github.kickoman.qiyaa.ui.components.QiText
@@ -80,6 +81,7 @@ fun LibraryScreen(
     val language by viewModel.settings.language.collectAsStateWithLifecycle()
     val quality by viewModel.settings.quality.collectAsStateWithLifecycle()
     val qualityMetered by viewModel.settings.qualityMetered.collectAsStateWithLifecycle()
+    val continueWithVibe by viewModel.settings.continueWithVibe.collectAsStateWithLifecycle()
     val track = playerUi.current
 
     LaunchedEffect(account.uid) { if (account.isValid) viewModel.loadLibraryLists() }
@@ -262,6 +264,32 @@ fun LibraryScreen(
                 PathIcon(IconPaths.OPEN_OUTSIDE, 22.dp, colors.muted, strokeWidth = IconPaths.OUTLINE)
             }
         }
+
+        QiText(
+            stringResource(R.string.vibe_continue_title),
+            LabelStyle,
+            Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 2.dp),
+            color = colors.dim,
+        )
+        Row(
+            Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            QiText(
+                stringResource(R.string.vibe_continue_new_queues),
+                sans(14.sp, 500),
+                Modifier.weight(1f),
+                color = colors.text,
+            )
+            OnOffPills(continueWithVibe, onChange = viewModel::setContinueWithVibe)
+        }
+        QiText(
+            stringResource(R.string.vibe_continue_note),
+            HintStyle,
+            Modifier.padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 6.dp),
+            color = colors.dim,
+        )
 
         QiText(
             stringResource(R.string.quality_title),

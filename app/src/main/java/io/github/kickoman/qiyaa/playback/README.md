@@ -9,8 +9,9 @@ grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   #
 | Файл | Содержит |
 |---|---|
 | `PlaybackService.kt` | `PlaybackService` — сборка ExoPlayer и `MediaSession`, уведомление, подключение `Media3Engine` |
-| `Media3Engine.kt` | `Media3Engine` — `queue.PlayerEngine` поверх `Player`; пересылает события листенера в `QueueController` |
-| `QueueForwardingPlayer.kt` | `QueueForwardingPlayer` — плеер, которого видит `MediaSession`: «вперёд» и «назад» уходят в `QueueController` |
+| `Media3Engine.kt` | `Media3Engine` — `queue.PlayerEngine` поверх `ExoPlayer`; ставит порядок shuffle `HeadShuffleOrder` и паузу в конце трека для заворота головы; пересылает события листенера в `QueueController` |
+| `HeadShuffleOrder.kt` | `HeadShuffleOrder` — `ShuffleOrder` ExoPlayer по `queue.HeadShuffle`: проход головы, затем остальное по индексу; заранее поставленный проход для `setMediaItems` |
+| `QueueForwardingPlayer.kt` | `QueueForwardingPlayer` — плеер, которого видит `MediaSession`: «вперёд» и «назад», shuffle и повтор уходят в `QueueController` |
 | `NotificationButtons.kt` | `NotificationButtons` — команды сессии «лайк» и «дизлайк» и их кнопки в уведомлении |
 | `PlaybackFailures.kt` | `PlaybackFailures.classify` — `queue.FailureKind` по коду `PlaybackException` и причине; `errorKind` — `yandex.ErrorKind` для пользователя |
 | `MediaItems.kt` | `MediaItems` — `Track` ↔ `MediaItem` |
@@ -44,8 +45,8 @@ grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   #
 
 | Откуда | Путь |
 |---|---|
-| Кнопки приложения | `ui/PlayerViewModel` → `MediaController` → `MediaSession` → `QueueForwardingPlayer` → `QueueController.next()`/`previous()` |
-| Уведомление, экран блокировки, гарнитура, Bluetooth | `MediaSession` → `QueueForwardingPlayer` → `QueueController` |
+| Кнопки приложения | `ui/PlayerViewModel` → `MediaController` → `MediaSession` → `QueueForwardingPlayer` → `QueueController.next()`/`previous()`; SHF и RPT — `QueueController.setShuffle()`/`setRepeat()` напрямую |
+| Уведомление, экран блокировки, гарнитура, Bluetooth | `MediaSession` → `QueueForwardingPlayer` → `QueueController`: «вперёд», «назад», shuffle, повтор |
 | Выбор источника, правка очереди, лайки | `ui/AppViewModel` → `QueueController` напрямую |
 | События ExoPlayer | `Media3Engine` (листенер) → `QueueController` |
 
@@ -53,7 +54,7 @@ grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   #
 
 ## «Играть» после выгрузки процесса
 
-Кнопка гарнитуры или карточка возобновления в системе доходят до приложения через `androidx.media3.session.MediaButtonReceiver` в манифесте (`exported`, `android.intent.action.MEDIA_BUTTON`). Он поднимает `PlaybackService`, `onCreate` подключает движок, и очередь уже стоит в плеере. Если плеер всё же пуст, Media3 вызывает `MediaSession.Callback.onPlaybackResumption`: `ResumptionCallback` отдаёт треки, индекс и позицию из `QueueController.resumePoint()`, а при пустой очереди — неудачный `Future`, и команда ничего не делает.
+Кнопка гарнитуры или карточка возобновления в системе доходят до приложения через `androidx.media3.session.MediaButtonReceiver` в манифесте (`exported`, `android.intent.action.MEDIA_BUTTON`). Он поднимает `PlaybackService`, `onCreate` подключает движок, и очередь уже стоит в плеере. Если плеер всё же пуст, Media3 вызывает `MediaSession.Callback.onPlaybackResumption`: `ResumptionCallback` отдаёт треки, индекс и позицию из `QueueController.resumePoint()`, а при пустой очереди — неудачный `Future`, и команда ничего не делает. Эти треки сессия ставит в ExoPlayer мимо `Media3Engine`; `HeadShuffleOrder`, поставленный при `attach`, делает из них случайный проход, и все они — голова.
 
 ## Лайк и дизлайк в уведомлении
 
@@ -79,41 +80,73 @@ object NotificationButtons {
 
 ## `QueueForwardingPlayer`
 
-`ForwardingPlayer` над ExoPlayer: `seekToNext`/`seekToNextMediaItem` → `QueueController.next()`, `seekToPrevious`/`seekToPreviousMediaItem` → `previous()`. Всё остальное (play, pause, seek по позиции, громкость) уходит в ExoPlayer как есть.
+`ForwardingPlayer` над ExoPlayer: `seekToNext`/`seekToNextMediaItem` → `QueueController.next()`, `seekToPrevious`/`seekToPreviousMediaItem` → `previous()`, `setShuffleModeEnabled(on)` → `setShuffle(on)`, `setRepeatMode(mode)` → `setRepeat(mode != REPEAT_MODE_OFF)`. Всё остальное (play, pause, seek по позиции, громкость) уходит в ExoPlayer как есть. Режимы ExoPlayer ставит только контроллер (`queue/README.md`).
+
+**Отклонённый выбор публикуется заново.** Если после `setShuffle`/`setRepeat` режим ExoPlayer не равен запрошенному, ExoPlayer события не даёт, и контроллер сессии (уведомление, Bluetooth) остался бы со своим замаскированным значением. Так бывает, когда выбор отклонён (волна, станция, джем), когда повтор выбран, но в ExoPlayer не включён (курсор в продолжении — CONT-11 — или голову с продолжением за ней заворачивает сам контроллер — CONT-10, `queue/README.md`), или когда запрошен `REPEAT_MODE_ONE`: повтор бывает только всей очереди (TR-06), и действует `REPEAT_MODE_ALL`. Тогда `QueueForwardingPlayer` сам зовёт `onShuffleModeEnabledChanged`/`onRepeatModeChanged` с действующим значением у всех слушателей сессии. `MediaSessionImpl.PlayerListener` в Media3 1.4.1 на каждый такой вызов обновляет `PlayerInfo` и рассылает его контроллерам, не сравнивая со старым значением (сверено по байткоду AAR через `javap`, на устройстве не проверялось). Внешние контроллеры поэтому видят режим, который действует в ExoPlayer; экран приложения показывает выбор пользователя (`QueueController.modes`). При завороте головы контроллером это значит, что Bluetooth и уведомление показывают повтор выключенным, хотя голова повторяется; нажатие «повтор» там снова включает выбор, ничего не меняет и снова публикует «выключено».
 
 `getAvailableCommands` добавляет `COMMAND_SEEK_TO_NEXT(_MEDIA_ITEM)` и `COMMAND_SEEK_TO_PREVIOUS(_MEDIA_ITEM)`, когда в очереди есть треки: сам ExoPlayer убирает «вперёд» на последнем треке, и тогда сессия отбросила бы команду, а в конце волны она значит «догрузить» (WAVE-09), а в конце конечной очереди — «стоп» (TR-04).
 
 **Traps:**
 - `MediaSession` берёт набор команд и из `getAvailableCommands`, и из события `onAvailableCommandsChanged`; поэтому листенеры оборачиваются (`TransportCommandsListener`), и событие несёт тот же расширенный набор.
 - `TransportCommandsListener` пересылает каждый из 37 методов `Player.Listener` явно, включая устаревшие (`@Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")`: их пересылает и `ForwardingListener` из Media3). Делегирование Kotlin `Player.Listener by listener` не годится: для default-методов Java-интерфейса Kotlin пересылку не генерирует, а в `Player.Listener` все методы такие. Так было в v0.2.0: сессия получала только смену команд, и контроллеры (экран плеера, уведомление Media3, экран блокировки) навсегда оставались со снимком состояния на момент подключения — не шёл прогресс и спектр, не появлялось уведомление, сервис не уходил в foreground и умирал при выходе из приложения. `playback/QueueForwardingPlayerTest` сверяет доставку каждого события с обычным `ForwardingPlayer`; новый метод слушателя в Media3 уронит этот тест, пока его не перешлют.
-- `Media3Engine` управляет самим ExoPlayer, а не `QueueForwardingPlayer`: иначе `QueueController.next()` → `skipToNext()` вернулся бы в `next()`.
+- `Media3Engine` управляет самим ExoPlayer, а не `QueueForwardingPlayer`: иначе `QueueController.next()` → `skipToNext()` вернулся бы в `next()`, а `applyModes()` — в `setShuffle()`.
 
 ## `Media3Engine`
 
 ```kotlin
-class Media3Engine(player: Player, controller: QueueController) : PlayerEngine {
-    fun attach()     // addListener + controller.attach(this)
+@OptIn(UnstableApi::class)
+class Media3Engine(player: ExoPlayer, controller: QueueController, random: Random = Random.Default) : PlayerEngine {
+    fun attach()     // addListener + HeadShuffleOrder на пустой плеер + controller.attach(this)
     fun detach()
 }
 ```
 
-Тонкий: ни одного решения, только перевод. Команды `PlayerEngine` → вызовы `Player` (`setTracks` = `setMediaItems(…, startIndex, startPositionMs)` + `prepare()` + `playWhenReady`; `appendTracks` = `addMediaItems(…)`; `insertTracks(i, …)` = `addMediaItems(i, …)`, текущий трек и буфер не трогаются; `removeAt` = `removeMediaItem`; `clear` = `clearMediaItems`; `seekTo(i)` = `seekTo(i, 0)`; `seekToPosition` = `seekTo(ms)`; `skipToNext`/`skipToPrevious` = `seekToNext/PreviousMediaItem`). События `Player.Listener` → методы контроллера:
+Тонкий: ни одного решения, только перевод. Команды `PlayerEngine` → вызовы `ExoPlayer` (`setTracks` = заранее поставленный проход (см. `HeadShuffleOrder`) + `setMediaItems(…, startIndex, startPositionMs)` + `prepare()` + `playWhenReady`; `shuffleHead(headSize, first)` = `setShuffleOrder(HeadShuffleOrder(HeadShuffle.pass(headSize, mediaItemCount, first)))`; `appendTracks` = `addMediaItems(mediaItemCount, …)`; `insertTracks(i, …)` = `addMediaItems(i, …)`, текущий трек и буфер не трогаются; `removeAt` = `removeMediaItem`; `clear` = `clearMediaItems`; `seekTo(i)` = `seekTo(i, 0)`; `seekToPosition` = `seekTo(ms)`; `skipToNext`/`skipToPrevious` = `seekToNext/PreviousMediaItem`; `pauseAtEndOfCurrent` = `pauseAtEndOfMediaItems`). Движок держит копию порядка ExoPlayer (`order: HeadShuffle`) и меняет её до каждого вызова плеера так же, как ExoPlayer меняет свой: `HeadShuffleOrder` клонируется детерминированно. Вставка в пустой плеер ставит свой порядок заранее, как `setTracks`, иначе ExoPlayer сделал бы случайный проход, которого копия не знает. События `Player.Listener` → методы контроллера:
 
 | Событие ExoPlayer | Вызов |
 |---|---|
 | `onMediaItemTransition(item, reason)` | `onItemChanged(MediaItems.toTrack(item), transition, player.isPlaying)`; причина: `AUTO` → `AUTO`, `REPEAT` → `REPEAT`, `SEEK` → `SEEK`, остальное (`PLAYLIST_CHANGED`) → `NEW_QUEUE` |
 | `onPlaybackStateChanged(STATE_ENDED)` | `onEnded()` |
 | `onPositionDiscontinuity(old, new, reason)` | `onSeeked()`, только при `DISCONTINUITY_REASON_SEEK` и одном `mediaItemIndex` у `old` и `new`; перемотка на другой элемент приходит как `onMediaItemTransition(SEEK)`. `seekToPrevious/NextMediaItem` на тот же элемент (повтор текущего, `repeatCurrentMediaItem` в Media3) даёт и `onSeeked()`, и сразу за ним `onMediaItemTransition(SEEK)` — это безвредно (вне джема лишнее сохранение, в джеме повтор выключен), так что фильтр «тот же элемент» остаётся как есть |
-| `onShuffleModeEnabledChanged(on)` | `onShuffleChanged(on)` |
-| `onRepeatModeChanged(mode)` | `onRepeatChanged(mode != REPEAT_MODE_OFF)`; `repeatEnabled = true` — это `REPEAT_MODE_ALL` (повтора одного трека нет, TR-06) |
 | `onIsPlayingChanged(playing)` | `onPlayingChanged(playing)` |
+| `onPlayWhenReadyChanged(false, PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM)` | `onPausedAtEnd()`: ExoPlayer встал на паузу в конце трека, потому что включён `pauseAtEndOfMediaItems` (заворот головы, CONT-10) |
 | `onPlayerError(error)` | `Log.w("QiYaa", …, error)`, затем `onFailure(PlaybackFailures.classify(error.errorCode, error.cause), PlaybackFailures.errorKind(error.errorCode, error.cause))` |
+
+`onShuffleModeEnabledChanged` и `onRepeatModeChanged` не пересылаются: режимы ExoPlayer пишет только контроллер (`shuffleEnabled` = `shuffleModeEnabled`, `repeatEnabled = true` — это `REPEAT_MODE_ALL`: повтора одного трека нет, TR-06), а выбор пользователя приходит командами через `QueueForwardingPlayer`.
 
 `playOrder()` обходит `currentTimeline` через `getFirstWindowIndex`/`getNextWindowIndex(…, REPEAT_MODE_OFF, shuffle)`.
 
 **Traps:**
 - Все вызовы — с главного потока ExoPlayer; листенеры ExoPlayer срабатывают после завершения команды, так что контроллер видит уже обновлённое состояние.
-- `onSeeked` опирается на код Media3 1.4.1 (сверено по байткоду AAR через `javap`, на устройстве не проверялось). `seekTo` заканчивается `updatePlaybackInfo(…, DISCONTINUITY_REASON_SEEK)` и `flushEvents()`, поэтому разрыв доходит до листенера внутри самого вызова, уже с новой позицией и без `STATE_ENDED` (перемотка из `READY` или `ENDED` сначала показывает `BUFFERING`); исключение — перемотка из колбэка ExoPlayer, тогда разрыв приходит сразу после него. `QueueController` перематывает только из команд сессии, UI и сокета джема, поэтому `support/FakeEngine.seekToPosition` зовёт `onSeeked()` синхронно. `setMediaItems` даёт разрыв с причиной `REMOVE`, повтор после ошибки (`prepare()`) разрыва не даёт, так что `onSeeked` приходит только на перемотку внутри текущего трека: ползунок экрана и уведомления, «назад», перемотка в 0 у «стоп», а также любой `seekTo` на текущий элемент (тап по текущей строке плейлиста, «плей» в конце очереди из одного трека, в том числе из уведомления, `ensureJamWave` с перемоткой в 0 пустого плеера). Все они безвредны: отчёт джему и сохранение позиции.
+- Пауза в конце трека (Media3 1.4.1, сверено по байткоду AAR через `javap`, на устройстве не проверялось): когда играющий период дорендерен и стоит `pendingPauseAtEndOfPeriod`, `doSomeWork` делает `setPlayWhenReadyInternal(false, …, END_OF_MEDIA_ITEM)`, а в `STATE_ENDED` уходит только последний период; следующий период рендерерам не отдаётся. Флаг ставится, когда последний трек головы становится текущим; если чтение к этому моменту уже ушло в следующий период, цена — один `seekToCurrentPosition` (щелчок, не чужой трек). ExoPlayer при этом всё равно подгружает первый трек продолжения (`download-info` и байты) на каждом круге головы. Пока длится пауза, `playWhenReady = false`, и уведомление Media3 на миг считает воспроизведение остановленным; держится ли сервис на переднем плане в фоне с выключенным экраном — проверка на телефоне.
+- `ShuffleOrder`, `setShuffleOrder`, `pauseAtEndOfMediaItems` в Media3 1.4.1 — `@UnstableApi`: `HeadShuffleOrder` помечен `@UnstableApi`, `Media3Engine` — `@OptIn(UnstableApi::class)` (`androidx.annotation.OptIn`), иначе lint с `warningsAsErrors` падает.
+- `onSeeked` опирается на код Media3 1.4.1 (сверено по байткоду AAR через `javap`, на устройстве не проверялось). `seekTo` заканчивается `updatePlaybackInfo(…, DISCONTINUITY_REASON_SEEK)` и `flushEvents()`, поэтому разрыв доходит до листенера внутри самого вызова, уже с новой позицией и без `STATE_ENDED` (перемотка из `READY` или `ENDED` сначала показывает `BUFFERING`); исключение — перемотка из колбэка ExoPlayer, тогда разрыв приходит сразу после него. `QueueController` перематывает только из команд сессии, UI и сокета джема, поэтому `support/FakeEngine.seekToPosition` зовёт `onSeeked()` синхронно. `setMediaItems` даёт разрыв с причиной `REMOVE`, повтор после ошибки (`prepare()`) разрыва не даёт, так что `onSeeked` приходит только на перемотку внутри текущего трека: ползунок экрана и уведомления, «назад», перемотка в 0 у «стоп», а также любой `seekTo` на текущий элемент (тап по текущей строке плейлиста, «плей» в конце очереди из одного трека, в том числе из уведомления, `ensureJamWave` с перемоткой в 0 пустого плеера). Всем им нужно одно и то же: отчёт джему, сохранение позиции и конец ожидания продолжения (`queue/README.md`, «Ждёт продолжения»).
+
+## `HeadShuffleOrder`
+
+```kotlin
+@UnstableApi
+class HeadShuffleOrder(val shuffle: HeadShuffle, random: Random, val staged: HeadShuffle? = null) : ShuffleOrder {
+    override fun getLength();  getNextIndex(i);  getPreviousIndex(i);  getFirstIndex();  getLastIndex()   // по shuffle.order; C.INDEX_UNSET на концах и в пустом
+    override fun cloneAndInsert(at, count);  cloneAndRemove(from, until);  cloneAndClear()               // HeadShuffle.inserted / removed / EMPTY
+    companion object {
+        fun staging(installed: HeadShuffle, itemCount: Int, pass: HeadShuffle, random: Random): HeadShuffleOrder
+        fun fitted(copy: HeadShuffle, itemCount: Int): HeadShuffle                  // copy, если её длина = itemCount, иначе порядок по возрастанию
+        fun afterInsert(copy: HeadShuffle, itemCount: Int, index: Int, count: Int): HeadShuffle   // копия после addMediaItems(index, …)
+        fun afterRemove(copy: HeadShuffle, itemCount: Int, index: Int): HeadShuffle               // копия после removeMediaItem(index)
+    }
+}
+```
+
+Порядок ExoPlayer для контракта `queue.PlayerEngine`: проход головы, затем остальные индексы по возрастанию (`queue/README.md`, «`PlayerEngine`»). Поиск следующего и предыдущего — O(1) по заранее посчитанным массивам. Клоны детерминированы: вставка в непустой порядок не делает треки головой, удаление сохраняет порядок остальных. Вставка в пустой порядок делает из вставленных треков проход: поставленный заранее (`staged`), если его длина равна числу вставленных, иначе случайный.
+
+**Заранее поставленный проход** (`staged`). `setMediaItems` в `ExoPlayerImpl` (Media3 1.4.1, сверено по байткоду через `javap`) клонирует порядок ровно два раза: `cloneAndRemove(0, size)`, если плейлист не пуст, и `cloneAndInsert(0, n)`; оба — до того, как листенеры получат `onMediaItemTransition`. Поэтому `Media3Engine.setTracks` сначала ставит `staging(…)`: текущий порядок той же длины, что у плеера, с проходом новой очереди в `staged`; удаление всего сохраняет `staged`, вставка `n` треков возвращает именно этот проход. Контроллер, которому ExoPlayer синхронно сообщает смену трека изнутри `setMediaItems`, уже видит настоящий порядок, а не случайный промежуточный (`onItemChanged` → `playOrder()`). Отдельного `setShuffleOrder` после `setMediaItems` нет.
+
+**Traps:**
+- `ExoPlayerImpl.setShuffleOrder` требует `getLength() == mediaItemCount` (`checkArgument`). Порядок, который ставится перед `setMediaItems`, берёт длину у плеера, а не у копии в `Media3Engine`: сессия разрешает контроллерам все команды плеера, и `removeMediaItem` извне меняет плейлист мимо копии. При расхождении `staging` ставит порядок по возрастанию длины плеера.
+- Вставка и удаление в `Media3Engine` меняют копию через `afterInsert`/`afterRemove`, а не прямо через `HeadShuffle.inserted`/`removed`: те требуют индекс внутри длины, а ExoPlayer (`addMediaItems`, `removeMediaItems`) индекс за концом прижимает к концу и удаление за концом пропускает. После правки плейлиста извне (та же причина) индекс контроллера может оказаться за концом, и удаление последней строки в приложении иначе уронило бы сервис. Обе функции сначала берут длину у плеера (`fitted`), как `staging`.
+- Поставленный проход используется один раз: порядок, который вернул `cloneAndInsert`, его уже не несёт, и любой клон, кроме удаления всего, его отбрасывает. Иначе следующие «очистить и вставить столько же» (например, `setMediaItems` сессии при возобновлении) получили бы старый проход.
+- `cloneAndClear` даёт пустой порядок без `staged`. `MediaSourceList.setShuffleOrder` зовёт его только при несовпадении длины, а его исключает проверка выше.
 
 ## Классификация ошибок
 
@@ -163,7 +196,7 @@ class TrackUrlCache(
 **Битрейт.** В экономии показание — `64K`. `TrackResolver` сообщает битрейт выбранного варианта в `CurrentBitrate.onResolved(id, kbps)`, а сервис — смену текущего трека (`onMediaItemTransition` → `currentTrackId` → `onCurrentChanged`). В `AudioBus.bitrateKbps` попадает битрейт текущего трека: предзагрузка следующего за ~50 с до конца его не меняет, показание меняется ровно на переходе; пока ссылка текущего трека не подписана — 0 (`--K`). Битрейты помнятся для последних 64 треков. Исключения `yandex` — `IOException`, поэтому ExoPlayer превращает их в `PlaybackException`, а не падает (см. `yandex/README.md`).
 
 **Traps (качество):**
-- Смена качества или сети не трогает следующий трек, который ExoPlayer уже начал грузить: он доиграет в старом качестве (QUAL-05, пробел A2 в `spec/player/README.md`). Заменить его `MediaItem` значило бы удалить и вставить элемент заново, а это перемешивает порядок shuffle ExoPlayer. Треки после него берут новый выбор.
+- Смена качества или сети не трогает следующий трек, который ExoPlayer уже начал грузить: он доиграет в старом качестве (QUAL-05, пробел A2 в `spec/player/README.md`). Заменить его `MediaItem` значило бы удалить и вставить элемент заново; с `HeadShuffleOrder` вставленный элемент выпадает из головы, но прежний порядок можно вернуть: копия `Media3Engine.order` до правки и `setShuffleOrder(HeadShuffleOrder(порядок до правки))` (зацепка для QiYaa-android#76). Треки после него берут новый выбор.
 - «С середины» определяется по `dataSpec.position > 0`. Открытие с позиции 0 считается новым стартом и берёт действующее качество. Если ExoPlayer перечитает с нуля уже начатый mp3 без тега ID3 после смены качества, он получит файл другого кодека, и трек кончится ошибкой (ERR-04). У файлов Яндекса ID3 есть, а первый сэмпл MP4 лежит после `moov`, так что на практике чтение с нуля не происходит.
 - `NetworkMonitor.isMetered()` читается в момент подписи на loading-потоке ExoPlayer: `ConnectivityManager.isActiveNetworkMetered` это допускает.
 

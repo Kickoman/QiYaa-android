@@ -1,16 +1,28 @@
 package io.github.kickoman.qiyaa.playback
 
 import android.util.Log
+import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
+import io.github.kickoman.qiyaa.queue.HeadShuffle
 import io.github.kickoman.qiyaa.queue.PlayerEngine
 import io.github.kickoman.qiyaa.queue.QueueController
 import io.github.kickoman.qiyaa.queue.Transition
 import io.github.kickoman.qiyaa.yandex.Track
+import kotlin.random.Random
 
-class Media3Engine(private val player: Player, private val controller: QueueController) : PlayerEngine {
+@OptIn(UnstableApi::class)
+class Media3Engine(
+    private val player: ExoPlayer,
+    private val controller: QueueController,
+    private val random: Random = Random.Default,
+) : PlayerEngine {
+    private var order = HeadShuffle.EMPTY
+
     private val listener =
         object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -34,16 +46,13 @@ class Media3Engine(private val player: Player, private val controller: QueueCont
                 if (reason == Player.DISCONTINUITY_REASON_SEEK && sameItem) controller.onSeeked()
             }
 
-            override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
-                controller.onShuffleChanged(shuffleModeEnabled)
-            }
-
-            override fun onRepeatModeChanged(repeatMode: Int) {
-                controller.onRepeatChanged(repeatMode != Player.REPEAT_MODE_OFF)
-            }
-
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 controller.onPlayingChanged(isPlaying)
+            }
+
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                val atEnd = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM
+                if (!playWhenReady && atEnd) controller.onPausedAtEnd()
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -79,8 +88,16 @@ class Media3Engine(private val player: Player, private val controller: QueueCont
             player.repeatMode = if (value) Player.REPEAT_MODE_ALL else Player.REPEAT_MODE_OFF
         }
 
+    override var pauseAtEndOfCurrent: Boolean
+        get() = player.pauseAtEndOfMediaItems
+        set(value) {
+            player.pauseAtEndOfMediaItems = value
+        }
+
     fun attach() {
         player.addListener(listener)
+        order = HeadShuffleOrder.fitted(order, player.mediaItemCount)
+        player.setShuffleOrder(HeadShuffleOrder(order, random))
         controller.attach(this)
     }
 
@@ -110,20 +127,41 @@ class Media3Engine(private val player: Player, private val controller: QueueCont
         playWhenReady: Boolean,
         startIndex: Int,
         startPositionMs: Long,
+        headSize: Int,
     ) {
+        val pass = HeadShuffle.pass(headSize, tracks.size, startIndex, random)
+        player.setShuffleOrder(HeadShuffleOrder.staging(order, player.mediaItemCount, pass, random))
+        order = pass
         player.setMediaItems(tracks.map(MediaItems::toMediaItem), startIndex, startPositionMs)
         player.prepare()
         player.playWhenReady = playWhenReady
     }
 
-    override fun appendTracks(tracks: List<Track>) = player.addMediaItems(tracks.map(MediaItems::toMediaItem))
+    override fun shuffleHead(headSize: Int, first: Int) {
+        order = HeadShuffle.pass(headSize, player.mediaItemCount, first, random)
+        player.setShuffleOrder(HeadShuffleOrder(order, random))
+    }
 
-    override fun insertTracks(index: Int, tracks: List<Track>) =
+    override fun appendTracks(tracks: List<Track>) = insertTracks(player.mediaItemCount, tracks)
+
+    override fun insertTracks(index: Int, tracks: List<Track>) {
+        val inserted = HeadShuffleOrder.afterInsert(order, player.mediaItemCount, index, tracks.size)
+        if (player.mediaItemCount == 0) {
+            player.setShuffleOrder(HeadShuffleOrder.staging(order, 0, inserted, random))
+        }
+        order = inserted
         player.addMediaItems(index, tracks.map(MediaItems::toMediaItem))
+    }
 
-    override fun removeAt(index: Int) = player.removeMediaItem(index)
+    override fun removeAt(index: Int) {
+        order = HeadShuffleOrder.afterRemove(order, player.mediaItemCount, index)
+        player.removeMediaItem(index)
+    }
 
-    override fun clear() = player.clearMediaItems()
+    override fun clear() {
+        order = HeadShuffle.EMPTY
+        player.clearMediaItems()
+    }
 
     override fun seekTo(index: Int) = player.seekTo(index, 0L)
 
