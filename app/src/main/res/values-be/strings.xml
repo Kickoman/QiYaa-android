@@ -314,4 +314,6 @@
     <string name="vibe_continue_note">Калі лайкі, плэйліст, альбом, выканаўца ці пошук заканчваюцца, далей грае хваля па тым, што гучала. У плэйлісце гэта пераключаецца для бягучай чаргі.</string>
     <string name="vibe_continue_on">За гэтай чаргой пойдзе хваля</string>
     <string name="vibe_continue_off">Гэтая чарга спыніцца ў канцы</string>
+    <string name="telemetry_title">АДПРАЎЛЯЦЬ СТАТЫСТЫКУ</string>
+    <string name="telemetry_note">Ананімна: мадэль тэлефона, версія Android, катэгорыі памылак, справаздачы пра падзенні. Ніколі — назвы, пошук, імёны і токен.</string>
 </resources>

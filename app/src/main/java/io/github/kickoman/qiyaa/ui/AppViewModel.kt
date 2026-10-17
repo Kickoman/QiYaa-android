@@ -71,6 +71,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val auth = graph.deviceAuth
     val queue = graph.queue
     val settings = graph.settings
+    val telemetryAvailable: Boolean = graph.telemetry != null
 
     private val jamGuest = graph.jamGuest
     private var pendingLink: JamLink? = null
@@ -269,6 +270,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun setQualityMetered(quality: AudioQuality) = settings.setQualityMetered(quality)
 
     fun setContinueWithVibe(on: Boolean) = settings.setContinueWithVibe(on)
+
+    fun setTelemetryEnabled(on: Boolean) = settings.setTelemetryEnabled(on)
 
     fun signOut() {
         leaveSession(notice = null, forgetJams = true)

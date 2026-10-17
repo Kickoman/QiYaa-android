@@ -328,4 +328,6 @@
     <string name="vibe_continue_note">When likes, a playlist, an album, an artist or a search runs out, a vibe from what played follows. The playlist switches it for the queue that plays.</string>
     <string name="vibe_continue_on">A vibe will follow this queue</string>
     <string name="vibe_continue_off">This queue stops at its end</string>
+    <string name="telemetry_title">SEND STATISTICS</string>
+    <string name="telemetry_note">Anonymous: phone model, Android version, error categories, crash reports. Never titles, searches, names or the token.</string>
 </resources>

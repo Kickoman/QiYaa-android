@@ -314,4 +314,6 @@
     <string name="vibe_continue_note">Когда лайки, плейлист, альбом, исполнитель или поиск заканчиваются, дальше играет волна по тому, что звучало. В плейлисте это переключается для текущей очереди.</string>
     <string name="vibe_continue_on">За этой очередью пойдёт волна</string>
     <string name="vibe_continue_off">Эта очередь остановится в конце</string>
+    <string name="telemetry_title">ОТПРАВЛЯТЬ СТАТИСТИКУ</string>
+    <string name="telemetry_note">Анонимно: модель телефона, версия Android, категории ошибок, отчёты о падениях. Никогда — названия, поиск, имена и токен.</string>
 </resources>
