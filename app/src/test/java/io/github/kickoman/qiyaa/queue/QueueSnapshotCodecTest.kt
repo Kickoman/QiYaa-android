@@ -146,6 +146,36 @@ class QueueSnapshotCodecTest {
     }
 
     @Test
+    fun `CONT-01 CONT-05 a head with a vibe from history survives encoding and decoding`() {
+        val vibe =
+            snapshot.copy(
+                isWave = false,
+                waveSessionId = "V1",
+                waveStationId = "track:7",
+                batchIds = listOf("", "B1"),
+                parts = listOf(EntryPart.HEAD, EntryPart.CONTINUATION),
+                continueWithVibe = true,
+                history = listOf("7", "1"),
+            )
+        val text = QueueSnapshotCodec.encode(vibe)
+        assertTrue(text.contains("\"continueWithVibe\":true"))
+        assertTrue(text.contains("\"history\":[\"7\",\"1\"]"))
+        assertTrue(text.contains("\"waveSessionId\":\"V1\""))
+        assertEquals(vibe, QueueSnapshotCodec.decode(text))
+        val off = vibe.copy(continueWithVibe = false, history = emptyList())
+        assertEquals(off, QueueSnapshotCodec.decode(QueueSnapshotCodec.encode(off)))
+    }
+
+    @Test
+    fun `CONT-01 a version 1 file without the flag reads with no flag and no history`() {
+        for (text in listOf(VERSION_1_WAVE, VERSION_1_PLAYLIST)) {
+            val decoded = QueueSnapshotCodec.decode(text)!!
+            assertNull(decoded.continueWithVibe)
+            assertEquals(emptyList<String>(), decoded.history)
+        }
+    }
+
+    @Test
     fun `an index outside the tracks is clamped`() {
         val text = QueueSnapshotCodec.encode(snapshot.copy(index = 7))
         assertEquals(1, QueueSnapshotCodec.decode(text)!!.index)

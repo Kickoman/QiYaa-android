@@ -142,6 +142,8 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
         commands += "next"
         nextInOrder()?.let { next ->
             currentIndex = next
+            positionMs = 0
+            isEnded = false
             report(tracks[currentIndex], Transition.SEEK)
         }
     }

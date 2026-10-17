@@ -453,6 +453,65 @@ class QueueJamTest {
         assertNull(restored.controller.state.value.jamSlots)
     }
 
+    @Test
+    fun `HOST-14 CONT-04 no vibe from history is asked during a jam`() = runTest {
+        val h = QueueHarness(this, continueWithVibe = true)
+        h.source.onStartWave = { CompletableDeferred<WaveBatch>().await() }
+        h.controller.loadSource("Likes") { tracks("a", "b", "c", "d") }
+        runCurrent()
+        h.engine.startPlaying()
+        h.startJam()
+        assertTrue(h.controller.state.value.continueWithVibe)
+        h.state(item("i1", "X"), item("i2", "Y"), seeds = listOf("genre:jam"), seedsVersion = 1)
+        h.engine.finishTrack()
+        h.state(item("i2", "Y"), seeds = listOf("genre:jam"), seedsVersion = 1)
+        h.engine.finishTrack()
+        h.engine.fail(FailureKind.TRACK)
+        runCurrent()
+        assertEquals(listOf("startWave [genre:jam]"), h.source.calls)
+    }
+
+    @Test
+    fun `HOST-14 a vibe reply in flight at the jam start is dropped, with no JamActive and no seek`() =
+        runTest {
+            val h = QueueHarness(this, continueWithVibe = true)
+            val reply = CompletableDeferred<WaveBatch>()
+            h.source.onStartWave = { reply.await() }
+            h.controller.loadSource("Likes") { tracks("a", "b") }
+            runCurrent()
+            h.engine.startPlaying()
+            h.engine.finishTrack()
+            h.engine.finishTrack()
+            runCurrent()
+            assertTrue(h.controller.state.value.loadingMore)
+            h.startJam()
+            h.engine.commands.clear()
+            reply.complete(WaveBatch("V1", "B1", tracks("v1")))
+            runCurrent()
+            assertEquals(listOf("a", "b"), h.engine.ids())
+            assertEquals(emptyList<String>(), h.engine.commands)
+            assertEquals(emptyList<String>(), h.source.feedback)
+            assertFalse(h.events.contains(QueueEvent.JamActive))
+            assertFalse(h.controller.state.value.loadingMore)
+        }
+
+    @Test
+    fun `HOST-32 CONT-05 after the jam the flag and the history go on`() = runTest {
+        val h = QueueHarness(this, continueWithVibe = true)
+        h.source.onStartWave = { CompletableDeferred<WaveBatch>().await() }
+        h.controller.loadSource("Likes") { tracks("a", "b", "c") }
+        runCurrent()
+        h.engine.startPlaying()
+        h.startJam()
+        h.state(item("i1", "X"))
+        h.controller.endJam()
+        assertTrue(h.controller.state.value.continueWithVibe)
+        assertEquals(listOf("a", "X"), h.engine.ids())
+        h.engine.finishTrack()
+        runCurrent()
+        assertEquals(listOf("startWave [track:X, track:a]"), h.source.calls)
+    }
+
     private class Recorder : JamPlaybackListener {
         val started = mutableListOf<String>()
         val playbacks = mutableListOf<JamPlayback>()

@@ -19,6 +19,8 @@ data class QueueSnapshot(
     val repeat: Boolean,
     val jamSlots: List<JamSlot>? = null,
     val parts: List<EntryPart> = emptyList(),
+    val continueWithVibe: Boolean? = null,
+    val history: List<String> = emptyList(),
 )
 
 object QueueSnapshotCodec {
@@ -42,6 +44,8 @@ object QueueSnapshotCodec {
                 shuffle = snapshot.shuffle,
                 repeat = snapshot.repeat,
                 jam = snapshot.jamSlots != null,
+                continueWithVibe = snapshot.continueWithVibe,
+                history = snapshot.history,
                 tracks =
                 snapshot.tracks.mapIndexed { i, track ->
                     TrackEntry(
@@ -91,6 +95,8 @@ object QueueSnapshotCodec {
             repeat = file.repeat,
             jamSlots = if (file.jam) file.tracks.map(::slotOf) else null,
             parts = partsOf(file),
+            continueWithVibe = file.continueWithVibe,
+            history = file.history,
         )
     }
 
@@ -119,6 +125,8 @@ object QueueSnapshotCodec {
         val shuffle: Boolean,
         val repeat: Boolean,
         val jam: Boolean = false,
+        val continueWithVibe: Boolean? = null,
+        val history: List<String> = emptyList(),
         val tracks: List<TrackEntry>,
     )
 

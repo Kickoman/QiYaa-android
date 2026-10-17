@@ -24,7 +24,7 @@ object ErrorPolicy {
         kind: FailureKind,
         consecutiveTrackFailures: Int,
         hasNext: Boolean,
-        isWave: Boolean = false,
+        endless: Boolean = false,
     ): ErrorAction = when (kind) {
         FailureKind.NETWORK -> ErrorAction.WaitForNetwork
         FailureKind.SESSION -> ErrorAction.Hold
@@ -32,7 +32,7 @@ object ErrorPolicy {
             when {
                 consecutiveTrackFailures + 1 >= MAX_CONSECUTIVE_TRACK_FAILURES -> ErrorAction.Stop
                 hasNext -> ErrorAction.SkipToNext
-                isWave -> ErrorAction.WaitForMore
+                endless -> ErrorAction.WaitForMore
                 else -> ErrorAction.Stop
             }
     }

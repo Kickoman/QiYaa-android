@@ -14,7 +14,12 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class QueueHarness(scope: TestScope, attached: Boolean = true, val store: FakeQueueStore = FakeQueueStore()) {
+class QueueHarness(
+    scope: TestScope,
+    attached: Boolean = true,
+    val store: FakeQueueStore = FakeQueueStore(),
+    var continueWithVibe: Boolean = false,
+) {
     private var playIds = 0
     val source = FakeMusicSource()
     val network = MutableStateFlow(true)
@@ -29,6 +34,7 @@ class QueueHarness(scope: TestScope, attached: Boolean = true, val store: FakeQu
             clock = { scope.testScheduler.currentTime },
             store = store,
             logFailure = { stage, failed -> logged += "$stage ${failed.message}" },
+            continueWithVibeByDefault = { continueWithVibe },
         )
     val engine = FakeEngine(controller).also { if (attached) controller.attach(it) }
     val events = ArrayList<QueueEvent>()
