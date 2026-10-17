@@ -139,6 +139,7 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
         commands += "seek to $positionMs"
         this.positionMs = positionMs
         isEnded = false
+        controller.onSeeked()
     }
 
     override fun pause() {

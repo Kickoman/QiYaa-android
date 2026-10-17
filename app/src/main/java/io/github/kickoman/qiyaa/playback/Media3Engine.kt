@@ -25,6 +25,15 @@ class Media3Engine(private val player: Player, private val controller: QueueCont
                 if (playbackState == Player.STATE_ENDED) controller.onEnded()
             }
 
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int,
+            ) {
+                val sameItem = oldPosition.mediaItemIndex == newPosition.mediaItemIndex
+                if (reason == Player.DISCONTINUITY_REASON_SEEK && sameItem) controller.onSeeked()
+            }
+
             override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
                 controller.onShuffleChanged(shuffleModeEnabled)
             }

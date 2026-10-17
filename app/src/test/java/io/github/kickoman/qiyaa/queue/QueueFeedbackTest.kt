@@ -79,7 +79,7 @@ class QueueFeedbackTest {
         val harness = wave(this, "w1", "w2", "w3")
         harness.engine.startPlaying()
         advanceTimeBy(5_000)
-        harness.engine.positionMs = 5_000
+        harness.engine.positionMs = 2_000
         harness.controller.previous()
         runCurrent()
         assertEquals(
@@ -102,6 +102,28 @@ class QueueFeedbackTest {
         harness.controller.loadSource("Liked") { tracks("l1") }
         runCurrent()
         assertEquals("skip ${ctx(first)} w2 0.0", harness.source.feedback.last())
+    }
+
+    @Test
+    fun `TR-02 Previous after 3 s in a wave sends no skip and no new trackStarted`() = runTest {
+        val harness = wave(this, "w1", "w2", "w3")
+        harness.engine.startPlaying()
+        advanceTimeBy(10_000)
+        harness.engine.positionMs = 10_000
+        harness.controller.previous()
+        harness.engine.startPlaying()
+        advanceTimeBy(20_000)
+        harness.engine.finishTrack()
+        runCurrent()
+        assertEquals(
+            listOf(
+                "radioStarted ${ctx(first)} - 0.0",
+                "trackStarted ${ctx(first)} w1 0.0",
+                "trackFinished ${ctx(first)} w1 30.0",
+                "trackStarted ${ctx(first)} w2 0.0",
+            ),
+            harness.source.feedback,
+        )
     }
 
     @Test

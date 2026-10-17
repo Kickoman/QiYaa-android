@@ -7,6 +7,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -52,14 +53,29 @@ class QueueTrackingTest {
     }
 
     @Test
-    fun `TRK-02 a restart with Previous after 3 s reports the same track again`() = runTest {
+    fun `TR-02 Previous after 3 s is a seek and reports nothing new`() = runTest {
         val harness = loaded(this, autoplay = true, "a", "b")
         harness.engine.startPlaying()
         harness.engine.positionMs = 10_000
         harness.controller.previous()
         harness.engine.startPlaying()
         runCurrent()
-        assertEquals(listOf("a" to "play-1", "a" to "play-2"), harness.source.reports)
+        assertEquals(listOf("a" to "play-1"), harness.source.reports)
+    }
+
+    @Test
+    fun `TRK-02 Previous after the end of a finite queue replays the last track as a new start`() = runTest {
+        val harness = loaded(this, autoplay = true, "a", "b")
+        harness.engine.startPlaying()
+        harness.engine.finishTrack()
+        harness.engine.finishTrack()
+        assertTrue(harness.engine.isEnded)
+        harness.engine.positionMs = 200_000
+        harness.controller.previous()
+        harness.engine.startPlaying()
+        runCurrent()
+        assertEquals(1, harness.engine.currentIndex)
+        assertEquals(listOf("a" to "play-1", "b" to "play-2", "b" to "play-3"), harness.source.reports)
     }
 
     @Test
