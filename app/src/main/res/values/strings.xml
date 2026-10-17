@@ -149,8 +149,6 @@
     <string name="session_offline">NO CONNECTION · WILL RETRY</string>
     <string name="login_expired">Your session has expired. Sign in again.</string>
     <string name="queue_waiting_for_network">No connection · will resume when it is back</string>
-    <string name="queue_jam_active">A jam is on: add tracks to the jam instead</string>
-    <string name="jam_queue_title">Jam</string>
     <string name="jam_title">Jam</string>
     <string name="jam_settings_title">Jam server</string>
     <string name="jam_settings_open">Server</string>
@@ -196,7 +194,6 @@
     <string name="jam_end">End the jam</string>
     <string name="jam_end_confirm">Tap again to end</string>
     <string name="jam_no_connection">No connection to the jam server</string>
-    <string name="jam_remove_nothing">Select tracks from the jam to remove</string>
     <string name="jam_continue_title">A jam was on</string>
     <string name="jam_continue_text">Continue it? Your guests keep their link.</string>
     <string name="jam_continue_yes">Continue</string>
@@ -204,7 +201,7 @@
     <string name="jam_server">Server</string>
     <string name="jam_server_hint">https://jam.example.org</string>
     <string name="jam_wave_feedback">Teach the jam vibe</string>
-    <string name="jam_wave_feedback_note">When the guests\' queue is empty, the jam vibe plays. On: it learns from skips during the jam, and only there. Off: no feedback at all.</string>
+    <string name="jam_wave_feedback_note">When the guests\' queue is empty, your own queue plays on, and after it the jam vibe if the queue has no vibe of its own and goes on with a vibe. On: the jam vibe learns from skips during the jam, and only there. Off: no feedback at all.</string>
     <string name="jam_share_audio">Guests may listen</string>
     <string name="jam_share_audio_note">The jam page gets a Listen button: the guests\' browsers play the files you play, roughly in time with you. They are your subscription\'s files: Yandex Music licenses them for your own listening. Only at the Standard quality: economy files are not shared.</string>
     <string name="jam_done">Done</string>

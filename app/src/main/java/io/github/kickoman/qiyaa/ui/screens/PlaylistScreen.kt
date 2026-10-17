@@ -37,7 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.kickoman.qiyaa.R
-import io.github.kickoman.qiyaa.queue.JamSlot
+import io.github.kickoman.qiyaa.playback.JamHostPhase
 import io.github.kickoman.qiyaa.ui.JamViewModel
 import io.github.kickoman.qiyaa.ui.PlayerViewModel
 import io.github.kickoman.qiyaa.ui.TrackActions
@@ -49,6 +49,7 @@ import io.github.kickoman.qiyaa.ui.components.QiText
 import io.github.kickoman.qiyaa.ui.components.ScreenHeader
 import io.github.kickoman.qiyaa.ui.components.tap
 import io.github.kickoman.qiyaa.ui.formatTime
+import io.github.kickoman.qiyaa.ui.jamTrackNote
 import io.github.kickoman.qiyaa.ui.theme.ButtonStyle
 import io.github.kickoman.qiyaa.ui.theme.HintStyle
 import io.github.kickoman.qiyaa.ui.theme.LabelStyle
@@ -64,10 +65,9 @@ fun PlaylistScreen(viewModel: PlayerViewModel, jam: JamViewModel, onAdd: () -> U
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val queue by viewModel.queue.state.collectAsStateWithLifecycle()
     val jamState by jam.state.collectAsStateWithLifecycle()
-    // HOST-34: who added each jam item, by `addedBy` among the participants.
     val names = jamState.room?.participants?.associate { it.publicId to it.name }.orEmpty()
-    val waveMark = stringResource(R.string.jam_wave_mark)
     val actionsLabel = stringResource(R.string.playlist_actions)
+    val jamOn = jamState.phase == JamHostPhase.ACTIVE
 
     Column(Modifier.fillMaxSize()) {
         ScreenHeader(stringResource(R.string.playlist_title)) {
@@ -84,7 +84,7 @@ fun PlaylistScreen(viewModel: PlayerViewModel, jam: JamViewModel, onAdd: () -> U
             )
         }
 
-        if (!queue.isWave && queue.jamSlots == null && queue.tracks.isNotEmpty()) {
+        if (!queue.isWave && (queue.tracks.isNotEmpty() || jamOn)) {
             Row(
                 Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp).fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -149,13 +149,9 @@ fun PlaylistScreen(viewModel: PlayerViewModel, jam: JamViewModel, onAdd: () -> U
                                 overflow = TextOverflow.Ellipsis,
                             )
                             val mark =
-                                when (val slot = queue.jamSlots?.getOrNull(index)) {
-                                    is JamSlot.Item -> names[slot.addedBy]?.let {
-                                        stringResource(R.string.jam_added_by, it)
-                                    }
-                                    JamSlot.Wave -> waveMark
-                                    else -> null
-                                }
+                                queue.entries.getOrNull(index)
+                                    ?.let { jamTrackNote(it, queue.isWave, jamOn, names) }
+                                    ?.let { stringResource(it.id, *it.args.toTypedArray()) }
                             Row(
                                 Modifier.padding(top = 3.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -242,11 +238,7 @@ fun PlaylistScreen(viewModel: PlayerViewModel, jam: JamViewModel, onAdd: () -> U
                 background = colors.surface2,
                 color = if (queue.selected.isEmpty()) colors.dimmer else colors.text,
             ) {
-                if (queue.jamSlots != null && jam.isActive) {
-                    jam.removeFromJam(queue.selected)
-                } else {
-                    viewModel.queue.removeIndices(queue.selected)
-                }
+                viewModel.queue.removeIndices(queue.selected)
             }
             val allSelected = queue.tracks.isNotEmpty() && queue.selected.size == queue.tracks.size
             ActionButton(

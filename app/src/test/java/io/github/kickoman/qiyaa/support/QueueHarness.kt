@@ -54,6 +54,12 @@ class QueueHarness(
 
         fun tracks(vararg ids: String) = ids.map { track(it) }
 
+        fun likes(scope: TestScope, vararg ids: String, continueWithVibe: Boolean = true): QueueHarness {
+            val harness = QueueHarness(scope, continueWithVibe = continueWithVibe)
+            harness.controller.setQueue(tracks(*ids), "Likes", isWave = false, autoplay = true, null)
+            return harness
+        }
+
         fun wave(scope: TestScope, vararg ids: String): QueueHarness {
             val harness = QueueHarness(scope)
             harness.source.onStartWave = { WaveBatch("S1", "B1", tracks(*ids)) }

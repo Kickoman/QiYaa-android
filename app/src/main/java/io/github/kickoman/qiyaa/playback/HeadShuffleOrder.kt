@@ -11,6 +11,7 @@ class HeadShuffleOrder(
     val shuffle: HeadShuffle,
     private val random: Random,
     val staged: HeadShuffle? = null,
+    val stagedAt: Int = 0,
 ) : ShuffleOrder {
     private val order = shuffle.order.toIntArray()
     private val positions =
@@ -27,18 +28,19 @@ class HeadShuffleOrder(
     override fun getFirstIndex(): Int = order.firstOrNull() ?: C.INDEX_UNSET
 
     override fun cloneAndInsert(insertionIndex: Int, insertionCount: Int): ShuffleOrder {
-        if (order.isNotEmpty()) {
-            return HeadShuffleOrder(shuffle.inserted(insertionIndex, insertionCount), random)
-        }
-        val pass =
-            staged?.takeIf { it.length == insertionCount }
-                ?: HeadShuffle.pass(insertionCount, insertionCount, C.INDEX_UNSET, random)
-        return HeadShuffleOrder(pass, random)
+        val ready = staged?.takeIf { insertionIndex == stagedAt && it.length == order.size + insertionCount }
+        val inserted =
+            when {
+                ready != null -> ready
+                order.isNotEmpty() -> shuffle.inserted(insertionIndex, insertionCount)
+                else -> HeadShuffle.pass(insertionCount, insertionCount, C.INDEX_UNSET, random)
+            }
+        return HeadShuffleOrder(inserted, random)
     }
 
     override fun cloneAndRemove(indexFrom: Int, indexToExclusive: Int): ShuffleOrder {
         val removed = shuffle.removed(indexFrom, indexToExclusive)
-        return HeadShuffleOrder(removed, random, staged.takeIf { removed.length == 0 })
+        return HeadShuffleOrder(removed, random, staged.takeIf { removed.length == 0 }, stagedAt)
     }
 
     override fun cloneAndClear(): ShuffleOrder = HeadShuffleOrder(HeadShuffle.EMPTY, random)
@@ -49,13 +51,17 @@ class HeadShuffleOrder(
             itemCount: Int,
             pass: HeadShuffle,
             random: Random,
-        ): HeadShuffleOrder = HeadShuffleOrder(fitted(installed, itemCount), random, pass)
+            at: Int = 0,
+        ): HeadShuffleOrder = HeadShuffleOrder(fitted(installed, itemCount), random, pass, at)
 
         fun fitted(copy: HeadShuffle, itemCount: Int): HeadShuffle =
             copy.takeIf { it.length == itemCount } ?: HeadShuffle(emptyList(), itemCount)
 
         fun afterInsert(copy: HeadShuffle, itemCount: Int, index: Int, count: Int): HeadShuffle =
             fitted(copy, itemCount).inserted(index.coerceAtMost(itemCount), count)
+
+        fun afterSplice(copy: HeadShuffle, itemCount: Int, index: Int, count: Int): HeadShuffle =
+            fitted(copy, itemCount).insertedAfter(index.coerceAtMost(itemCount), count)
 
         fun afterRemove(copy: HeadShuffle, itemCount: Int, index: Int): HeadShuffle {
             val current = fitted(copy, itemCount)

@@ -28,6 +28,7 @@ import io.github.kickoman.qiyaa.jam.OutboxEntry
 import io.github.kickoman.qiyaa.jam.Pin
 import io.github.kickoman.qiyaa.jam.Playing
 import io.github.kickoman.qiyaa.jam.Rejected
+import io.github.kickoman.qiyaa.jam.Remove
 import io.github.kickoman.qiyaa.jam.Resume
 import io.github.kickoman.qiyaa.jam.Resumed
 import io.github.kickoman.qiyaa.jam.SearchError
@@ -42,8 +43,13 @@ import io.github.kickoman.qiyaa.jam.ValidateReason
 import io.github.kickoman.qiyaa.jam.ValidateRequest
 import io.github.kickoman.qiyaa.jam.ValidateResult
 import io.github.kickoman.qiyaa.jam.Welcome
+import io.github.kickoman.qiyaa.queue.EntryPart
+import io.github.kickoman.qiyaa.queue.ItemMark
 import io.github.kickoman.qiyaa.queue.JamPlayback
+import io.github.kickoman.qiyaa.queue.QueueSnapshot
+import io.github.kickoman.qiyaa.queue.QueueSnapshotCodec
 import io.github.kickoman.qiyaa.support.FakeJamTransport
+import io.github.kickoman.qiyaa.support.FakeQueueStore
 import io.github.kickoman.qiyaa.support.QueueHarness
 import io.github.kickoman.qiyaa.support.Spec
 import io.github.kickoman.qiyaa.yandex.HttpException
@@ -84,6 +90,23 @@ class JamHostTest {
         assertEquals(JOIN_URL, state.joinUrl)
         assertTrue(h.queue.controller.isJamActive)
         assertEquals(Playing(NowPlayingSource.IDLE, positionMs = 0, paused = true), h.sent().last())
+    }
+
+    @Test
+    fun `HOST-10 HOST-14 a base track goes out as playing with source wave and the track`() = runTest {
+        val h = Harness(this)
+        val first = Track(id = "11", title = "A", artists = listOf("Кино"), durationMs = 1_000)
+        val second = Track(id = "33", title = "C", artists = listOf("Кино"), durationMs = 1_000)
+        h.queue.controller.setQueue(listOf(first, second), "Likes", false, autoplay = true, sourceId = null)
+        h.created()
+        assertEquals(base(first), h.sent().last())
+        h.state(1, item("i1", "22"))
+        h.queue.engine.finishTrack()
+        h.state(2)
+        h.queue.engine.finishTrack()
+        assertEquals(listOf("11", "22", "33"), h.queue.engine.ids())
+        assertEquals(base(second), h.sent().last())
+        assertEquals(listOf(Started("i1")), h.sent().filterIsInstance<Started>())
     }
 
     @Test
@@ -163,6 +186,22 @@ class JamHostTest {
         }
 
     @Test
+    fun `HOST-36 HOST-25 removing a waiting item sends remove, and not connected it says so`() = runTest {
+        val h = Harness(this)
+        h.created()
+        h.state(1, item("i1", "11"), item("i2", "22"), item("i3", "33"))
+        h.queue.controller.removeIndices(setOf(1, 2))
+        assertEquals(listOf("i2", "i3"), h.sent().filterIsInstance<Remove>().map { it.itemId })
+        assertEquals(listOf("11", "22", "33"), h.queue.engine.ids())
+        h.transport.last.drop()
+        runCurrent()
+        h.queue.controller.removeIndices(setOf(1))
+        runCurrent()
+        assertEquals(listOf<JamHostEvent>(JamHostEvent.NotConnected), h.events)
+        assertEquals(listOf("11", "22", "33"), h.queue.engine.ids())
+    }
+
+    @Test
     fun `HOST-22 the latest snapshot and a new link are stored`() = runTest {
         val h = Harness(this)
         h.created()
@@ -213,6 +252,40 @@ class JamHostTest {
     }
 
     @Test
+    fun `HOST-23 Yes empties the base and keeps the current track and the waiting items`() = runTest {
+        val queueFile =
+            QueueSnapshotCodec.encode(
+                QueueSnapshot(
+                    tracks = listOf("a", "X", "Y", "b").map { Track(it, "T$it") },
+                    batchIds = listOf("", "", "", ""),
+                    title = "Liked",
+                    sourceId = "liked",
+                    isWave = false,
+                    waveSessionId = "",
+                    waveStationId = "",
+                    index = 1,
+                    positionMs = 0,
+                    shuffle = false,
+                    repeat = false,
+                    parts = listOf(EntryPart.HEAD, EntryPart.ITEM, EntryPart.ITEM, EntryPart.HEAD),
+                    items = listOf(
+                        null,
+                        ItemMark("i1", GUEST_ID, waiting = false),
+                        ItemMark("i2", GUEST_ID, waiting = true),
+                        null,
+                    ),
+                ),
+            )
+        val h = Harness(this, JamSession(ROOM, HOST_SECRET, JOIN_URL, null, emptyList()), queueFile)
+        assertEquals(listOf("a", "X", "Y", "b"), h.queue.engine.ids())
+        h.host.continueStored()
+        assertEquals(listOf("X", "Y"), h.queue.engine.ids())
+        assertEquals("", h.queue.controller.state.value.title)
+        assertNull(h.queue.controller.state.value.activeSourceId)
+        assertFalse(h.queue.engine.playWhenReady)
+    }
+
+    @Test
     fun `HOST-24 a resume refused for a room that is gone ends the jam`() = runTest {
         val h = Harness(this, JamSession(ROOM, HOST_SECRET, JOIN_URL, null, emptyList()))
         h.host.continueStored()
@@ -221,7 +294,7 @@ class JamHostTest {
         assertEquals(listOf<JamHostEvent>(JamHostEvent.Ended(JamHostEvent.Ended.Why.GONE)), h.events)
         assertNull(h.store.text)
         assertFalse(h.queue.controller.isJamActive)
-        assertNull(h.queue.controller.state.value.jamSlots)
+        assertTrue(h.queue.controller.state.value.entries.none { it.item?.itemId != null })
         assertEquals(JamHostPhase.NONE, h.host.state.value.phase)
     }
 
@@ -406,8 +479,11 @@ class JamHostTest {
             assertEquals(Playing(NowPlayingSource.IDLE, positionMs = 0, paused = true), h.sent().last())
         }
 
-    private class Harness(val scope: TestScope, stored: JamSession? = null) {
-        val queue = QueueHarness(scope)
+    private fun base(track: Track) =
+        Playing(NowPlayingSource.WAVE, track = JamTracks.toJam(track), positionMs = 0, paused = true)
+
+    private class Harness(val scope: TestScope, stored: JamSession? = null, queueFile: String? = null) {
+        val queue = QueueHarness(scope, store = FakeQueueStore(queueFile))
         val transport = FakeJamTransport()
         val catalog = FakeCatalog()
         val store = MemoryStore(stored?.let(JamSessionCodec::encode))
@@ -423,7 +499,6 @@ class JamHostTest {
                 catalog = catalog,
                 store = JamSessionStore(store),
                 config = { config },
-                queueTitle = { "Jam" },
                 scope = scope.backgroundScope,
                 io = StandardTestDispatcher(scope.testScheduler),
                 appVersion = "test",

@@ -127,9 +127,10 @@ class Media3Engine(
         playWhenReady: Boolean,
         startIndex: Int,
         startPositionMs: Long,
-        headSize: Int,
+        head: List<Int>,
+        lead: List<Int>,
     ) {
-        val pass = HeadShuffle.pass(headSize, tracks.size, startIndex, random)
+        val pass = HeadShuffle.pass(head, tracks.size, lead, random)
         player.setShuffleOrder(HeadShuffleOrder.staging(order, player.mediaItemCount, pass, random))
         order = pass
         player.setMediaItems(tracks.map(MediaItems::toMediaItem), startIndex, startPositionMs)
@@ -137,20 +138,26 @@ class Media3Engine(
         player.playWhenReady = playWhenReady
     }
 
-    override fun shuffleHead(headSize: Int, first: Int) {
-        order = HeadShuffle.pass(headSize, player.mediaItemCount, first, random)
+    override fun shuffleHead(head: List<Int>, lead: List<Int>) {
+        order = HeadShuffle.pass(head, player.mediaItemCount, lead, random)
         player.setShuffleOrder(HeadShuffleOrder(order, random))
     }
 
-    override fun appendTracks(tracks: List<Track>) = insertTracks(player.mediaItemCount, tracks)
+    override fun appendTracks(tracks: List<Track>) {
+        val count = player.mediaItemCount
+        val appended = HeadShuffleOrder.afterInsert(order, count, count, tracks.size)
+        if (count == 0) player.setShuffleOrder(HeadShuffleOrder.staging(order, 0, appended, random))
+        order = appended
+        player.addMediaItems(count, tracks.map(MediaItems::toMediaItem))
+    }
 
     override fun insertTracks(index: Int, tracks: List<Track>) {
-        val inserted = HeadShuffleOrder.afterInsert(order, player.mediaItemCount, index, tracks.size)
-        if (player.mediaItemCount == 0) {
-            player.setShuffleOrder(HeadShuffleOrder.staging(order, 0, inserted, random))
-        }
-        order = inserted
-        player.addMediaItems(index, tracks.map(MediaItems::toMediaItem))
+        val count = player.mediaItemCount
+        val at = index.coerceAtMost(count)
+        val spliced = HeadShuffleOrder.afterSplice(order, count, at, tracks.size)
+        player.setShuffleOrder(HeadShuffleOrder.staging(order, count, spliced, random, at))
+        order = spliced
+        player.addMediaItems(at, tracks.map(MediaItems::toMediaItem))
     }
 
     override fun removeAt(index: Int) {

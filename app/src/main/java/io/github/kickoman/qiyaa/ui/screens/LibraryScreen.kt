@@ -67,7 +67,6 @@ fun LibraryScreen(
     jam: JamHostState,
     guestOf: String?,
     onJam: () -> Unit,
-    onJamSearch: ((String) -> Unit)?,
 ) {
     val colors = Qi.colors
     val context = LocalContext.current
@@ -121,16 +120,7 @@ fun LibraryScreen(
                 cursorBrush = SolidColor(colors.accent),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(
-                    onSearch = {
-                        // HOST-21: during a jam, a search finds tracks for the jam instead of a new queue.
-                        if (onJamSearch !=
-                            null
-                        ) {
-                            onJamSearch(libraryUi.searchText)
-                        } else {
-                            viewModel.submitSearch()
-                        }
-                    },
+                    onSearch = { viewModel.submitSearch() },
                 ),
                 modifier = Modifier.weight(1f),
                 decorationBox = { inner ->

@@ -101,6 +101,8 @@ sealed interface JamHostEvent {
     data class Ended(val why: Why) : JamHostEvent {
         enum class Why { BY_HOST, BY_SERVER, EXPIRED, GONE }
     }
+
+    data object NotConnected : JamHostEvent
 }
 
 /**
@@ -114,7 +116,6 @@ class JamHost(
     private val catalog: JamCatalog,
     private val store: JamSessionStore,
     private val config: () -> JamHostConfig,
-    private val queueTitle: () -> String,
     private val scope: CoroutineScope,
     private val io: CoroutineContext,
     appVersion: String,
@@ -197,7 +198,7 @@ class JamHost(
         stored = null
         session = resumed
         client.restoreOutbox(resumed.outbox)
-        queue.startJam(queueTitle(), this, config().waveFeedback)
+        queue.startJam(this, config().waveFeedback, afterRestart = true)
         connect(config().serverUrl)
         publish()
     }
@@ -308,6 +309,14 @@ class JamHost(
         client.started(itemId, sendNow = connected)
     }
 
+    override fun onRemoveItems(itemIds: List<String>) {
+        if (!connected) {
+            mutableEvents.tryEmit(JamHostEvent.NotConnected)
+            return
+        }
+        for (itemId in itemIds) remove(itemId)
+    }
+
     override fun onPlayback(playback: JamPlayback) {
         if (!connected) return // HOST-25: playing is not queued
         val message =
@@ -318,7 +327,7 @@ class JamHost(
                     positionMs = playback.positionMs,
                     paused = playback.paused,
                 )
-                JamPlayback.Kind.WAVE -> Playing(
+                JamPlayback.Kind.BASE -> Playing(
                     NowPlayingSource.WAVE,
                     // A wave track the protocol cannot carry is not reported at all.
                     track = playback.track?.let(JamTracks::toJam) ?: return,
@@ -369,7 +378,7 @@ class JamHost(
         requestId = null
         connected = true
         save(JamSession(message.roomId, message.hostSecret, message.joinUrl, null, emptyList()))
-        queue.startJam(queueTitle(), this, config().waveFeedback)
+        queue.startJam(this, config().waveFeedback)
     }
 
     private fun resumed() {

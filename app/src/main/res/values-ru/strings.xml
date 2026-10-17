@@ -132,8 +132,6 @@
     <string name="session_offline">НЕТ СЕТИ · ПОВТОРЮ САМ</string>
     <string name="login_expired">Сессия истекла. Войдите снова.</string>
     <string name="queue_waiting_for_network">Нет сети · продолжу, когда появится</string>
-    <string name="queue_jam_active">Идёт джем: добавьте треки в джем</string>
-    <string name="jam_queue_title">Джем</string>
     <string name="jam_title">Джем</string>
     <string name="jam_settings_title">Сервер джема</string>
     <string name="jam_settings_open">Сервер</string>
@@ -179,7 +177,6 @@
     <string name="jam_end">Закончить джем</string>
     <string name="jam_end_confirm">Нажмите ещё раз</string>
     <string name="jam_no_connection">Нет связи с сервером джема</string>
-    <string name="jam_remove_nothing">Выделите треки джема, чтобы убрать их</string>
     <string name="jam_continue_title">Шёл джем</string>
     <string name="jam_continue_text">Продолжить? Ссылка у гостей останется прежней.</string>
     <string name="jam_continue_yes">Продолжить</string>
@@ -187,7 +184,7 @@
     <string name="jam_server">Сервер</string>
     <string name="jam_server_hint">https://jam.example.org</string>
     <string name="jam_wave_feedback">Учить волну джема</string>
-    <string name="jam_wave_feedback_note">Когда очередь гостей пуста, играет волна джема. Да: она учится на пропусках во время джема и только там. Нет: никакого фидбека.</string>
+    <string name="jam_wave_feedback_note">Когда очередь гостей пуста, дальше играет ваша собственная очередь, а после неё — волна джема, если у очереди нет своей волны и она продолжается волной. Да: волна джема учится на пропусках во время джема и только там. Нет: никакого фидбека.</string>
     <string name="jam_share_audio">Гости могут слушать</string>
     <string name="jam_share_audio_note">На странице джема появится кнопка «Слушать»: браузеры гостей играют те же файлы, что и вы, примерно одновременно с вами. Это файлы вашей подписки: Яндекс Музыка даёт их для вашего личного прослушивания. Только при стандартном качестве: файлы экономии не передаются.</string>
     <string name="jam_done">Готово</string>

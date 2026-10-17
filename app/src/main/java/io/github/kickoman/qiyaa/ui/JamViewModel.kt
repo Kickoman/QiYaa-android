@@ -9,8 +9,6 @@ import io.github.kickoman.qiyaa.appGraph
 import io.github.kickoman.qiyaa.jam.JamOrder
 import io.github.kickoman.qiyaa.jam.JamSettingsPatch
 import io.github.kickoman.qiyaa.playback.JamHost
-import io.github.kickoman.qiyaa.playback.JamHostPhase
-import io.github.kickoman.qiyaa.queue.JamSlot
 import io.github.kickoman.qiyaa.yandex.ErrorKind
 import io.github.kickoman.qiyaa.yandex.Track
 import kotlinx.coroutines.CancellationException
@@ -96,18 +94,6 @@ class JamViewModel(application: Application) : AndroidViewModel(application) {
 
     fun playNext(track: Track) = sent(host.playNext(track), R.string.jam_added_next)
 
-    /** The playlist's REM during a jam: the selected jam items leave the room's queue. */
-    fun removeFromJam(indices: Set<Int>) {
-        val slots = graph.queue.state.value.jamSlots ?: return
-        val items = indices.mapNotNull { (slots.getOrNull(it) as? JamSlot.Item)?.itemId }
-        if (items.isEmpty()) {
-            notice(string(R.string.jam_remove_nothing))
-            return
-        }
-        // The items leave the playlist with the next state, and their selection with them.
-        if (!items.all(host::remove)) notice(string(R.string.jam_no_connection))
-    }
-
     fun setSearchText(text: String) = mutableUi.update { it.copy(searchText = text) }
 
     fun search(text: String = mutableUi.value.searchText) {
@@ -135,8 +121,6 @@ class JamViewModel(application: Application) : AndroidViewModel(application) {
     fun setWaveFeedback(enabled: Boolean) = settings.setJamWaveFeedback(enabled)
 
     fun setShareAudio(enabled: Boolean) = settings.setJamShareAudio(enabled)
-
-    val isActive: Boolean get() = state.value.phase == JamHostPhase.ACTIVE
 
     private fun changeSettings(patch: JamSettingsPatch) = sent(host.changeSettings(patch))
 

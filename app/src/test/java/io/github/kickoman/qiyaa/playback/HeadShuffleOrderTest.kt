@@ -109,6 +109,38 @@ class HeadShuffleOrderTest {
         assertEquals(copy, HeadShuffleOrder.fitted(copy, 3))
     }
 
+    @Test
+    fun `addMediaItems gets the staged insert once, only for its index and count, with no staging left`() {
+        val copy = HeadShuffle(listOf(2, 0, 1), 3)
+        val spliced = copy.insertedAfter(1, 1)
+        val installed = HeadShuffleOrder.staging(copy, 3, spliced, Random(0), at = 1)
+        val inserted = installed.cloneAndInsert(1, 1) as HeadShuffleOrder
+        assertEquals(spliced, inserted.shuffle)
+        assertEquals(listOf(3, 0, 1, 2), walk(inserted))
+        assertNull(inserted.staged)
+        assertEquals(copy.inserted(0, 1), (installed.cloneAndInsert(0, 1) as HeadShuffleOrder).shuffle)
+        assertEquals(copy.inserted(1, 2), (installed.cloneAndInsert(1, 2) as HeadShuffleOrder).shuffle)
+        assertNull((installed.cloneAndRemove(2, 3) as HeadShuffleOrder).staged)
+    }
+
+    @Test
+    fun `an insert at another index does not take the staged one, even after everything was removed`() {
+        val installed = HeadShuffleOrder.staging(HeadShuffle(listOf(1, 0), 2), 2, pass, Random(0), at = 2)
+        val inserted = installed.cloneAndRemove(0, 2).cloneAndInsert(0, 6) as HeadShuffleOrder
+        assertEquals(6, inserted.length)
+        assertNull(inserted.staged)
+        assertEquals(setOf(0, 1, 2, 3, 4, 5), inserted.shuffle.head.toSet())
+    }
+
+    @Test
+    fun `the engine's copy after a splice follows the neighbour, with an index past the end at the end`() {
+        val copy = HeadShuffle(listOf(2, 0), 3)
+        assertEquals(copy.insertedAfter(1, 2), HeadShuffleOrder.afterSplice(copy, 3, 1, 2))
+        assertEquals(copy.insertedAfter(3, 2), HeadShuffleOrder.afterSplice(copy, 3, 7, 2))
+        assertEquals(HeadShuffle(emptyList(), 4), HeadShuffleOrder.afterSplice(copy, 2, 3, 2))
+        assertEquals(HeadShuffle(listOf(0, 1), 2), HeadShuffleOrder.afterSplice(HeadShuffle.EMPTY, 0, 0, 2))
+    }
+
     private fun walk(order: ShuffleOrder): List<Int> =
         generateSequence(order.firstIndex.takeIf { it != C.INDEX_UNSET }) { index ->
             order.getNextIndex(index).takeIf { it != C.INDEX_UNSET }

@@ -25,8 +25,6 @@ sealed interface QueueEvent {
 
     data object WaitingForNetwork : QueueEvent
 
-    data object JamActive : QueueEvent
-
     data class StoppedAfterFailures(val count: Int) : QueueEvent
 
     data class Failed(val stage: Stage, val error: ErrorKind) : QueueEvent
