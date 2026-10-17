@@ -752,7 +752,7 @@ class JamGuestTest {
         val state = h.guest.state.value
         assertEquals(GUEST_ROOM, state.room)
         assertFalse(state.room!!.you.isHost)
-        assertEquals(YOU, state.room!!.you.publicId)
+        assertEquals(YOU, state.room.you.publicId)
         assertEquals(AddAction.Yours, state.addAction("4426586"))
         assertEquals(AddAction.QueuedBy("Боря"), state.addAction("1695498"))
         assertEquals(AddAction.Add, state.addAction("38633712"))

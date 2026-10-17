@@ -196,7 +196,7 @@ the body is a few lines.
 ## 5. Kotlin and Android specifics
 
 **Language and build**
-- Kotlin 2.0, JVM target 17, `minSdk 26`. The build is clean under
+- Kotlin 2.4, JVM target 17, `minSdk 26`. The build is clean under
   `allWarningsAsErrors`, ktlint (`.editorconfig`, `android_studio` style, max
   line 110) and Android lint with `warningsAsErrors`. Fix warnings, do not
   silence them. The three lint checks that are disabled (`GradleDependency`,
