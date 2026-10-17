@@ -175,6 +175,7 @@ class QueueController(
         val current = engine ?: return
         if (holding) {
             releaseHeld(current)
+            current.prepare()
             current.play()
             reportJam()
             return
@@ -699,7 +700,10 @@ class QueueController(
         inHead = playable.any { it.part == EntryPart.HEAD }
         if (playable.isNotEmpty()) {
             mutableState.update { it.copy(entries = it.entries + playable) }
+            if (cursor < 0) holding = true
+            movingCursor = holding
             current?.appendTracks(playable.map(QueueEntry::track))
+            movingCursor = false
         }
         val rows = mutableState.value.entries
         if (current != null && current.itemCount > 0 && shuffleRule.playerModeFor(modesLocked())) {
@@ -1202,9 +1206,12 @@ class QueueController(
         val entries = mutableState.value.entries
         val index = cursorIndex(current)
         val currentItemId = entries.getOrNull(index)?.item?.itemId
-        val edit = JamTail.edit(entries, index, wanted.filterNot { it.itemId == currentItemId })
+        val ahead = holding && entries.getOrNull(index)?.isWaiting == false
+        val tailAfter = if (ahead) index - 1 else index
+        val edit = JamTail.edit(entries, tailAfter, wanted.filterNot { it.itemId == currentItemId })
         for (at in edit.removeUntil - 1 downTo edit.removeFrom) removeEntry(current, at)
         insertEntries(current, edit.insertAt, edit.insert.map(::waitingItem))
+        if (ahead && edit.insert.isNotEmpty() && current != null) holdFirstItem(current, edit.insertAt)
         val dropsHeld = holding && currentItemId != null && wanted.none { it.itemId == currentItemId }
         if (!dropsHeld) return
         if (current != null) {
@@ -1214,6 +1221,13 @@ class QueueController(
         removeEntry(null, index)
         restorePoint = restorePoint?.copy(positionMs = 0)
         holding = mutableState.value.entries.getOrNull(index)?.isWaiting == true
+    }
+
+    private fun holdFirstItem(current: PlayerEngine, index: Int) {
+        movingCursor = true
+        current.seekTo(index)
+        movingCursor = false
+        if (shuffleRule.playerModeFor(modesLocked())) startShufflePass()
     }
 
     private fun cursorIndex(current: PlayerEngine?): Int {

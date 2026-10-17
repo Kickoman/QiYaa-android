@@ -1523,6 +1523,216 @@ class QueueJamTest {
             assertEquals(listOf("i2"), jam.started)
         }
 
+    @Test
+    fun `HOST-12 TR-03 shuffle switched on while an item waits leads the new pass with it, then the head`() =
+        runTest {
+            val h = QueueHarness.likes(this, "a", "b", "c", "d", continueWithVibe = false)
+            h.engine.seekTo(1)
+            h.engine.startPlaying()
+            val jam = h.startJam()
+            h.state(item("i1", "X"))
+            assertEquals(listOf("a", "b", "X", "c", "d"), h.engine.ids())
+            h.controller.setShuffle(true)
+            assertEquals(listOf(1, 2, 0, 3, 4), h.engine.playOrder())
+            assertEquals(listOf("X", "a", "c", "d"), h.playOn(4))
+            assertEquals(listOf("i1"), jam.started)
+        }
+
+    @Test
+    fun `HOST-21 TR-03 with shuffle a pick leads the new pass with the waiting items, then the new head`() =
+        runTest {
+            val h = QueueHarness.likes(this, "a", "b", "c", continueWithVibe = false)
+            h.controller.setShuffle(true)
+            h.engine.startPlaying()
+            val jam = h.startJam()
+            h.state(item("i1", "X"), item("i2", "Y"))
+            h.controller.loadSource("Mix") { tracks("m1", "m2", "m3") }
+            runCurrent()
+            assertEquals(listOf("a", "X", "Y", "m1", "m2", "m3"), h.engine.ids())
+            assertEquals(listOf(0, 1, 2, 3, 4, 5), h.engine.playOrder())
+            assertEquals(listOf("X", "Y", "m1", "m2", "m3"), h.playOn(5))
+            assertEquals(listOf("i1", "i2"), jam.started)
+        }
+
+    @Test
+    fun `HOST-36 D8 TR-03 removing the current last row, where ExoPlayer ends, seeks the target`() = runTest {
+        val h = QueueHarness.likes(this, "a", "b", "c", "d", continueWithVibe = false)
+        h.engine.seekTo(3)
+        h.controller.setShuffle(true)
+        h.engine.startPlaying()
+        assertEquals(listOf(3, 0, 1, 2), h.engine.playOrder())
+        h.engine.commands.clear()
+        h.controller.removeIndices(setOf(3))
+        assertEquals(listOf("remove 3", "seek 0"), h.engine.commands.withoutPauseAtEnd())
+        assertEquals("a", h.currentId())
+        assertFalse(h.engine.isEnded)
+        assertTrue(h.engine.playWhenReady)
+        assertEquals(listOf("b", "c"), h.playOn(2))
+    }
+
+    @Test
+    fun `HOST-36 TR-03 in a jam removing the current last row, where ExoPlayer ends, reports the target`() =
+        runTest {
+            val h = QueueHarness.likes(this, "a", "b", "c", "d", continueWithVibe = false)
+            h.engine.seekTo(3)
+            h.controller.setShuffle(true)
+            h.engine.startPlaying()
+            val jam = h.startJam()
+            h.engine.commands.clear()
+            h.controller.removeIndices(setOf(3))
+            assertEquals(listOf("pause", "remove 3", "seek 0"), h.engine.commands.withoutPauseAtEnd())
+            assertEquals("a", h.currentId())
+            assertFalse(h.engine.isEnded)
+            assertEquals(base("a", next = "b").copy(paused = true), jam.playbacks.last())
+            h.engine.startPlaying()
+            assertEquals(base("a", next = "b"), jam.playbacks.last())
+        }
+
+    @Test
+    fun `HOST-21 HOST-08 a pick into an empty player holds its first row, an item then plays first`() =
+        runTest {
+            val h = QueueHarness(this)
+            val jam = h.startJam()
+            h.controller.loadSource("Mix") { tracks("m1", "m2") }
+            runCurrent()
+            assertEquals(listOf("m1", "m2"), h.engine.ids())
+            assertEquals(idle, jam.playbacks.last())
+            h.engine.commands.clear()
+            h.state(item("i1", "X"), item("i2", "Y"))
+            assertEquals(listOf("X", "Y", "m1", "m2"), h.engine.ids())
+            assertEquals(listOf("insert 0 [X, Y]", "seek 0"), h.engine.commands.withoutPauseAtEnd())
+            assertEquals("X", h.currentId())
+            assertFalse(h.engine.playWhenReady)
+            assertEquals(idle, jam.playbacks.last())
+            assertEquals(emptyList<String>(), jam.started)
+            h.engine.startPlaying()
+            assertEquals(listOf("i1"), jam.started)
+            assertEquals(listOf("Y", "m1", "m2"), h.playOn(3))
+            assertEquals(listOf("i1", "i2"), jam.started)
+        }
+
+    @Test
+    fun `HOST-21 TR-03 with shuffle a pick into an empty player and items, Next plays them, then the pass`() =
+        runTest {
+            val h = QueueHarness(this)
+            h.controller.setShuffle(true)
+            val jam = h.startJam()
+            h.controller.loadSource("Mix") { tracks("m1", "m2", "m3") }
+            runCurrent()
+            h.state(item("i1", "X"), item("i2", "Y"))
+            assertEquals(listOf("X", "Y", "m1", "m2", "m3"), h.engine.ids())
+            assertEquals(listOf(0, 1, 2, 3, 4), h.engine.playOrder())
+            h.engine.commands.clear()
+            h.controller.next()
+            assertEquals("X", h.currentId())
+            assertEquals(listOf("prepare", "play"), h.engine.commands)
+            assertEquals(listOf("i1"), jam.started)
+            assertEquals(listOf("Y", "m1", "m2", "m3"), h.playOn(4))
+        }
+
+    @Test
+    fun `HOST-21 a pick into an empty player is idle until Next, which prepares and plays its first row`() =
+        runTest {
+            val h = QueueHarness(this)
+            val jam = h.startJam()
+            h.controller.loadSource("Mix") { tracks("m1", "m2") }
+            runCurrent()
+            assertEquals(idle, jam.playbacks.last())
+            h.engine.commands.clear()
+            h.controller.next()
+            assertEquals("m1", h.currentId())
+            assertEquals(listOf("prepare", "play"), h.engine.commands)
+            h.engine.startPlaying()
+            assertEquals(base("m1", next = "m2"), jam.playbacks.last())
+        }
+
+    @Test
+    fun `HOST-21 without a player a pick and an item, the player comes with the item held in front`() =
+        runTest {
+            val h = QueueHarness(this, attached = false)
+            val jam = h.startJam()
+            h.controller.loadSource("Mix") { tracks("m1") }
+            runCurrent()
+            h.state(item("i1", "X"))
+            assertEquals(listOf("X", "m1"), h.controller.state.value.tracks.map { it.id })
+            h.controller.attach(h.engine)
+            assertEquals("X", h.currentId())
+            assertFalse(h.engine.playWhenReady)
+            assertEquals(idle, jam.playbacks.last())
+            assertEquals(emptyList<String>(), jam.started)
+            h.engine.startPlaying()
+            assertEquals(listOf("i1"), jam.started)
+            assertEquals(listOf("m1"), h.playOn(1))
+        }
+
+    @Test
+    fun `HOST-21 TR-04 a pick while the end waits for the vibe stops there if paused, else plays on`() =
+        runTest {
+            for (playing in listOf(false, true)) {
+                val h = QueueHarness.likes(this, "a", "b", continueWithVibe = true)
+                h.source.onStartWave = { CompletableDeferred<WaveBatch>().await() }
+                h.engine.seekTo(1)
+                h.engine.startPlaying()
+                if (!playing) h.engine.pause()
+                val jam = h.startJam()
+                h.controller.next()
+                assertEquals("$playing", idle, jam.playbacks.last())
+                h.controller.loadSource("Mix") { tracks("m1") }
+                runCurrent()
+                assertEquals("$playing", listOf("b", "m1"), h.engine.ids())
+                if (playing) {
+                    assertEquals(base("b", next = "m1"), jam.playbacks.last())
+                    assertEquals(listOf("m1"), h.playOn(1))
+                } else {
+                    assertEquals(idle, jam.playbacks.last())
+                    h.engine.commands.clear()
+                    h.controller.next()
+                    assertEquals("m1", h.currentId())
+                    assertEquals(listOf("next", "prepare", "play"), h.engine.commands.withoutPauseAtEnd())
+                }
+            }
+        }
+
+    @Test
+    fun `HOST-36 HOST-11 after Clear the track that ends goes on with the jam vibe of the seeds`() = runTest {
+        val h = QueueHarness.likes(this, "a", "b", continueWithVibe = false)
+        h.source.onStartWave = { WaveBatch("SJ", "B1", tracks("w1")) }
+        h.engine.startPlaying()
+        h.startJam()
+        h.state(seeds = listOf("genre:jam"), seedsVersion = 1)
+        h.continueWithVibe = true
+        h.controller.clear()
+        runCurrent()
+        assertEquals(emptyList<String>(), h.source.calls)
+        h.engine.finishTrack()
+        runCurrent()
+        assertEquals("startWave [genre:jam]", h.source.calls.first())
+        assertEquals(listOf("a", "w1"), h.engine.ids())
+        assertEquals("w1", h.currentId())
+        assertTrue(h.engine.playWhenReady)
+    }
+
+    @Test
+    fun `HOST-36 CONT-10 removing every head row ends the repeat, the jam vibe asks behind the item`() =
+        runTest {
+            val h = QueueHarness.likes(this, "a", "b", continueWithVibe = true)
+            h.source.onStartWave = { WaveBatch("SJ", "B1", tracks("w1", "w2")) }
+            h.controller.setRepeat(true)
+            h.engine.startPlaying()
+            h.startJam()
+            h.state(item("i1", "X"), seeds = listOf("genre:jam"), seedsVersion = 1)
+            runCurrent()
+            assertEquals(emptyList<String>(), h.source.calls)
+            assertTrue(h.engine.repeatEnabled)
+            h.controller.removeIndices(setOf(0, 2))
+            runCurrent()
+            assertFalse(h.engine.repeatEnabled)
+            assertEquals(listOf("startWave [genre:jam]"), h.source.calls)
+            assertEquals(listOf("X", "w1", "w2"), h.engine.ids())
+            h.engine.startPlaying()
+            assertEquals(listOf("w1", "w2"), h.playOn(2))
+        }
+
     private class Recorder : JamPlaybackListener {
         val started = mutableListOf<String>()
         val playbacks = mutableListOf<JamPlayback>()
