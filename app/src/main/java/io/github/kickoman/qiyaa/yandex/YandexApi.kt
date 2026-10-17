@@ -36,6 +36,10 @@ class YandexApi(
     private val mutableTokenRejections = MutableSharedFlow<HttpException>(extraBufferCapacity = 1)
     val tokenRejections: SharedFlow<HttpException> = mutableTokenRejections.asSharedFlow()
 
+    private val mutableRequestFailures =
+        MutableSharedFlow<RequestFailure>(extraBufferCapacity = FAILURE_BUFFER)
+    val requestFailures: SharedFlow<RequestFailure> = mutableRequestFailures.asSharedFlow()
+
     suspend fun getJson(path: String, query: Map<String, String> = emptyMap()): JsonElement =
         execute("GET", path, request(url(path, query)).get().build())
 
@@ -65,17 +69,19 @@ class YandexApi(
             try {
                 client.newCall(request).execute()
             } catch (failed: IOException) {
-                throw NetworkException("GET", fullUrl, failed)
+                throw reported(NetworkException("GET", fullUrl, failed))
             }
         response.use {
             if (!it.isSuccessful) {
-                throw HttpException(
-                    it.code,
-                    "GET",
-                    fullUrl,
-                    it.message.ifEmpty {
-                        "error"
-                    },
+                throw reported(
+                    HttpException(
+                        it.code,
+                        "GET",
+                        fullUrl,
+                        it.message.ifEmpty {
+                            "error"
+                        },
+                    ),
                 )
             }
             it.body?.string().orEmpty()
@@ -115,7 +121,7 @@ class YandexApi(
         val variants = TrackUrl.parseDownloadVariants(getJson(path))
         val best =
             TrackUrl.pickBestVariant(variants)
-                ?: throw MalformedResponseException("GET", path, "no download variants")
+                ?: throw reported(MalformedResponseException("GET", path, "no download variants"))
         val infoUrl =
             best.downloadInfoUrl.toHttpUrl().newBuilder().addQueryParameter(
                 "format",
@@ -123,7 +129,9 @@ class YandexApi(
             ).build().toString()
         val info =
             TrackUrl.parseDownloadInfo(getText(infoUrl))
-                ?: throw MalformedResponseException("GET", infoUrl, "download info without host, path or s")
+                ?: throw reported(
+                    MalformedResponseException("GET", infoUrl, "download info without host, path or s"),
+                )
         return ResolvedUrl(TrackUrl.buildTrackUrl(info), best.bitrateKbps, best.codec)
     }
 
@@ -140,7 +148,7 @@ class YandexApi(
                         response.body?.string().orEmpty()
                 }
             } catch (failed: IOException) {
-                throw NetworkException("GET", FileInfo.PATH, failed)
+                throw reported(NetworkException("GET", FileInfo.PATH, failed))
             }
         val info = if (status < 400) FileInfo.parse(parseJsonObjectOrNull(body)?.get("result")) else null
         if (info == null || !FileInfo.isUsable(info, request)) {
@@ -148,6 +156,7 @@ class YandexApi(
                 "GET ${FileInfo.PATH} for track $trackId: HTTP $status, " +
                     "${info?.let { "${it.codec}/${it.transport}" } ?: "no file"}; taking the standard link",
             )
+            mutableRequestFailures.tryEmit(RequestFailure.unusable(status))
             return@withContext null
         }
         ResolvedUrl(info.url, info.bitrateKbps, info.codec)
@@ -202,7 +211,7 @@ class YandexApi(
                     Triple(response.code, response.body?.string().orEmpty(), response.message)
                 }
             } catch (failed: IOException) {
-                throw NetworkException(method, path, failed)
+                throw reported(NetworkException(method, path, failed))
             }
         val json = parseJsonObjectOrNull(body)
         if (status >= 400) {
@@ -210,14 +219,21 @@ class YandexApi(
             if (failed.isTokenRejected && request.header("Authorization") != null) {
                 mutableTokenRejections.tryEmit(failed)
             }
-            throw failed
+            throw reported(failed)
         }
         val payload = if (unwrapResult) json?.get("result") else json
-        payload ?: throw MalformedResponseException(
-            method,
-            path,
-            if (unwrapResult) "no \"result\" in the response" else "the response is not a JSON object",
+        payload ?: throw reported(
+            MalformedResponseException(
+                method,
+                path,
+                if (unwrapResult) "no \"result\" in the response" else "the response is not a JSON object",
+            ),
         )
+    }
+
+    private fun reported(failed: YandexException): YandexException {
+        RequestFailure.of(failed)?.let(mutableRequestFailures::tryEmit)
+        return failed
     }
 
     private fun errorMessage(json: JsonObject?, reason: String): String {
@@ -231,6 +247,7 @@ class YandexApi(
     }
 
     companion object {
+        private const val FAILURE_BUFFER = 16
         private val JSON_TYPE = "application/json".toMediaType()
         private val ISO_MILLIS: DateTimeFormatter = DateTimeFormatter.ofPattern(
             "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",

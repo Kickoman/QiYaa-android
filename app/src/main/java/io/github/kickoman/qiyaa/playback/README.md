@@ -13,7 +13,7 @@ grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   #
 | `HeadShuffleOrder.kt` | `HeadShuffleOrder` — `ShuffleOrder` ExoPlayer по `queue.HeadShuffle`: проход головы, затем остальное по индексу; заранее поставленный порядок для `setMediaItems` и для вставки за соседом в `addMediaItems` |
 | `QueueForwardingPlayer.kt` | `QueueForwardingPlayer` — плеер, которого видит `MediaSession`: «вперёд» и «назад», shuffle и повтор уходят в `QueueController` |
 | `NotificationButtons.kt` | `NotificationButtons` — команды сессии «лайк» и «дизлайк» и их кнопки в уведомлении |
-| `PlaybackFailures.kt` | `PlaybackFailures.classify` — `queue.FailureKind` по коду `PlaybackException` и причине; `errorKind` — `yandex.ErrorKind` для пользователя |
+| `PlaybackFailures.kt` | `PlaybackFailures.classify` — `queue.FailureKind` по коду `PlaybackException` и причине; `errorKind` — `yandex.ErrorKind` для пользователя; `audioFailure` — `AudioFailure` для телеметрии |
 | `MediaItems.kt` | `MediaItems` — `Track` ↔ `MediaItem` |
 | `TrackResolver.kt` | `TrackResolver` — `qiyaa://track/{id}` → подписанная ссылка из `TrackUrlCache` |
 | `TrackUrlCache.kt` | `TrackUrlCache` — подписанные ссылки по `trackId` на 15 минут, до 64 штук, с качеством каждой |
@@ -96,7 +96,8 @@ object NotificationButtons {
 
 ```kotlin
 @OptIn(UnstableApi::class)
-class Media3Engine(player: ExoPlayer, controller: QueueController, random: Random = Random.Default) : PlayerEngine {
+class Media3Engine(player: ExoPlayer, controller: QueueController, random: Random = Random.Default,
+    onAudioFailure: (AudioFailure) -> Unit = {}) : PlayerEngine {
     fun attach()     // addListener + HeadShuffleOrder на пустой плеер + controller.attach(this)
     fun detach()
 }
@@ -111,7 +112,7 @@ class Media3Engine(player: ExoPlayer, controller: QueueController, random: Rando
 | `onPositionDiscontinuity(old, new, reason)` | `onSeeked()`, только при `DISCONTINUITY_REASON_SEEK` и одном `mediaItemIndex` у `old` и `new`; перемотка на другой элемент приходит как `onMediaItemTransition(SEEK)`. `seekToPrevious/NextMediaItem` на тот же элемент (повтор текущего, `repeatCurrentMediaItem` в Media3) даёт и `onSeeked()`, и сразу за ним `onMediaItemTransition(SEEK)` — это безвредно (вне джема лишнее сохранение, в джеме повтор выключен), так что фильтр «тот же элемент» остаётся как есть |
 | `onIsPlayingChanged(playing)` | `onPlayingChanged(playing)` |
 | `onPlayWhenReadyChanged(false, PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM)` | `onPausedAtEnd()`: ExoPlayer встал на паузу в конце трека, потому что включён `pauseAtEndOfMediaItems` (заворот головы, CONT-10) |
-| `onPlayerError(error)` | `Log.w("QiYaa", …, error)`, затем `onFailure(PlaybackFailures.classify(error.errorCode, error.cause), PlaybackFailures.errorKind(error.errorCode, error.cause))` |
+| `onPlayerError(error)` | `Log.w("QiYaa", …, error)`, затем `onAudioFailure(it)`, если `PlaybackFailures.audioFailure(error.errorCode)` не `null`, затем `onFailure(PlaybackFailures.classify(error.errorCode, error.cause), PlaybackFailures.errorKind(error.errorCode, error.cause))` |
 
 `onShuffleModeEnabledChanged` и `onRepeatModeChanged` не пересылаются: режимы ExoPlayer пишет только контроллер (`shuffleEnabled` = `shuffleModeEnabled`, `repeatEnabled = true` — это `REPEAT_MODE_ALL`: повтора одного трека нет, TR-06), а выбор пользователя приходит командами через `QueueForwardingPlayer`.
 
@@ -164,11 +165,23 @@ class HeadShuffleOrder(val shuffle: HeadShuffle, random: Random, val staged: Hea
 
 Что делать с каждым видом, решает `queue/ErrorPolicy` (см. `queue/README.md`).
 
+`PlaybackFailures.audioFailure(errorCode)` — для телеметрии (`error audio/…`, `telemetry/README.md`), тоже только по коду и через константы `PlaybackException.ERROR_CODE_*`, а не числа (сверено с Media3 1.4.1 через `javap`):
+
+| `AudioFailure` | Коды |
+|---|---|
+| `INIT` (не открылось устройство вывода) | 5001 `AUDIO_TRACK_INIT_FAILED`, 5004 `AUDIO_TRACK_OFFLOAD_INIT_FAILED` |
+| `DEVICE` (устройство отказало во время игры) | 5002 `AUDIO_TRACK_WRITE_FAILED`, 5003 `AUDIO_TRACK_OFFLOAD_WRITE_FAILED`, 4006 `DECODING_RESOURCES_RECLAIMED` |
+| `UNDECODABLE` | 3001–3004 `PARSING_*`, 4001–4005 `DECODER_INIT_FAILED`, `DECODER_QUERY_FAILED`, `DECODING_FAILED`, `DECODING_FORMAT_EXCEEDS_CAPABILITIES`, `DECODING_FORMAT_UNSUPPORTED` |
+| `null` | всё остальное: сеть и HTTP (2xxx — это `api` и `playback`), DRM, неизвестные коды |
+
+Эта же ошибка идёт и в `queue` как `FailureKind` (обычно `TRACK`), поэтому битый файл даёт два события: `audio/undecodable` и `playback/track`. `Media3Engine` зовёт `onAudioFailure` до `controller.onFailure`; по умолчанию это `{}`.
+
 `PlaybackFailures.errorKind` говорит, что показать: `SESSION` → `TokenRejected`, `NETWORK` → `NoNetwork`, `TRACK` → `ServerError(status)`, если в цепочке есть `HttpException` или `HttpDataSource.InvalidResponseCodeException` хранилища, иначе `TrackUnplayable` (нет вариантов, декодер, парсинг). Подробности ошибки — только в logcat.
 
 **Traps:**
 - ExoPlayer сам повторяет сетевые ошибки загрузчика (около 3 попыток с паузой до 5 с) до `onPlayerError`, поэтому пауза наступает через несколько секунд после пропажи сети, а не сразу. Пока в буфере есть звук, трек доигрывает.
 - Ошибки `TrackResolver` приходят с общим кодом 2000 (`IO_UNSPECIFIED`): отличить сеть от битого трека можно только по причине, поэтому `yandex` бросает типизированные исключения.
+- `ERROR_CODE_DECODING_RESOURCES_RECLAIMED` в Media3 1.4.1 — `@UnstableApi`, поэтому таблица `audioFailure` помечена `@OptIn(UnstableApi::class)`. После обновления Media3 (Kickoman/QiYaa-android#22) коды надо сверить заново: новый код без строки в таблице даст `null`, то есть ничего в `audio`.
 
 ## `MediaItems`, `TrackResolver`, кэш ссылок
 

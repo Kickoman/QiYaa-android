@@ -4,9 +4,12 @@ import io.github.kickoman.qiyaa.support.Fixture
 import io.github.kickoman.qiyaa.support.Spec
 import io.github.kickoman.qiyaa.support.SpecJson
 import java.net.URLDecoder
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -588,11 +591,110 @@ class YandexApiTest {
         assertEquals(null, requests["/tracks/1/download-info"])
     }
 
+    @Test
+    fun `requestFailures reports an HTTP status and an answer without result, and nothing on success`() =
+        runBlocking {
+            val seen = ArrayList<RequestFailure>()
+            val collector = collectFailures(api, seen)
+            library.connectAccount()
+            route("GET", "/users/42/likes/artists", Spec.fixture("users-likes-artists", "ok"))
+            library.likedArtists()
+            assertEquals(emptyList<RequestFailure>(), seen)
+
+            routes["GET /users/42/likes/artists"] = MockResponse().setResponseCode(502).setBody("{}")
+            ignoreFailure { library.likedArtists() }
+            route("GET", "/users/42/likes/albums", Spec.fixture("oauth-token", "ok"))
+            ignoreFailure { library.likedAlbums() }
+            route("GET", "/account/status", Spec.fixture("users-likes-artists", "401-session-expired"))
+            ignoreFailure { api.accountStatus() }
+            stop(collector)
+
+            assertEquals(
+                listOf(
+                    RequestFailure(RequestFailure.Kind.HTTP, 502),
+                    RequestFailure(RequestFailure.Kind.CONTENT),
+                    RequestFailure(RequestFailure.Kind.HTTP, 401),
+                ),
+                seen,
+            )
+        }
+
+    @Test
+    fun `requestFailures reports a closed port as one network failure`() = runBlocking {
+        val closed = MockWebServer()
+        closed.start()
+        val url = closed.url("/").toString().removeSuffix("/")
+        closed.shutdown()
+        val offline = YandexApi(OkHttpClient(), url)
+        val seen = ArrayList<RequestFailure>()
+        val collector = collectFailures(offline, seen)
+
+        ignoreFailure { offline.getJson("/account/status") }
+        stop(collector)
+
+        assertEquals(listOf(RequestFailure(RequestFailure.Kind.NETWORK)), seen)
+    }
+
+    @Test
+    fun `QUAL-03 a fallback counts 400 and above as HTTP and an unusable 2xx as content`() = runBlocking {
+        val storage = MockWebServer()
+        storage.start()
+        try {
+            val variants = Spec.fixture("tracks-download-info", "variants")
+            val storageBase = storage.url("/").toString().removeSuffix("/")
+            route(
+                "GET",
+                "/tracks/1/download-info",
+                variants.copy(body = variants.body.replace("https://storage.mds.yandex.net", storageBase)),
+            )
+            val seen = ArrayList<RequestFailure>()
+            val collector = collectFailures(api, seen)
+            for (case in listOf("403-not-allowed", "429-concurrency-limit", "encraw", "no-url")) {
+                route("GET", "/get-file-info", Spec.fixture("get-file-info", case))
+                storage.enqueue(Spec.fixture("storage-download-info", "ok").response())
+                api.resolveTrackUrl("1", Quality.ECONOMY)
+            }
+            stop(collector)
+
+            assertEquals(
+                listOf(
+                    RequestFailure(RequestFailure.Kind.HTTP, 403),
+                    RequestFailure(RequestFailure.Kind.HTTP, 429),
+                    RequestFailure(RequestFailure.Kind.CONTENT),
+                    RequestFailure(RequestFailure.Kind.CONTENT),
+                ),
+                seen,
+            )
+        } finally {
+            storage.shutdown()
+        }
+    }
+
+    @Test
+    fun `QUAL-04 a network failure of get-file-info is counted once`() = runBlocking {
+        routes["GET /get-file-info"] = MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AFTER_REQUEST)
+        val seen = ArrayList<RequestFailure>()
+        val collector = collectFailures(api, seen)
+
+        ignoreFailure { api.resolveTrackUrl("1", Quality.ECONOMY) }
+        stop(collector)
+
+        assertEquals(listOf(RequestFailure(RequestFailure.Kind.NETWORK)), seen)
+    }
+
     private fun route(method: String, path: String, fixture: Fixture) {
         routes["$method $path"] = fixture.response()
     }
 
     private fun Fixture.withStatus(status: Int) = copy(status = status)
+
+    private suspend fun stop(collector: Job) {
+        yield()
+        collector.cancel()
+    }
+
+    private fun CoroutineScope.collectFailures(from: YandexApi, seen: MutableList<RequestFailure>): Job =
+        launch(start = CoroutineStart.UNDISPATCHED) { from.requestFailures.collect { seen.add(it) } }
 
     private suspend fun ignoreFailure(call: suspend () -> Unit) {
         try {
