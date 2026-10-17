@@ -393,6 +393,49 @@ class QueueJamTest {
         }
 
     @Test
+    fun `HOST-14 a load-more reply in flight at the jam start is dropped, with no JamActive and no seek`() =
+        runTest {
+            val h = QueueHarness(this)
+            val reply = CompletableDeferred<WaveBatch>()
+            h.source.onStartWave = { WaveBatch("S1", "B1", tracks("w1", "w2", "w3")) }
+            h.source.onMoreWave = { _, _ -> reply.await() }
+            h.controller.playWave(listOf("user:onyourwave"), "My Wave")
+            runCurrent()
+            h.engine.startPlaying()
+            repeat(3) { h.engine.finishTrack() }
+            runCurrent()
+            assertTrue(h.engine.isEnded)
+            assertTrue(h.controller.state.value.loadingMore)
+            h.startJam()
+            h.engine.commands.clear()
+            reply.complete(WaveBatch("S1", "B2", tracks("m1", "m2")))
+            runCurrent()
+            assertEquals(listOf("w1", "w2", "w3"), h.engine.ids())
+            assertEquals(emptyList<String>(), h.engine.commands)
+            assertFalse(h.events.contains(QueueEvent.JamActive))
+            assertFalse(h.controller.state.value.loadingMore)
+        }
+
+    @Test
+    fun `a stored jam keeps its jam wave tracks as continuation entries, which never come from the head`() =
+        runTest {
+            val first = QueueHarness(this)
+            first.startJam()
+            first.source.onStartWave = { WaveBatch("SJ", "B1", tracks("w1", "w2")) }
+            first.state(item("i1", "A"), seeds = listOf("track:A"), seedsVersion = 1)
+            first.state(seeds = listOf("track:A"), seedsVersion = 1)
+            runCurrent()
+            assertEquals(listOf("A", "w1", "w2"), first.engine.ids())
+            val parts = listOf(EntryPart.HEAD, EntryPart.CONTINUATION, EntryPart.CONTINUATION)
+            assertEquals(parts, first.controller.state.value.entries.map { it.part })
+            assertEquals(parts, first.store.snapshot()!!.parts)
+            val restored = QueueHarness(this, store = first.store)
+            assertEquals(parts, restored.controller.state.value.entries.map { it.part })
+            restored.startJam()
+            assertEquals(parts, restored.controller.state.value.entries.map { it.part })
+        }
+
+    @Test
     fun `a stored queue keeps its jam slots, and a new jam picks them up`() = runTest {
         val first = QueueHarness(this)
         first.startJam()

@@ -24,14 +24,16 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 data class QueueState(
-    val tracks: List<Track> = emptyList(),
+    val entries: List<QueueEntry> = emptyList(),
     val title: String = "",
     val isWave: Boolean = false,
     val loadingMore: Boolean = false,
     val selected: Set<Int> = emptySet(),
     val activeSourceId: String? = null,
     val jamSlots: List<JamSlot>? = null,
-)
+) {
+    val tracks: List<Track> = entries.map(QueueEntry::track)
+}
 
 data class PlayModes(val shuffle: Boolean = false, val repeat: Boolean = false, val locked: Boolean = false)
 
@@ -66,7 +68,6 @@ class QueueController(
     private var loadJob: Job? = null
     private val playTracker = PlayTracker(clock)
     private var waveStationId = ""
-    private val waveContexts = HashMap<String, WaveContext>()
     private var openWaveContext: WaveContext? = null
     private val feedback = Channel<suspend () -> Unit>(Channel.UNLIMITED)
 
@@ -214,9 +215,15 @@ class QueueController(
 
     private fun onStarted(track: Track) {
         if (jam == null) reportPlay(track)
-        val context = waveContexts[track.id]
+        val context = currentEntry()?.takeIf { it.track.id == track.id }?.wave
         openWaveContext = context
         if (context != null) sendFeedback(context, WaveEvent.TRACK_STARTED, track, 0.0)
+    }
+
+    private fun currentEntry(): QueueEntry? {
+        val current = engine ?: return null
+        if (current.itemCount == 0) return null
+        return mutableState.value.entries.getOrNull(current.currentIndex)
     }
 
     private fun onClosed(closed: PlayTracker.Closed) {
@@ -228,11 +235,6 @@ class QueueController(
 
     private fun sendFeedback(context: WaveContext, event: WaveEvent, track: Track?, playedSeconds: Double) {
         feedback.trySend { source.waveFeedback(context, event, track, playedSeconds) }
-    }
-
-    private fun registerBatch(sessionId: String, batch: WaveBatch) {
-        val context = WaveContext(sessionId, waveStationId, batch.batchId)
-        for (track in batch.tracks) if (track.available) waveContexts[track.id] = context
     }
 
     fun onItemChanged(track: Track?, transition: Transition, isPlaying: Boolean) {
@@ -395,15 +397,10 @@ class QueueController(
                 waveSessionId = batch.sessionId
                 waveSessionStale = false
                 waveStationId = seeds.first()
-                waveContexts.clear()
-                registerBatch(batch.sessionId, batch)
-                sendFeedback(
-                    WaveContext(batch.sessionId, waveStationId, batch.batchId),
-                    WaveEvent.RADIO_STARTED,
-                    null,
-                    0.0,
-                )
-                setQueue(batch.tracks, title, isWave = true, autoplay = true, sourceId = sourceId)
+                val context = WaveContext(batch.sessionId, waveStationId, batch.batchId)
+                sendFeedback(context, WaveEvent.RADIO_STARTED, null, 0.0)
+                val entries = batch.tracks.map { QueueEntry(it, EntryPart.CONTINUATION, context) }
+                replaceQueue(entries, title, isWave = true, autoplay = true, sourceId = sourceId)
                 emit(QueueEvent.WaveStarted(title))
             }
     }
@@ -442,6 +439,17 @@ class QueueController(
     }
 
     fun setQueue(tracks: List<Track>, title: String, isWave: Boolean, autoplay: Boolean, sourceId: String?) {
+        val part = EntryPart.defaultFor(isWave)
+        replaceQueue(tracks.map { QueueEntry(it, part) }, title, isWave, autoplay, sourceId)
+    }
+
+    private fun replaceQueue(
+        entries: List<QueueEntry>,
+        title: String,
+        isWave: Boolean,
+        autoplay: Boolean,
+        sourceId: String?,
+    ) {
         if (jamBlocks()) return
         val current = engine
         playTracker.closeAsSkip()?.let(::onClosed)
@@ -449,13 +457,10 @@ class QueueController(
         resetFailures()
         continueAtEnd = false
         waveSessionStale = false
-        val playable = tracks.filter { it.available }
-        if (!isWave) {
-            waveSessionId = null
-            waveContexts.clear()
-        }
+        val playable = entries.filter { it.track.available }
+        if (!isWave) waveSessionId = null
         mutableState.value =
-            QueueState(tracks = playable, title = title, isWave = isWave, activeSourceId = sourceId)
+            QueueState(entries = playable, title = title, isWave = isWave, activeSourceId = sourceId)
         applyModes()
         if (current == null) {
             restorePoint = RestorePoint(0, 0, playWhenReady = autoplay)
@@ -463,16 +468,16 @@ class QueueController(
             return
         }
         restorePoint = null
-        current.setTracks(playable, playWhenReady = autoplay)
+        current.setTracks(playable.map(QueueEntry::track), playWhenReady = autoplay)
         save()
     }
 
-    fun appendTracks(tracks: List<Track>) {
-        if (jamBlocks()) return
-        val playable = tracks.filter { it.available }
+    private fun appendEntries(entries: List<QueueEntry>) {
+        if (jam != null) return
+        val playable = entries.filter { it.track.available }
         if (playable.isEmpty()) return
-        mutableState.update { it.copy(tracks = it.tracks + playable) }
-        engine?.appendTracks(playable)
+        mutableState.update { it.copy(entries = it.entries + playable) }
+        engine?.appendTracks(playable.map(QueueEntry::track))
         save()
     }
 
@@ -496,15 +501,13 @@ class QueueController(
     fun removeIndices(indices: Set<Int>) {
         if (indices.isEmpty() || jamBlocks()) return
         if (engine?.currentIndex in indices) playTracker.closeAsSkip()?.let(::onClosed)
-        val sorted = indices.filter { it in mutableState.value.tracks.indices }.sortedDescending()
-        engine?.let { current -> for (index in sorted) current.removeAt(index) }
-        mutableState.update { state ->
-            state.copy(
-                tracks = state.tracks.filterIndexed { index, _ ->
-                    index !in indices
-                },
-                selected = emptySet(),
-            )
+        val sorted = indices.filter { it in mutableState.value.entries.indices }.sortedDescending()
+        mutableState.update { it.copy(selected = emptySet()) }
+        for (index in sorted) {
+            mutableState.update { state ->
+                state.copy(entries = state.entries.filterIndexed { i, _ -> i != index })
+            }
+            engine?.removeAt(index)
         }
         save()
     }
@@ -561,11 +564,7 @@ class QueueController(
         currentTrack()?.let(::dislikeAndSkip)
     }
 
-    private fun currentTrack(): Track? {
-        val current = engine ?: return null
-        if (current.itemCount == 0) return null
-        return mutableState.value.tracks.getOrNull(current.currentIndex)
-    }
+    private fun currentTrack(): Track? = currentEntry()?.track
 
     private fun waitForNetwork(current: PlayerEngine) {
         if (retryJob?.isActive == true) return
@@ -609,9 +608,22 @@ class QueueController(
 
     private fun restore(snapshot: QueueSnapshot) {
         if (snapshot.tracks.isEmpty()) return
+        val default = EntryPart.defaultFor(snapshot.isWave)
+        val entries =
+            snapshot.tracks.mapIndexed { i, track ->
+                val part = snapshot.parts.getOrNull(i) ?: default
+                val batchId = snapshot.batchIds.getOrElse(i) { "" }
+                val wave =
+                    if (part == EntryPart.CONTINUATION && snapshot.waveSessionId.isNotEmpty()) {
+                        WaveContext(snapshot.waveSessionId, snapshot.waveStationId, batchId)
+                    } else {
+                        null
+                    }
+                QueueEntry(track, part, wave)
+            }
         mutableState.value =
             QueueState(
-                tracks = snapshot.tracks,
+                entries = entries,
                 title = snapshot.title,
                 isWave = snapshot.isWave,
                 activeSourceId = snapshot.sourceId,
@@ -622,10 +634,6 @@ class QueueController(
             waveSessionId = snapshot.waveSessionId
             waveStationId = snapshot.waveStationId
             waveSessionStale = true
-            snapshot.tracks.forEachIndexed { i, track ->
-                val batchId = snapshot.batchIds.getOrElse(i) { "" }
-                waveContexts[track.id] = WaveContext(snapshot.waveSessionId, snapshot.waveStationId, batchId)
-            }
         }
         restorePoint = RestorePoint(snapshot.index, snapshot.positionMs, playWhenReady = false)
         if (snapshot.jamSlots != null && snapshot.jamSlots.size == snapshot.tracks.size) {
@@ -650,10 +658,11 @@ class QueueController(
         if (store == null) return
         val state = mutableState.value
         val point = resumePoint()
+        val parts = state.entries.map(QueueEntry::part)
         val snapshot =
             QueueSnapshot(
                 tracks = state.tracks,
-                batchIds = state.tracks.map { waveContexts[it.id]?.batchId.orEmpty() },
+                batchIds = state.entries.map { it.wave?.batchId.orEmpty() },
                 title = state.title,
                 sourceId = state.activeSourceId,
                 isWave = state.isWave,
@@ -664,6 +673,7 @@ class QueueController(
                 shuffle = shuffleRule.wanted,
                 repeat = repeatRule.wanted,
                 jamSlots = state.jamSlots,
+                parts = if (parts.all { it == EntryPart.defaultFor(state.isWave) }) emptyList() else parts,
             )
         saves.trySend(QueueSnapshotCodec.encode(snapshot))
     }
@@ -676,7 +686,6 @@ class QueueController(
         if (left > LOAD_MORE_WHEN_LEFT) return
         val generation = queueGeneration
         val wasEnded = current.isEnded
-        val oldCount = current.itemCount
         mutableState.update { it.copy(loadingMore = true) }
         val recent = state.tracks.takeLast(WAVE_HISTORY).map { it.id }
         scope.launch {
@@ -702,11 +711,12 @@ class QueueController(
             continueAtEnd = false
             if (batch == null || batch.tracks.none { it.available }) return@launch
             if (waveSessionStale) startRestoredSession(batch)
-            registerBatch(batch.sessionId.ifEmpty { session }, batch)
-            appendTracks(batch.tracks)
+            val context = WaveContext(batch.sessionId.ifEmpty { session }, waveStationId, batch.batchId)
+            val firstNew = mutableState.value.entries.size
+            appendEntries(batch.tracks.map { QueueEntry(it, EntryPart.CONTINUATION, context) })
             val afterAppend = engine ?: return@launch
             if (wasEnded || afterAppend.isEnded || resume) {
-                afterAppend.seekTo(oldCount)
+                afterAppend.seekTo(firstNew)
                 afterAppend.prepare()
                 afterAppend.play()
             }
@@ -718,19 +728,23 @@ class QueueController(
         val run = JamRun(listener, waveFeedback)
         newSourceRequest()
         loadJob?.cancel()
+        queueGeneration++
         waveSessionId = null
         waveSessionStale = false
-        waveContexts.clear()
         openWaveContext = null
         continueAtEnd = false
         val current = engine
         val state = mutableState.value
-        if (state.jamSlots?.size == state.tracks.size) {
-            mutableState.update { it.copy(title = title, isWave = false) }
+        val slots = state.jamSlots
+        if (slots?.size == state.tracks.size) {
+            val entries = state.entries.zip(slots) { entry, slot -> QueueEntry(entry.track, jamPartOf(slot)) }
+            mutableState.update {
+                it.copy(entries = entries, title = title, isWave = false, loadingMore = false)
+            }
         } else if (current != null && current.itemCount > 0) {
-            val kept = state.tracks.take(current.currentIndex + 1)
+            val kept = state.entries.take(current.currentIndex + 1).map { QueueEntry(it.track) }
             mutableState.value =
-                QueueState(tracks = kept, title = title, jamSlots = List(kept.size) { JamSlot.Other })
+                QueueState(entries = kept, title = title, jamSlots = List(kept.size) { JamSlot.Other })
             for (index in current.itemCount - 1 downTo current.currentIndex + 1) current.removeAt(index)
         } else {
             mutableState.value = QueueState(title = title, jamSlots = emptyList())
@@ -774,8 +788,9 @@ class QueueController(
                 if (slots[index] == JamSlot.Wave) jamRemove(current, index)
             }
         }
-        waveContexts.clear()
-        mutableState.update { it.copy(jamSlots = null) }
+        mutableState.update { state ->
+            state.copy(entries = state.entries.map { QueueEntry(it.track) }, jamSlots = null)
+        }
         applyModes()
         save()
     }
@@ -793,7 +808,7 @@ class QueueController(
             if (run.entries.isEmpty()) return
             mutableState.update { state ->
                 state.copy(
-                    tracks = run.entries.map { it.track },
+                    entries = run.entries.map { QueueEntry(it.track) },
                     jamSlots = run.entries.map { JamSlot.Item(it.itemId, it.addedBy) },
                 )
             }
@@ -806,7 +821,8 @@ class QueueController(
         val wanted = run.entries.filterNot { currentSlot is JamSlot.Item && it.itemId == currentSlot.itemId }
         val edit = JamTail.edit(slots, index, wanted)
         for (at in edit.removeUntil - 1 downTo edit.removeFrom) jamRemove(current, at)
-        jamInsert(current, edit.insertAt, edit.insert.map { it.track to JamSlot.Item(it.itemId, it.addedBy) })
+        val inserted = edit.insert.map { QueueEntry(it.track) to JamSlot.Item(it.itemId, it.addedBy) }
+        jamInsert(current, edit.insertAt, inserted)
         if ((current.isEnded || run.waitingForWave) && wanted.isNotEmpty() && index + 1 < current.itemCount) {
             run.waitingForWave = false
             current.seekTo(index + 1)
@@ -818,23 +834,26 @@ class QueueController(
         save()
     }
 
-    private fun jamInsert(current: PlayerEngine, index: Int, entries: List<Pair<Track, JamSlot>>) {
-        if (entries.isEmpty()) return
+    private fun jamInsert(current: PlayerEngine, index: Int, inserted: List<Pair<QueueEntry, JamSlot>>) {
+        if (inserted.isEmpty()) return
         mutableState.update { state ->
-            val tracks = state.tracks.toMutableList().apply { addAll(index, entries.map { it.first }) }
+            val entries = state.entries.toMutableList().apply { addAll(index, inserted.map { it.first }) }
             val slots = state.jamSlots.orEmpty().toMutableList().apply {
-                addAll(index, entries.map { it.second })
+                addAll(index, inserted.map { it.second })
             }
-            val selected = state.selected.map { if (it >= index) it + entries.size else it }.toSet()
-            state.copy(tracks = tracks, jamSlots = slots, selected = selected)
+            val selected = state.selected.map { if (it >= index) it + inserted.size else it }.toSet()
+            state.copy(entries = entries, jamSlots = slots, selected = selected)
         }
-        current.insertTracks(index, entries.map { it.first })
+        current.insertTracks(index, inserted.map { it.first.track })
     }
+
+    private fun jamPartOf(slot: JamSlot): EntryPart =
+        if (slot == JamSlot.Wave) EntryPart.CONTINUATION else EntryPart.HEAD
 
     private fun jamRemove(current: PlayerEngine, index: Int) {
         mutableState.update { state ->
             state.copy(
-                tracks = state.tracks.filterIndexed { i, _ -> i != index },
+                entries = state.entries.filterIndexed { i, _ -> i != index },
                 jamSlots = state.jamSlots?.filterIndexed { i, _ -> i != index },
                 selected = state.selected.filter { it != index }.map {
                     if (it >
@@ -908,13 +927,15 @@ class QueueController(
                         )
                     }
                 }
-            if (run.waveFeedback) {
-                val context = WaveContext(session.sessionId, session.stationId, batch.batchId)
-                for (track in playable) waveContexts[track.id] = context
-            }
+            val context =
+                WaveContext(session.sessionId, session.stationId, batch.batchId).takeIf { run.waveFeedback }
             val engineNow = engine ?: return@launch
             val start = engineNow.itemCount
-            jamInsert(engineNow, start, playable.map { it to JamSlot.Wave })
+            jamInsert(
+                engineNow,
+                start,
+                playable.map { QueueEntry(it, EntryPart.CONTINUATION, context) to JamSlot.Wave },
+            )
             if (engineNow.isEnded || run.waitingForWave || start == 0) {
                 run.waitingForWave = false
                 engineNow.seekTo(start)

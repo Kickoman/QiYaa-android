@@ -246,6 +246,30 @@ class QueueWaveTest {
     }
 
     @Test
+    fun `WAVE-08 with rows removed during a load-more, the reply plays its first new track`() = runTest {
+        val harness = startedWave(this, "w1", "w2", "w3")
+        val reply = CompletableDeferred<WaveBatch>()
+        var requests = 0
+        harness.source.onMoreWave =
+            { _, _ -> if (++requests == 1) reply.await() else CompletableDeferred<WaveBatch>().await() }
+        harness.engine.finishTrack()
+        runCurrent()
+        assertTrue(harness.controller.state.value.loadingMore)
+        harness.controller.removeIndices(setOf(0))
+        harness.engine.finishTrack()
+        harness.engine.finishTrack()
+        assertTrue(harness.engine.isEnded)
+        reply.complete(WaveBatch("S1", "B2", tracks("m1", "m2")))
+        runCurrent()
+        assertEquals(listOf("w2", "w3", "m1", "m2"), harness.engine.ids())
+        assertEquals(2, harness.engine.currentIndex)
+        assertEquals(
+            listOf("append [m1, m2]", "seek 2", "prepare", "play"),
+            harness.engine.commands.takeLast(4),
+        )
+    }
+
+    @Test
     fun `WAVE-10 a wave plays in queue order even if shuffle was on`() = runTest {
         val harness = QueueHarness(this)
         harness.controller.loadSource("Liked") { tracks("l1", "l2") }

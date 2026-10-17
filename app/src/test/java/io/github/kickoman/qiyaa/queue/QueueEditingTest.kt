@@ -29,6 +29,37 @@ class QueueEditingTest {
         }
 
     @Test
+    fun `the entry the engine reports is the entry in state after removing rows above, at and below it`() =
+        runTest {
+            val harness = QueueHarness(this)
+            harness.source.onStartWave = { WaveBatch("S1", "B1", tracks("a", "b", "c")) }
+            val more = ArrayDeque(listOf(WaveBatch("S1", "B2", tracks("d", "e", "f"))))
+            harness.source.onMoreWave =
+                { _, _ -> more.removeFirstOrNull() ?: CompletableDeferred<WaveBatch>().await() }
+            harness.controller.playWave(listOf("user:onyourwave"), "My Wave")
+            runCurrent()
+            harness.engine.startPlaying()
+            harness.engine.finishTrack()
+            runCurrent()
+            harness.engine.finishTrack()
+            runCurrent()
+            assertEquals(listOf("a", "b", "c", "d", "e", "f"), harness.engine.ids())
+            assertEquals(2, harness.engine.currentIndex)
+            harness.source.feedback.clear()
+
+            harness.controller.removeIndices(setOf(0, 2, 5))
+            runCurrent()
+
+            assertEquals(listOf("b", "d", "e"), harness.engine.ids())
+            assertEquals(harness.engine.ids(), harness.controller.state.value.tracks.map { it.id })
+            assertEquals(1, harness.engine.currentIndex)
+            assertEquals(
+                listOf("skip S1/user:onyourwave/B1 c 0.0", "trackStarted S1/user:onyourwave/B2 d 0.0"),
+                harness.source.feedback,
+            )
+        }
+
+    @Test
     fun `select all toggles between every track and none`() = runTest {
         val harness = QueueHarness(this)
         harness.controller.loadSource("Liked") { tracks("a", "b") }
