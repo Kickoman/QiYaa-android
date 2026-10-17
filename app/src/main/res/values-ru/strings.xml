@@ -133,7 +133,6 @@
     <string name="login_expired">Сессия истекла. Войдите снова.</string>
     <string name="queue_waiting_for_network">Нет сети · продолжу, когда появится</string>
     <string name="queue_jam_active">Идёт джем: добавьте треки в джем</string>
-    <string name="jam_queue_title">Джем</string>
     <string name="jam_title">Джем</string>
     <string name="jam_settings_title">Сервер джема</string>
     <string name="jam_settings_open">Сервер</string>

@@ -4,6 +4,8 @@ import io.github.kickoman.qiyaa.yandex.Track
 
 data class JamEntry(val itemId: String, val track: Track, val addedBy: String)
 
+data class SeedHint(val seeds: List<String>, val version: Int)
+
 data class JamPlayback(
     val kind: Kind,
     val itemId: String?,
@@ -13,7 +15,7 @@ data class JamPlayback(
     /** The track that plays after this one, if any: its file may be shared too (LISTEN-03). */
     val nextTrack: Track? = null,
 ) {
-    enum class Kind { ITEM, WAVE, IDLE }
+    enum class Kind { ITEM, BASE, IDLE }
 }
 
 interface JamPlaybackListener {

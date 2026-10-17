@@ -150,7 +150,6 @@
     <string name="login_expired">Your session has expired. Sign in again.</string>
     <string name="queue_waiting_for_network">No connection · will resume when it is back</string>
     <string name="queue_jam_active">A jam is on: add tracks to the jam instead</string>
-    <string name="jam_queue_title">Jam</string>
     <string name="jam_title">Jam</string>
     <string name="jam_settings_title">Jam server</string>
     <string name="jam_settings_open">Server</string>

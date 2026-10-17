@@ -87,6 +87,23 @@ class JamHostTest {
     }
 
     @Test
+    fun `HOST-10 HOST-14 a base track goes out as playing with source wave and the track`() = runTest {
+        val h = Harness(this)
+        val first = Track(id = "11", title = "A", artists = listOf("Кино"), durationMs = 1_000)
+        val second = Track(id = "33", title = "C", artists = listOf("Кино"), durationMs = 1_000)
+        h.queue.controller.setQueue(listOf(first, second), "Likes", false, autoplay = true, sourceId = null)
+        h.created()
+        assertEquals(base(first), h.sent().last())
+        h.state(1, item("i1", "22"))
+        h.queue.engine.finishTrack()
+        h.state(2)
+        h.queue.engine.finishTrack()
+        assertEquals(listOf("11", "22", "33"), h.queue.engine.ids())
+        assertEquals(base(second), h.sent().last())
+        assertEquals(listOf(Started("i1")), h.sent().filterIsInstance<Started>())
+    }
+
+    @Test
     fun `create refuses a missing server and a blank name`() = runTest {
         val h = Harness(this)
         assertFalse(h.host.create("   "))
@@ -406,6 +423,9 @@ class JamHostTest {
             assertEquals(Playing(NowPlayingSource.IDLE, positionMs = 0, paused = true), h.sent().last())
         }
 
+    private fun base(track: Track) =
+        Playing(NowPlayingSource.WAVE, track = JamTracks.toJam(track), positionMs = 0, paused = true)
+
     private class Harness(val scope: TestScope, stored: JamSession? = null) {
         val queue = QueueHarness(scope)
         val transport = FakeJamTransport()
@@ -423,7 +443,6 @@ class JamHostTest {
                 catalog = catalog,
                 store = JamSessionStore(store),
                 config = { config },
-                queueTitle = { "Jam" },
                 scope = scope.backgroundScope,
                 io = StandardTestDispatcher(scope.testScheduler),
                 appVersion = "test",

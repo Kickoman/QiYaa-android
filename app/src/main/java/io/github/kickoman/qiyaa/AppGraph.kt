@@ -108,7 +108,6 @@ class AppGraph(val context: Context) {
                 )
             },
             signedLink = trackLinks::peek,
-            queueTitle = { context.getString(R.string.jam_queue_title) },
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
             io = Dispatchers.IO,
             appVersion = BuildConfig.VERSION_NAME,

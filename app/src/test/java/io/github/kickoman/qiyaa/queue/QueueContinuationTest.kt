@@ -612,6 +612,25 @@ class QueueContinuationTest {
     }
 
     @Test
+    fun `ERR-07 a broken last head track that plays after all keeps playing when the vibe comes`() = runTest {
+        val harness = head(this, "a", "b")
+        val reply = CompletableDeferred<WaveBatch>()
+        harness.source.onStartWave = { reply.await() }
+        harness.engine.startPlaying()
+        harness.engine.finishTrack()
+        runCurrent()
+        harness.engine.fail(FailureKind.TRACK)
+        harness.engine.stopPlaying()
+        harness.engine.startPlaying()
+        assertFalse(harness.controller.state.value.loadingMore)
+        harness.engine.commands.clear()
+        reply.complete(WaveBatch("V1", "B1", tracks("v1")))
+        runCurrent()
+        assertEquals(listOf("append [v1]"), harness.engine.commands)
+        assertEquals(1, harness.engine.currentIndex)
+    }
+
+    @Test
     fun `ERR-07 a broken last head track stops when the vibe cannot start, with no seeds or stalled`() =
         runTest {
             val unplayed = head(this, "a")

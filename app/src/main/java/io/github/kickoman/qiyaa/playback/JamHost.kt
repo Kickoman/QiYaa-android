@@ -114,7 +114,6 @@ class JamHost(
     private val catalog: JamCatalog,
     private val store: JamSessionStore,
     private val config: () -> JamHostConfig,
-    private val queueTitle: () -> String,
     private val scope: CoroutineScope,
     private val io: CoroutineContext,
     appVersion: String,
@@ -197,7 +196,7 @@ class JamHost(
         stored = null
         session = resumed
         client.restoreOutbox(resumed.outbox)
-        queue.startJam(queueTitle(), this, config().waveFeedback)
+        queue.startJam(this, config().waveFeedback)
         connect(config().serverUrl)
         publish()
     }
@@ -318,7 +317,7 @@ class JamHost(
                     positionMs = playback.positionMs,
                     paused = playback.paused,
                 )
-                JamPlayback.Kind.WAVE -> Playing(
+                JamPlayback.Kind.BASE -> Playing(
                     NowPlayingSource.WAVE,
                     // A wave track the protocol cannot carry is not reported at all.
                     track = playback.track?.let(JamTracks::toJam) ?: return,
@@ -369,7 +368,7 @@ class JamHost(
         requestId = null
         connected = true
         save(JamSession(message.roomId, message.hostSecret, message.joinUrl, null, emptyList()))
-        queue.startJam(queueTitle(), this, config().waveFeedback)
+        queue.startJam(this, config().waveFeedback)
     }
 
     private fun resumed() {

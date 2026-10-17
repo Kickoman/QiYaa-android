@@ -44,7 +44,7 @@
 | `equalizer/bands` | string, 10 чисел через запятую с одним знаком (`"0.0,3.5,…"`) | плоские | часть `eq` |
 | `theme` | string (`AccentTheme.key`: `green`, `amber`, `ice`) | `amber` | `theme` |
 | `jam/server` | string, адрес сервера джема (`https://jam.example.org`) | `BuildConfig.JAM_URL` из Gradle-свойства `qiyaaJamUrl`: `https://qiyaa.kanstancin.net` в `gradle.properties`, сборка может передать другое (`-PqiyaaJamUrl=…`) | `jamServer` |
-| `jam/waveFeedback` | bool, фидбек ротора в сессию волны джема (HOST-16) | `true` | `jamWaveFeedback` |
+| `jam/waveFeedback` | bool, фидбек ротора в сессию волны джема — волны по истории базы во время джема (HOST-16) | `true` | `jamWaveFeedback` |
 | `jam/shareAudio` | bool, гости могут слушать файлы хозяина (`spec/jam/listen.md`) | `false` | `jamShareAudio` |
 | `language` | string (`AppLanguage.tag`: `be`, `ru`, `en`) | `be` (и любое другое значение) | `language` |
 | `playback/quality` | string (`AudioQuality.key`: `standard`, `economy`), качество на Wi-Fi и другой безлимитной сети | `standard` (и любое другое значение) | `quality` |
