@@ -27,6 +27,12 @@ grep -rlnE '^import (android|androidx|io\.github\.kickoman)' app/src/main/java/i
 `SearchResult`, `snapshot` → `Snapshot`, `state` → `State`.
 
 - `JamTrack.coverUri` — шаблон Яндекса с `%%`, как в протоколе; это не `yandex/Track.coverUrl`.
+- `JamTrack.source` — `null` (по умолчанию схемы, `yandex`), `YANDEX` или `HOST`: трек, который может
+  сыграть только хозяин, например локальный файл десктопа (протокол, «Tracks»; HOST-37, LISTEN-14).
+  `null` при кодировании пропадает (`explicitNulls = false`), так что трек каталога уходит без ключа
+  `source`, как и раньше, и старый сервер его не видит. `JamTrack.isCatalog` — не `HOST`. Хозяин на
+  Android сам `host`-треков не шлёт: он играет только каталог Яндекса (`playback/JamTracks.toJam`
+  оставляет `source` пустым). Гость в приложении (#63) увидит их от хозяина на десктопе.
 - `Rejected.reason` — строка, а не enum: причину, которой приложение не знает, показываем как общую
   ошибку (протокол, «Reasons»). Известные — `JamCodec.REASONS`.
 - `Resume.snapshot` и `Snapshot.data` — `JsonElement`: снимок хозяин не читает, только хранит и
@@ -54,9 +60,18 @@ sealed interface Decoded<out T> { Message(message); UnknownType; Invalid(problem
 пропускаются. Тест прогоняет все `spec/jam/protocol/examples`: правильные разбираются, `invalid-*` —
 нет.
 
+Треки (`track.schema.json`): у `host`-трека нет `albumId` и `coverUri`. Только треки каталога
+(`#/$defs/catalogTrack` в схемах) допускаются в `searchResults.tracks`, `searchResult.tracks`,
+`validateResult.results[].track` и в `queue[]` и `recent[]` комнаты в `state`. Рядом с `host`-треком
+в `playing` и `nowPlaying` нет `listenUrl` и `listenNextUrl` (LISTEN-14). `add.track` проверяется как
+любой трек: схема `add` допускает `host`, а отказывает в нём сервер (ROOM-66).
+
 **Ловушки:**
 - Числа и шаблоны — копия `defs.schema.json` и `spec/jam/limits.md`. Меняется спецификация — меняется
   `JamCodec`, и тест на примерах это ловит.
+- У `source` три значения в Kotlin (`null`, `YANDEX`, `HOST`) на два смысла. Сравнивать через
+  `isCatalog`, а не `== null` или `== YANDEX`. Принятый `"source": "yandex"` уйдёт обратно как
+  `"source":"yandex"`; треки, которые строит само приложение, — без ключа.
 - `\s` в регулярках Java — только ASCII-пробелы, у Ajv на сервере — все пробелы Юникода. Имя с
   неразрывным пробелом на краю сервер отвергнет, а `JamCodec` пропустит.
 

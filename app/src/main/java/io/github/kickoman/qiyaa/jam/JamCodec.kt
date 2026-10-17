@@ -109,7 +109,7 @@ object JamCodec {
             }
             is SearchResults -> {
                 pattern("id", message.id, requestId)
-                tracks(message.tracks, 20)
+                catalogTracks("searchResults.tracks", message.tracks, 20)
             }
             is LinkRotated -> {
                 pattern("id", message.id, requestId)
@@ -165,6 +165,7 @@ object JamCodec {
                 message.listenUrl?.let { listenUrl("listenUrl", it) }
                 message.listenNextUrl?.let { listenUrl("listenNextUrl", it) }
                 message.track?.let(::track)
+                noListenLinksForHostTrack(message.track, message.listenUrl, message.listenNextUrl)
                 when (message.source) {
                     NowPlayingSource.ITEM -> require(message.itemId != null) { "source item needs itemId" }
                     NowPlayingSource.WAVE -> require(message.track != null) { "source wave needs track" }
@@ -199,7 +200,7 @@ object JamCodec {
                 require((message.tracks == null) != (message.error == null)) {
                     "exactly one of tracks and error"
                 }
-                message.tracks?.let { tracks(it, 20) }
+                message.tracks?.let { catalogTracks("searchResult.tracks", it, 20) }
             }
             is ValidateResult -> {
                 pattern("requestId", message.requestId, requestId)
@@ -209,7 +210,7 @@ object JamCodec {
                     require((it.track == null) != (it.reason == null)) {
                         "a result has either track or reason"
                     }
-                    it.track?.let(::track)
+                    it.track?.let { track -> catalogTrack("results[].track", track) }
                 }
             }
             is Join -> {
@@ -246,14 +247,14 @@ object JamCodec {
         require(room.queue.size <= 300) { "queue has ${room.queue.size} items" }
         room.queue.forEach {
             pattern("queue[].itemId", it.itemId, itemId)
-            track(it.track)
+            catalogTrack("queue[].track", it.track)
             pattern("queue[].addedBy", it.addedBy, publicId)
             time("queue[].addedAt", it.addedAt)
         }
         require(room.recent.size <= 10) { "recent has ${room.recent.size} items" }
         room.recent.forEach {
             pattern("recent[].itemId", it.itemId, itemId)
-            track(it.track)
+            catalogTrack("recent[].track", it.track)
             pattern("recent[].addedBy", it.addedBy, publicId)
             time("recent[].playedAt", it.playedAt)
         }
@@ -271,6 +272,7 @@ object JamCodec {
         nowPlaying.track?.let(::track)
         nowPlaying.listenUrl?.let { listenUrl("nowPlaying.listenUrl", it) }
         nowPlaying.listenNextUrl?.let { listenUrl("nowPlaying.listenNextUrl", it) }
+        noListenLinksForHostTrack(nowPlaying.track, nowPlaying.listenUrl, nowPlaying.listenNextUrl)
         when (nowPlaying.source) {
             NowPlayingSource.ITEM ->
                 require(nowPlaying.itemId != null && nowPlaying.track != null && nowPlaying.addedBy != null) {
@@ -308,9 +310,21 @@ object JamCodec {
         patch.maxPendingPerGuest?.let { require(it in 1..50) { "maxPendingPerGuest $it" } }
     }
 
-    private fun tracks(tracks: List<JamTrack>, limit: Int) {
+    private fun catalogTracks(field: String, tracks: List<JamTrack>, limit: Int) {
         require(tracks.size <= limit) { "${tracks.size} tracks, the limit is $limit" }
-        tracks.forEach(::track)
+        tracks.forEach { catalogTrack(field, it) }
+    }
+
+    private fun catalogTrack(field: String, track: JamTrack) {
+        track(track)
+        require(track.isCatalog) { "$field holds the host track ${track.id}, not one of the Yandex catalog" }
+    }
+
+    private fun noListenLinksForHostTrack(track: JamTrack?, listenUrl: String?, listenNextUrl: String?) {
+        if (track == null || track.isCatalog) return
+        require(listenUrl == null && listenNextUrl == null) {
+            "the host track ${track.id} comes with a listenUrl or a listenNextUrl"
+        }
     }
 
     private fun track(track: JamTrack) {
@@ -322,6 +336,9 @@ object JamCodec {
         require(track.durationMs in 0..86_400_000) { "durationMs ${track.durationMs}" }
         track.coverUri?.let {
             require(it.length <= 300 && coverUri.matches(it)) { "coverUri is not a %% template" }
+        }
+        require(track.isCatalog || (track.albumId == null && track.coverUri == null)) {
+            "the host track ${track.id} has an albumId or a coverUri"
         }
     }
 

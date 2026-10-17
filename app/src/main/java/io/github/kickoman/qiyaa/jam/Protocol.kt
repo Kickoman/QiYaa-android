@@ -8,6 +8,15 @@ import kotlinx.serialization.json.JsonNull
 const val JAM_PROTOCOL = 1
 
 @Serializable
+enum class JamTrackSource {
+    @SerialName("yandex")
+    YANDEX,
+
+    @SerialName("host")
+    HOST,
+}
+
+@Serializable
 data class JamTrack(
     val id: String,
     val albumId: String? = null,
@@ -15,7 +24,10 @@ data class JamTrack(
     val artists: List<String>,
     val durationMs: Long,
     val coverUri: String? = null,
-)
+    val source: JamTrackSource? = null,
+) {
+    val isCatalog: Boolean get() = source != JamTrackSource.HOST
+}
 
 @Serializable
 enum class JamOrder {
