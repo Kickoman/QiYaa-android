@@ -43,8 +43,13 @@ import io.github.kickoman.qiyaa.jam.ValidateReason
 import io.github.kickoman.qiyaa.jam.ValidateRequest
 import io.github.kickoman.qiyaa.jam.ValidateResult
 import io.github.kickoman.qiyaa.jam.Welcome
+import io.github.kickoman.qiyaa.queue.EntryPart
+import io.github.kickoman.qiyaa.queue.ItemMark
 import io.github.kickoman.qiyaa.queue.JamPlayback
+import io.github.kickoman.qiyaa.queue.QueueSnapshot
+import io.github.kickoman.qiyaa.queue.QueueSnapshotCodec
 import io.github.kickoman.qiyaa.support.FakeJamTransport
+import io.github.kickoman.qiyaa.support.FakeQueueStore
 import io.github.kickoman.qiyaa.support.QueueHarness
 import io.github.kickoman.qiyaa.support.Spec
 import io.github.kickoman.qiyaa.yandex.HttpException
@@ -247,6 +252,40 @@ class JamHostTest {
     }
 
     @Test
+    fun `HOST-23 Yes empties the base and keeps the current track and the waiting items`() = runTest {
+        val queueFile =
+            QueueSnapshotCodec.encode(
+                QueueSnapshot(
+                    tracks = listOf("a", "X", "Y", "b").map { Track(it, "T$it") },
+                    batchIds = listOf("", "", "", ""),
+                    title = "Liked",
+                    sourceId = "liked",
+                    isWave = false,
+                    waveSessionId = "",
+                    waveStationId = "",
+                    index = 1,
+                    positionMs = 0,
+                    shuffle = false,
+                    repeat = false,
+                    parts = listOf(EntryPart.HEAD, EntryPart.ITEM, EntryPart.ITEM, EntryPart.HEAD),
+                    items = listOf(
+                        null,
+                        ItemMark("i1", GUEST_ID, waiting = false),
+                        ItemMark("i2", GUEST_ID, waiting = true),
+                        null,
+                    ),
+                ),
+            )
+        val h = Harness(this, JamSession(ROOM, HOST_SECRET, JOIN_URL, null, emptyList()), queueFile)
+        assertEquals(listOf("a", "X", "Y", "b"), h.queue.engine.ids())
+        h.host.continueStored()
+        assertEquals(listOf("X", "Y"), h.queue.engine.ids())
+        assertEquals("", h.queue.controller.state.value.title)
+        assertNull(h.queue.controller.state.value.activeSourceId)
+        assertFalse(h.queue.engine.playWhenReady)
+    }
+
+    @Test
     fun `HOST-24 a resume refused for a room that is gone ends the jam`() = runTest {
         val h = Harness(this, JamSession(ROOM, HOST_SECRET, JOIN_URL, null, emptyList()))
         h.host.continueStored()
@@ -443,8 +482,8 @@ class JamHostTest {
     private fun base(track: Track) =
         Playing(NowPlayingSource.WAVE, track = JamTracks.toJam(track), positionMs = 0, paused = true)
 
-    private class Harness(val scope: TestScope, stored: JamSession? = null) {
-        val queue = QueueHarness(scope)
+    private class Harness(val scope: TestScope, stored: JamSession? = null, queueFile: String? = null) {
+        val queue = QueueHarness(scope, store = FakeQueueStore(queueFile))
         val transport = FakeJamTransport()
         val catalog = FakeCatalog()
         val store = MemoryStore(stored?.let(JamSessionCodec::encode))

@@ -113,7 +113,6 @@ class QueueController(
     private data class SessionStart(val seeds: List<String>, val version: Int?)
 
     private var jam: JamRun? = null
-    private var jamQueue = false
 
     val isJamActive: Boolean get() = jam != null
 
@@ -655,7 +654,6 @@ class QueueController(
             )
         inHead = playable.any { it.part == EntryPart.HEAD }
         applyModes()
-        jamQueue = false
         if (current == null) {
             restorePoint = RestorePoint(0, 0, playWhenReady = autoplay)
             save()
@@ -755,7 +753,6 @@ class QueueController(
         restorePoint = null
         waveSessionId = null
         waveStationId = ""
-        jamQueue = false
         inHead = false
         mutableState.value = QueueState(continueWithVibe = continueWithVibeByDefault())
         publishModes()
@@ -934,9 +931,10 @@ class QueueController(
                     } else {
                         null
                     }
-                QueueEntry(track, part, wave, item)
+                QueueEntry(track, part, wave, item, snapshot.seedsVersions.getOrNull(i))
             }
         inHead = inHeadAt(entries, snapshot.index)
+        holding = entries.getOrNull(snapshot.index)?.isWaiting == true
         mutableState.value =
             QueueState(
                 entries = entries,
@@ -952,9 +950,9 @@ class QueueController(
             waveSessionId = snapshot.waveSessionId
             waveStationId = snapshot.waveStationId
             waveSessionStale = true
+            waveSeedsVersion = entries.lastOrNull { it.part == EntryPart.CONTINUATION }?.seedsVersion
         }
         restorePoint = RestorePoint(snapshot.index, snapshot.positionMs, playWhenReady = false)
-        jamQueue = snapshot.jam
         publishModes()
     }
 
@@ -988,6 +986,7 @@ class QueueController(
         val point = resumePoint()
         val parts = state.entries.map(QueueEntry::part)
         val items = state.entries.map(QueueEntry::item)
+        val seedsVersions = state.entries.map(QueueEntry::seedsVersion)
         val snapshot =
             QueueSnapshot(
                 tracks = state.tracks,
@@ -1001,9 +1000,9 @@ class QueueController(
                 positionMs = point?.positionMs ?: 0,
                 shuffle = shuffleRule.wanted,
                 repeat = repeatRule.wanted,
-                jam = jamQueue,
                 parts = if (parts.all { it == EntryPart.defaultFor(state.isWave) }) emptyList() else parts,
                 items = if (items.all { it == null }) emptyList() else items,
+                seedsVersions = if (seedsVersions.all { it == null }) emptyList() else seedsVersions,
                 continueWithVibe = state.continueWithVibe,
                 history = history.ids,
             )
@@ -1137,11 +1136,11 @@ class QueueController(
         mutableState.update { it.copy(loadingMore = asking && (it.isWave || continueAtEnd)) }
     }
 
-    fun startJam(listener: JamPlaybackListener, waveFeedback: Boolean) {
+    fun startJam(listener: JamPlaybackListener, waveFeedback: Boolean, afterRestart: Boolean = false) {
         if (jam != null) return
+        if (afterRestart) replaceBase(emptyList(), title = "", isWave = false, sourceId = null)
         val run = JamRun(listener, waveFeedback)
         jam = run
-        jamQueue = true
         if (!learnsFrom(currentEntry())) openWaveContext = null
         applyModes()
         run.reporter =
@@ -1207,7 +1206,14 @@ class QueueController(
         for (at in edit.removeUntil - 1 downTo edit.removeFrom) removeEntry(current, at)
         insertEntries(current, edit.insertAt, edit.insert.map(::waitingItem))
         val dropsHeld = holding && currentItemId != null && wanted.none { it.itemId == currentItemId }
-        if (current != null && dropsHeld) removeCurrent(current, setOf(index), setOf(index))
+        if (!dropsHeld) return
+        if (current != null) {
+            removeCurrent(current, setOf(index), setOf(index))
+            return
+        }
+        removeEntry(null, index)
+        restorePoint = restorePoint?.copy(positionMs = 0)
+        holding = mutableState.value.entries.getOrNull(index)?.isWaiting == true
     }
 
     private fun cursorIndex(current: PlayerEngine?): Int {
@@ -1227,7 +1233,6 @@ class QueueController(
         val run = jam
         jam = null
         run?.reporter?.cancel()
-        jamQueue = false
         mutableState.update { state ->
             state.copy(entries = state.entries.map { it.withoutItemId() })
         }

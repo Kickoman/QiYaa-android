@@ -1,6 +1,7 @@
 package io.github.kickoman.qiyaa.queue
 
 import io.github.kickoman.qiyaa.queue.QueueEvent.Stage
+import io.github.kickoman.qiyaa.support.FakeQueueStore
 import io.github.kickoman.qiyaa.support.NetworkLoss
 import io.github.kickoman.qiyaa.support.QueueHarness
 import io.github.kickoman.qiyaa.support.QueueHarness.Companion.track
@@ -376,38 +377,149 @@ class QueueJamTest {
         }
 
     @Test
-    fun `a stored jam keeps its jam wave tracks as continuation entries, which never come from the head`() =
+    fun `HOST-23 the marks survive a restart, and Yes keeps only the current track and the items`() =
         runTest {
-            val first = QueueHarness(this, continueWithVibe = true)
+            val first = QueueHarness.likes(this, "a", "b", "c")
+            first.engine.startPlaying()
             first.startJam()
-            first.source.onStartWave = { WaveBatch("SJ", "B1", tracks("w1", "w2")) }
-            first.state(item("i1", "A"), seeds = listOf("track:A"), seedsVersion = 1)
-            first.state(seeds = listOf("track:A"), seedsVersion = 1)
+            first.state(item("i1", "X"), item("i2", "Y"), seeds = listOf("genre:jam"), seedsVersion = 1)
+            first.engine.finishTrack()
+            first.engine.positionMs = 4_000
+            first.engine.stopPlaying()
             runCurrent()
-            assertEquals(listOf("A", "w1", "w2"), first.engine.ids())
-            val parts = listOf(EntryPart.ITEM, EntryPart.CONTINUATION, EntryPart.CONTINUATION)
-            assertEquals(parts, first.controller.state.value.entries.map { it.part })
-            assertEquals(parts, first.store.snapshot()!!.parts)
-            val restored = QueueHarness(this, store = first.store)
-            assertEquals(parts, restored.controller.state.value.entries.map { it.part })
-            restored.startJam()
-            assertEquals(parts, restored.controller.state.value.entries.map { it.part })
+            assertEquals(listOf("a", "X", "Y", "b", "c"), first.engine.ids())
+            val restored = restart(first)
+            restored.source.onStartWave = { CompletableDeferred<WaveBatch>().await() }
+            assertEquals(first.controller.state.value.entries, restored.controller.state.value.entries)
+            assertEquals("set [a, X, Y, b, c] play=false at 1:4000", restored.engine.commands.last())
+            val jam = restored.startJam(afterRestart = true)
+            assertEquals(listOf("X", "Y"), restored.engine.ids())
+            assertEquals(
+                listOf(EntryPart.ITEM, EntryPart.ITEM),
+                restored.controller.state.value.entries.map { it.part },
+            )
+            assertEquals(listOf("i1" to "g1", "i2" to "g1"), restored.items())
+            assertEquals("", restored.controller.state.value.title)
+            assertTrue(restored.controller.state.value.continueWithVibe)
+            assertFalse(restored.engine.playWhenReady)
+            assertEquals(
+                JamPlayback(JamPlayback.Kind.ITEM, "i1", track("X"), 4_000, true, nextTrack = track("Y")),
+                jam.playbacks.last(),
+            )
+            restored.engine.commands.clear()
+            restored.state(item("i2", "Y"), seeds = listOf("genre:jam"), seedsVersion = 1)
+            runCurrent()
+            assertEquals(emptyList<String>(), restored.engine.commands.withoutPauseAtEnd())
+            assertEquals(listOf("startWave [genre:jam]"), restored.source.calls)
+            assertEquals(emptyList<String>(), jam.started)
+            restored.engine.startPlaying()
+            restored.engine.finishTrack()
+            assertEquals("Y", restored.currentId())
+            assertEquals(listOf("i2"), jam.started)
         }
 
     @Test
-    fun `a stored queue keeps its jam slots, and a new jam picks them up`() = runTest {
-        val first = QueueHarness(this)
-        first.startJam()
-        first.state(item("i1", "A"), item("i2", "B"))
-        runCurrent()
-        val restored = QueueHarness(this, store = first.store)
-        assertEquals(listOf("i1" to "g1", "i2" to "g1"), restored.items())
-        assertEquals(listOf("A", "B"), restored.engine.ids())
-        restored.startJam()
-        assertEquals(listOf("A", "B"), restored.engine.ids())
-        restored.controller.endJam()
-        assertTrue(restored.items().none { it.first != null })
+    fun `HOST-32 after No a stored jam's waiting items play first, and the party's vibe tail is gone`() =
+        runTest {
+            val first = QueueHarness.likes(this, "a", "b")
+            first.source.onStartWave = { WaveBatch("SJ", "B1", tracks("w1", "w2")) }
+            first.engine.startPlaying()
+            first.startJam()
+            first.state(item("i1", "X"), item("i2", "Y"), seeds = listOf("genre:jam"), seedsVersion = 1)
+            first.engine.finishTrack()
+            first.state(item("i2", "Y"), seeds = listOf("genre:jam"), seedsVersion = 1)
+            first.engine.finishTrack()
+            runCurrent()
+            first.state(item("i3", "Z"), seeds = listOf("genre:jam"), seedsVersion = 1)
+            first.engine.stopPlaying()
+            runCurrent()
+            assertEquals(listOf("a", "X", "Y", "Z", "b", "w1", "w2"), first.engine.ids())
+            val saved = first.store.snapshot()!!
+            assertEquals(listOf(null, null, null, null, null, 1, 1), saved.seedsVersions)
+            val restored = restart(first)
+            restored.source.onStartWave = { WaveBatch("S2", "C1", tracks("n1")) }
+            assertEquals("Y", restored.currentId())
+            restored.controller.endJam()
+            runCurrent()
+            assertEquals(listOf("a", "X", "Y", "Z", "b"), restored.engine.ids())
+            assertTrue(restored.items().none { it.first != null })
+            assertEquals("", restored.store.snapshot()!!.waveSessionId)
+            restored.engine.startPlaying()
+            assertEquals(listOf("Z", "b"), restored.playOn(2))
+            runCurrent()
+            assertEquals(listOf("startWave [track:Z, track:Y, track:X, track:a]"), restored.source.calls)
+            assertEquals(listOf("n1"), restored.playOn(1))
+        }
+
+    @Test
+    fun `HOST-23 HOST-36 a stored held item comes back held, before or after attach, until Play`() = runTest {
+        for (attachedFirst in listOf(true, false)) {
+            val first = QueueHarness.likes(this, "a", "b", continueWithVibe = false)
+            first.engine.startPlaying()
+            first.startJam()
+            first.state(item("i1", "X"))
+            first.controller.removeIndices(setOf(0))
+            runCurrent()
+            assertEquals(ItemMark("i1", "g1", waiting = true), first.store.snapshot()!!.items[0])
+            val restored =
+                QueueHarness(this, attached = attachedFirst, store = FakeQueueStore(first.store.text))
+            val jam = restored.startJam(afterRestart = true)
+            if (!attachedFirst) restored.controller.attach(restored.engine)
+            restored.state(item("i1", "X"))
+            assertEquals(listOf("X"), restored.engine.ids())
+            assertEquals(emptyList<String>(), jam.started)
+            assertEquals(idle, jam.playbacks.last())
+            assertFalse(restored.engine.playWhenReady)
+            restored.engine.startPlaying()
+            assertEquals(listOf("i1"), jam.started)
+            assertEquals(JamPlayback.Kind.ITEM, jam.playbacks.last().kind)
+        }
     }
+
+    @Test
+    fun `HOST-23 a state before attach that drops the held item removes it and holds the next one`() =
+        runTest {
+            val first = QueueHarness.likes(this, "a", "b", continueWithVibe = false)
+            first.engine.startPlaying()
+            first.startJam()
+            first.state(item("i1", "X"), item("i2", "Y"))
+            first.controller.removeIndices(setOf(0))
+            runCurrent()
+            val restored = QueueHarness(this, attached = false, store = FakeQueueStore(first.store.text))
+            val jam = restored.startJam(afterRestart = true)
+            restored.state(item("i2", "Y"))
+            restored.controller.attach(restored.engine)
+            assertEquals("set [Y] play=false", restored.engine.commands.first { it.startsWith("set") })
+            assertEquals(emptyList<String>(), jam.started)
+            restored.engine.startPlaying()
+            assertEquals(listOf("i2"), jam.started)
+        }
+
+    @Test
+    fun `CONT-11 with repeat on, a restored item played in the continuation goes on with the continuation`() =
+        runTest {
+            val first = QueueHarness.likes(this, "h0", "h1")
+            first.source.onStartWave = { WaveBatch("V1", "B1", tracks("c0", "c1", "c2")) }
+            first.source.onMoreWave = { _, _ -> CompletableDeferred<WaveBatch>().await() }
+            first.engine.startPlaying()
+            runCurrent()
+            repeat(3) { first.engine.finishTrack() }
+            first.startJam()
+            first.state(item("i1", "X"))
+            first.engine.finishTrack()
+            first.controller.setRepeat(true)
+            first.engine.stopPlaying()
+            runCurrent()
+            assertEquals(listOf("h0", "h1", "c0", "c1", "X", "c2"), first.engine.ids())
+            val restored = restart(first)
+            restored.source.onStartWave = { CompletableDeferred<WaveBatch>().await() }
+            restored.source.onMoreWave = { _, _ -> CompletableDeferred<WaveBatch>().await() }
+            assertEquals("X", restored.currentId())
+            assertTrue(restored.controller.modes.value.repeat)
+            assertFalse(restored.engine.pauseAtEndOfCurrent)
+            restored.engine.startPlaying()
+            assertEquals(listOf("c2"), restored.playOn(1))
+        }
 
     @Test
     fun `HOST-14 CONT-04 in a jam the vibe from history asks with two tracks left and the state's seeds`() =
@@ -1465,8 +1577,11 @@ class QueueJamTest {
         return h
     }
 
-    private fun QueueHarness.startJam(waveFeedback: Boolean = false): Recorder =
-        Recorder().also { controller.startJam(it, waveFeedback) }
+    private fun QueueHarness.startJam(waveFeedback: Boolean = false, afterRestart: Boolean = false) =
+        Recorder().also { controller.startJam(it, waveFeedback, afterRestart) }
+
+    private fun TestScope.restart(first: QueueHarness) =
+        QueueHarness(this, store = FakeQueueStore(first.store.text), continueWithVibe = true)
 
     private fun QueueHarness.state(
         vararg entries: JamEntry,

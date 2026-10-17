@@ -198,7 +198,7 @@ class JamHost(
         stored = null
         session = resumed
         client.restoreOutbox(resumed.outbox)
-        queue.startJam(this, config().waveFeedback)
+        queue.startJam(this, config().waveFeedback, afterRestart = true)
         connect(config().serverUrl)
         publish()
     }
