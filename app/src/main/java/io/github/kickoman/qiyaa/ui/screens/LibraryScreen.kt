@@ -1,7 +1,6 @@
 package io.github.kickoman.qiyaa.ui.screens
 
 import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -33,6 +32,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.data.AppLanguage
@@ -254,7 +254,7 @@ fun LibraryScreen(
                 Modifier.weight(1f),
                 height = 48.dp,
                 onClick = {
-                    track?.let { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(it.webUrl))) }
+                    track?.let { context.startActivity(Intent(Intent.ACTION_VIEW, it.webUrl.toUri())) }
                 },
             ) {
                 PathIcon(IconPaths.OPEN_OUTSIDE, 22.dp, colors.muted, strokeWidth = IconPaths.OUTLINE)

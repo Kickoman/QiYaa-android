@@ -289,7 +289,7 @@ object TelemetryCodes {
 | `newReporter` | `Reporter(BuildConfig.VERSION_NAME, store, Sender(httpClient, endpoint)::post, applicationScope, Dispatchers.IO, Instant::now, { elapsedRealtime() - Process.getStartElapsedRealtime() }, logcat)`; на Android 11+ ещё `ActivityManager.setProcessStateSummary(session)` — по этой метке следующий запуск найдёт причину выхода |
 | `beginning` (на `io`) | ждёт `connect` (`loggedIn` — `api.token` не пустой), `Settings.markTelemetryFirstStart()`, `MachineId.resolve(ANDROID_ID, telemetry/machine)`, на Android 11+ `getHistoricalProcessExitReasons(пакет, 0, 16)` → `TelemetryCodes.exits`, поля `start` |
 
-Строки отправки идут в logcat с тегом `QiYaa`: `Telemetry: HTTP 204, 3 events sent`; «не начался» и несохранённый `telemetry/firstStart` — предупреждением.
+Строки отправки идут в logcat с тегом `QiYaa`: `Telemetry: HTTP 204, 3 events sent`; «не начался» — предупреждением.
 
 Поля `start`:
 

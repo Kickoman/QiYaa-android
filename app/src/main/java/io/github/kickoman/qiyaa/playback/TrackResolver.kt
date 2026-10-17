@@ -1,6 +1,6 @@
 package io.github.kickoman.qiyaa.playback
 
-import android.net.Uri
+import androidx.core.net.toUri
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.ResolvingDataSource
@@ -13,6 +13,6 @@ class TrackResolver(private val links: TrackUrlCache, private val bitrate: Curre
         val id = MediaItems.trackIdOf(dataSpec.uri) ?: return dataSpec
         val resolved = runBlocking { links.get(id, continuing = dataSpec.position > 0) }
         bitrate.onResolved(id, resolved.bitrateKbps)
-        return dataSpec.buildUpon().setUri(Uri.parse(resolved.url)).build()
+        return dataSpec.buildUpon().setUri(resolved.url.toUri()).build()
     }
 }

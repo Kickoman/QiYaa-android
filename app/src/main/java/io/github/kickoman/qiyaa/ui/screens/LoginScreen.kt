@@ -1,7 +1,6 @@
 package io.github.kickoman.qiyaa.ui.screens
 
 import android.content.Intent
-import android.net.Uri
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -39,6 +38,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.ui.AppViewModel
@@ -64,7 +64,7 @@ fun LoginScreen(viewModel: AppViewModel) {
     val context = LocalContext.current
     val login by viewModel.login.collectAsStateWithLifecycle()
     val language by viewModel.settings.language.collectAsStateWithLifecycle()
-    fun open(url: String) = context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    fun open(url: String) = context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
 
     Column(
         Modifier

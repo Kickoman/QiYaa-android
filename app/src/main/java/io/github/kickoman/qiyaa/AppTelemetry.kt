@@ -145,9 +145,7 @@ class AppTelemetry(
 
     private suspend fun beginning(): Beginning {
         val loggedIn = connectedApi.await().token.isNotEmpty()
-        if (!settings.markTelemetryFirstStart()) {
-            Log.w(AppGraph.LOG_TAG, "Telemetry: ${Settings.KEY_TELEMETRY_FIRST_START} was not saved")
-        }
+        settings.markTelemetryFirstStart()
         val machine = MachineId.resolve(androidId(), settings.telemetryMachine, settings::setTelemetryMachine)
         val exits = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) exits() else emptyMap()
         return Beginning(startFields(loggedIn), machine, exits)

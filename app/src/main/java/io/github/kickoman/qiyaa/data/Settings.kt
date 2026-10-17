@@ -2,6 +2,7 @@ package io.github.kickoman.qiyaa.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import io.github.kickoman.qiyaa.audio.AudioBus
 import io.github.kickoman.qiyaa.audio.EqSettings
 import java.time.LocalDate
@@ -17,7 +18,7 @@ class Settings(context: Context, defaultJamServer: String = "") {
 
     init {
         if (preferences.contains(KEY_OLD_JAM_HOST_KEY)) {
-            preferences.edit().remove(KEY_OLD_JAM_HOST_KEY).apply()
+            preferences.edit { remove(KEY_OLD_JAM_HOST_KEY) }
         }
     }
 
@@ -89,92 +90,92 @@ class Settings(context: Context, defaultJamServer: String = "") {
 
     fun setVolume(value: Int) {
         mutableVolume.value = value.coerceIn(0, AudioBus.MAX_VOLUME)
-        preferences.edit().putInt(KEY_VOLUME, mutableVolume.value).apply()
+        preferences.edit { putInt(KEY_VOLUME, mutableVolume.value) }
     }
 
     fun setBalance(value: Int) {
         mutableBalance.value = value.coerceIn(-AudioBus.MAX_BALANCE, AudioBus.MAX_BALANCE)
-        preferences.edit().putInt(KEY_BALANCE, mutableBalance.value).apply()
+        preferences.edit { putInt(KEY_BALANCE, mutableBalance.value) }
     }
 
     fun setVisualizerMode(mode: VisualizerMode) {
         mutableVisualizerMode.value = mode
-        preferences.edit().putInt(KEY_VISUALIZER_MODE, mode.storedValue).apply()
+        preferences.edit { putInt(KEY_VISUALIZER_MODE, mode.storedValue) }
     }
 
     fun setTimeRemaining(value: Boolean) {
         mutableTimeRemaining.value = value
-        preferences.edit().putBoolean(KEY_TIME_REMAINING, value).apply()
+        preferences.edit { putBoolean(KEY_TIME_REMAINING, value) }
     }
 
     fun setEqAuto(value: Boolean) {
         mutableEqAuto.value = value
-        preferences.edit().putBoolean(KEY_EQ_AUTO, value).apply()
+        preferences.edit { putBoolean(KEY_EQ_AUTO, value) }
     }
 
     fun setEq(settings: EqSettings, presetName: String) {
         mutableEq.value = settings
         mutableEqPreset.value = presetName
-        preferences.edit()
-            .putBoolean(KEY_EQ_ENABLED, settings.enabled)
-            .putFloat(KEY_EQ_PREAMP, settings.preampDb.toFloat())
-            .putString(KEY_EQ_BANDS, settings.bandsDb.joinToString(",") { "%.1f".format(Locale.ROOT, it) })
-            .putString(KEY_EQ_PRESET, presetName)
-            .apply()
+        preferences.edit {
+            putBoolean(KEY_EQ_ENABLED, settings.enabled)
+            putFloat(KEY_EQ_PREAMP, settings.preampDb.toFloat())
+            putString(KEY_EQ_BANDS, settings.bandsDb.joinToString(",") { "%.1f".format(Locale.ROOT, it) })
+            putString(KEY_EQ_PRESET, presetName)
+        }
     }
 
     fun setJamServer(url: String) {
         mutableJamServer.value = url.trim()
-        preferences.edit().putString(KEY_JAM_SERVER, mutableJamServer.value).apply()
+        preferences.edit { putString(KEY_JAM_SERVER, mutableJamServer.value) }
     }
 
     fun setJamWaveFeedback(value: Boolean) {
         mutableJamWaveFeedback.value = value
-        preferences.edit().putBoolean(KEY_JAM_WAVE_FEEDBACK, value).apply()
+        preferences.edit { putBoolean(KEY_JAM_WAVE_FEEDBACK, value) }
     }
 
     fun setLanguage(language: AppLanguage) {
         mutableLanguage.value = language
-        preferences.edit().putString(KEY_LANGUAGE, language.tag).apply()
+        preferences.edit { putString(KEY_LANGUAGE, language.tag) }
     }
 
     fun setJamShareAudio(value: Boolean) {
         mutableJamShareAudio.value = value
-        preferences.edit().putBoolean(KEY_JAM_SHARE_AUDIO, value).apply()
+        preferences.edit { putBoolean(KEY_JAM_SHARE_AUDIO, value) }
     }
 
     fun setQuality(quality: AudioQuality) {
         mutableQuality.value = quality
-        preferences.edit().putString(KEY_QUALITY, quality.key).apply()
+        preferences.edit { putString(KEY_QUALITY, quality.key) }
     }
 
     fun setQualityMetered(quality: AudioQuality) {
         mutableQualityMetered.value = quality
-        preferences.edit().putString(KEY_QUALITY_METERED, quality.key).apply()
+        preferences.edit { putString(KEY_QUALITY_METERED, quality.key) }
     }
 
     fun setContinueWithVibe(value: Boolean) {
         mutableContinueWithVibe.value = value
-        preferences.edit().putBoolean(KEY_CONTINUE_WITH_VIBE, value).apply()
+        preferences.edit { putBoolean(KEY_CONTINUE_WITH_VIBE, value) }
     }
 
     fun setTelemetryEnabled(value: Boolean) {
         mutableTelemetryEnabled.value = value
-        preferences.edit().putBoolean(KEY_TELEMETRY_ENABLED, value).apply()
+        preferences.edit { putBoolean(KEY_TELEMETRY_ENABLED, value) }
     }
 
     fun setTelemetryMachine(id: String) {
-        preferences.edit().putString(KEY_TELEMETRY_MACHINE, id).apply()
+        preferences.edit { putString(KEY_TELEMETRY_MACHINE, id) }
     }
 
-    fun markTelemetryFirstStart(): Boolean {
-        if (preferences.contains(KEY_TELEMETRY_FIRST_START)) return true
-        return preferences.edit().putString(KEY_TELEMETRY_FIRST_START, LocalDate.now().toString()).commit()
+    fun markTelemetryFirstStart() {
+        if (preferences.contains(KEY_TELEMETRY_FIRST_START)) return
+        preferences.edit(commit = true) { putString(KEY_TELEMETRY_FIRST_START, LocalDate.now().toString()) }
     }
 
     fun setTheme(theme: AccentTheme) {
         mutableTheme.value = theme
-        preferences.edit().putString(KEY_THEME, theme.key).apply()
+        preferences.edit { putString(KEY_THEME, theme.key) }
     }
 
     private fun loadEq(): EqSettings {

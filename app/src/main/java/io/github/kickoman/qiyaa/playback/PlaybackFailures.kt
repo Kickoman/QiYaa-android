@@ -10,6 +10,7 @@ import io.github.kickoman.qiyaa.yandex.HttpException
 
 enum class AudioFailure { INIT, DEVICE, UNDECODABLE }
 
+@OptIn(UnstableApi::class)
 object PlaybackFailures {
     private val NETWORK_CODES =
         setOf(
@@ -17,7 +18,6 @@ object PlaybackFailures {
             PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
         )
 
-    @OptIn(UnstableApi::class)
     private val AUDIO_FAILURES: Map<Int, AudioFailure> =
         mapOf(
             PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED to AudioFailure.INIT,
