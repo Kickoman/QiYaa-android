@@ -355,6 +355,26 @@ class QueueJamTest {
     }
 
     @Test
+    fun `HOST-17 TR-10 in a jam another line only dislikes, and the current one dislikes and skips`() =
+        runTest {
+            val h = QueueHarness(this)
+            val jam = h.startJam()
+            h.state(item("i1", "A"), item("i2", "B"), item("i3", "C"))
+            h.engine.startPlaying()
+            h.controller.dislike(track("C"))
+            runCurrent()
+            assertEquals(0, h.engine.currentIndex)
+            assertEquals(QueueEvent.Disliked, h.events.last())
+            assertEquals(listOf("i1"), jam.started)
+            h.controller.dislike(track("A"))
+            runCurrent()
+            assertEquals(1, h.engine.currentIndex)
+            assertEquals(QueueEvent.DislikedAndSkipped, h.events.last())
+            assertEquals(listOf("i1", "i2"), jam.started)
+            assertEquals(listOf("dislike C", "dislike A"), h.source.calls)
+        }
+
+    @Test
     fun `HOST-21 sources and queue edits are refused while the jam lasts`() = runTest {
         val h = QueueHarness(this)
         h.startJam()

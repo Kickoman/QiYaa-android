@@ -21,6 +21,8 @@ sealed interface QueueEvent {
 
     data object DislikedAndSkipped : QueueEvent
 
+    data object Disliked : QueueEvent
+
     data object WaitingForNetwork : QueueEvent
 
     data object JamActive : QueueEvent

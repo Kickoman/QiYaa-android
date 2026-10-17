@@ -1,7 +1,12 @@
 package io.github.kickoman.qiyaa.ui.screens
 
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -19,7 +25,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -28,12 +39,16 @@ import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.queue.JamSlot
 import io.github.kickoman.qiyaa.ui.JamViewModel
 import io.github.kickoman.qiyaa.ui.PlayerViewModel
+import io.github.kickoman.qiyaa.ui.TrackActions
 import io.github.kickoman.qiyaa.ui.components.ActionButton
+import io.github.kickoman.qiyaa.ui.components.IconPaths
 import io.github.kickoman.qiyaa.ui.components.OnOffPills
+import io.github.kickoman.qiyaa.ui.components.PathIcon
 import io.github.kickoman.qiyaa.ui.components.QiText
 import io.github.kickoman.qiyaa.ui.components.ScreenHeader
 import io.github.kickoman.qiyaa.ui.components.tap
 import io.github.kickoman.qiyaa.ui.formatTime
+import io.github.kickoman.qiyaa.ui.theme.ButtonStyle
 import io.github.kickoman.qiyaa.ui.theme.HintStyle
 import io.github.kickoman.qiyaa.ui.theme.LabelStyle
 import io.github.kickoman.qiyaa.ui.theme.Qi
@@ -41,6 +56,7 @@ import io.github.kickoman.qiyaa.ui.theme.ReadoutStyle
 import io.github.kickoman.qiyaa.ui.theme.mono
 import io.github.kickoman.qiyaa.ui.theme.sans
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun PlaylistScreen(viewModel: PlayerViewModel, jam: JamViewModel, onAdd: () -> Unit) {
     val colors = Qi.colors
@@ -50,6 +66,7 @@ fun PlaylistScreen(viewModel: PlayerViewModel, jam: JamViewModel, onAdd: () -> U
     // HOST-34: who added each jam item, by `addedBy` among the participants.
     val names = jamState.room?.participants?.associate { it.publicId to it.name }.orEmpty()
     val waveMark = stringResource(R.string.jam_wave_mark)
+    val actionsLabel = stringResource(R.string.playlist_actions)
 
     Column(Modifier.fillMaxSize()) {
         ScreenHeader(stringResource(R.string.playlist_title)) {
@@ -101,7 +118,13 @@ fun PlaylistScreen(viewModel: PlayerViewModel, jam: JamViewModel, onAdd: () -> U
                             .fillMaxWidth()
                             .height(52.dp)
                             .background(if (selected) colors.surface else colors.deep)
-                            .tap { viewModel.playIndex(index) }
+                            .combinedClickable(
+                                interactionSource = null,
+                                indication = null,
+                                onLongClickLabel = actionsLabel,
+                                onLongClick = { viewModel.showTrackActions(track) },
+                                onClick = { viewModel.playIndex(index) },
+                            )
                             .padding(horizontal = 14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -194,6 +217,12 @@ fun PlaylistScreen(viewModel: PlayerViewModel, jam: JamViewModel, onAdd: () -> U
             }
             QiText(stringResource(R.string.playlist_tap_hint), HintStyle, color = colors.dim)
         }
+        QiText(
+            stringResource(R.string.playlist_hold_hint),
+            HintStyle,
+            Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp),
+            color = colors.dim,
+        )
 
         Row(
             Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 12.dp).fillMaxWidth(),
@@ -232,5 +261,97 @@ fun PlaylistScreen(viewModel: PlayerViewModel, jam: JamViewModel, onAdd: () -> U
                 viewModel.queue.clear()
             }
         }
+    }
+}
+
+@Composable
+fun TrackActionsSheet(actions: TrackActions, viewModel: PlayerViewModel) {
+    val colors = Qi.colors
+    val context = LocalContext.current
+    val track = actions.track
+    Box(Modifier.fillMaxSize()) {
+        Box(
+            Modifier.fillMaxSize().background(colors.deep.copy(alpha = 0.7f)).tap {
+                viewModel.closeTrackActions()
+            },
+        )
+        Column(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                .background(colors.surface)
+                .pointerInput(Unit) { detectTapGestures() }
+                .navigationBarsPadding()
+                .padding(start = 8.dp, end = 8.dp, bottom = 8.dp),
+        ) {
+            Box(
+                Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(top = 10.dp)
+                    .width(36.dp)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(colors.handle),
+            )
+            QiText(
+                track.title,
+                sans(14.sp, 500),
+                Modifier.padding(start = 12.dp, end = 12.dp, top = 14.dp),
+                color = colors.text,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            QiText(
+                track.artistLine,
+                mono(11.sp, 400),
+                Modifier.padding(start = 12.dp, end = 12.dp, top = 3.dp, bottom = 8.dp),
+                color = colors.dim,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            TrackActionRow(
+                stringResource(if (actions.liked) R.string.playlist_unlike else R.string.player_like),
+                onClick = viewModel::likeOrUnlikePicked,
+            ) {
+                if (actions.liked) {
+                    PathIcon(IconPaths.HEART, 22.dp, colors.accent)
+                } else {
+                    PathIcon(IconPaths.HEART, 22.dp, colors.muted, strokeWidth = IconPaths.OUTLINE)
+                }
+            }
+            val dislikeText =
+                if (actions.isCurrent) R.string.player_dislike_skip else R.string.library_dislike
+            TrackActionRow(stringResource(dislikeText), onClick = viewModel::dislikePicked) {
+                PathIcon(IconPaths.THUMB_DOWN, 22.dp, colors.muted, strokeWidth = IconPaths.OUTLINE)
+            }
+            TrackActionRow(
+                stringResource(R.string.playlist_open),
+                onClick = {
+                    viewModel.closeTrackActions()
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(track.webUrl)))
+                },
+            ) {
+                PathIcon(IconPaths.OPEN_OUTSIDE, 22.dp, colors.muted, strokeWidth = IconPaths.OUTLINE)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrackActionRow(label: String, onClick: () -> Unit, icon: @Composable () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .tap(onClick = onClick)
+            .semantics { role = Role.Button }
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        icon()
+        QiText(label, ButtonStyle, color = Qi.colors.text, maxLines = 1)
     }
 }

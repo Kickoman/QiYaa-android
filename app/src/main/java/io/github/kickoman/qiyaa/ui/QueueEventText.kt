@@ -18,6 +18,7 @@ fun QueueEvent.render(context: Context): String = when (this) {
         if (liked) R.string.queue_liked else R.string.queue_unliked,
     )
     QueueEvent.DislikedAndSkipped -> context.getString(R.string.queue_disliked)
+    QueueEvent.Disliked -> context.getString(R.string.queue_disliked_only)
     QueueEvent.WaitingForNetwork -> context.getString(R.string.queue_waiting_for_network)
     QueueEvent.JamActive -> context.getString(R.string.queue_jam_active)
     is QueueEvent.StoppedAfterFailures ->

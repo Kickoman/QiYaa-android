@@ -46,6 +46,10 @@
     <string name="playlist_loading_more_toast">Загружаю яшчэ трэкі…</string>
     <string name="playlist_selected">ВЫБРАНА</string>
     <string name="playlist_tap_hint">ТАП ПА НУМАРЫ — ВЫБРАЦЬ</string>
+    <string name="playlist_hold_hint">ДОЎГАЕ НАЦІСКАННЕ — ЛАЙК, ДЫЗЛАЙК, АДКРЫЦЬ</string>
+    <string name="playlist_actions">Дзеянні з трэкам</string>
+    <string name="playlist_unlike">ПРЫБРАЦЬ З «МНЕ ПАДАБАЕЦЦА»</string>
+    <string name="playlist_open">АДКРЫЦЬ У БРАЎЗЕРЫ</string>
     <string name="playlist_all">УСЕ</string>
     <string name="playlist_none">НІЧОГА</string>
     <string name="playlist_clear">АЧЫСЦІЦЬ</string>
@@ -114,6 +118,7 @@
     <string name="queue_liked">Дададзена ў «Мне падабаецца»</string>
     <string name="queue_unliked">Прыбрана з «Мне падабаецца»</string>
     <string name="queue_disliked">Не падабаецца · прапускаю</string>
+    <string name="queue_disliked_only">Не падабаецца</string>
     <string name="queue_wave_error">Памылка хвалі: %1$s</string>
     <string name="queue_wave_more_error">Хваля: %1$s</string>
     <string name="queue_search_error">Памылка пошуку: %1$s</string>

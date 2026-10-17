@@ -51,6 +51,7 @@ import io.github.kickoman.qiyaa.ui.screens.LoginScreen
 import io.github.kickoman.qiyaa.ui.screens.PlayerScreen
 import io.github.kickoman.qiyaa.ui.screens.PlaylistScreen
 import io.github.kickoman.qiyaa.ui.screens.PresetsSheet
+import io.github.kickoman.qiyaa.ui.screens.TrackActionsSheet
 import io.github.kickoman.qiyaa.ui.screens.marqueeText
 import io.github.kickoman.qiyaa.ui.theme.Qi
 import io.github.kickoman.qiyaa.ui.theme.QiYaaTheme
@@ -76,6 +77,7 @@ fun AppRoot(
         val section by app.section.collectAsStateWithLifecycle()
         val toast by app.toast.collectAsStateWithLifecycle()
         val presetsOpen by player.presetsOpen.collectAsStateWithLifecycle()
+        val trackActions by player.trackActions.collectAsStateWithLifecycle()
         val playerUi by player.ui.collectAsStateWithLifecycle()
         val sessionState by app.sessionState.collectAsStateWithLifecycle()
         val jamState by jam.state.collectAsStateWithLifecycle()
@@ -139,6 +141,11 @@ fun AppRoot(
             if (presetsOpen) {
                 BackHandler { player.closePresets() }
                 PresetsSheet(player)
+            }
+
+            trackActions?.let { actions ->
+                BackHandler { player.closeTrackActions() }
+                TrackActionsSheet(actions, player)
             }
 
             toast?.let { message ->
