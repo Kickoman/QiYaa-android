@@ -32,7 +32,8 @@ grep -rlnE '^import (android|androidx|io\.github\.kickoman)' app/src/main/java/i
   `null` при кодировании пропадает (`explicitNulls = false`), так что трек каталога уходит без ключа
   `source`, как и раньше, и старый сервер его не видит. `JamTrack.isCatalog` — не `HOST`. Хозяин на
   Android сам `host`-треков не шлёт: он играет только каталог Яндекса (`playback/JamTracks.toJam`
-  оставляет `source` пустым). Гость в приложении (#63) увидит их от хозяина на десктопе.
+  оставляет `source` пустым). `host`-треки приходят только от хозяина на десктопе; гостя в
+  приложении пока нет (#63), ему придётся их показывать.
 - `Rejected.reason` — строка, а не enum: причину, которой приложение не знает, показываем как общую
   ошибку (протокол, «Reasons»). Известные — `JamCodec.REASONS`.
 - `Resume.snapshot` и `Snapshot.data` — `JsonElement`: снимок хозяин не читает, только хранит и
@@ -122,5 +123,6 @@ interface JamHandler { fun onWelcome(); fun onMessage(message: ServerMessage) }
 
 ## Тесты
 
-`app/src/test/.../jam/`: `JamCodecTest` (все примеры спецификации, кодирование туда и обратно),
+`app/src/test/.../jam/`: `JamCodecTest` (все примеры спецификации, кодирование туда и обратно,
+правила `source`: каждое — правильный пример с одной правкой),
 `JamClientTest` (поддельный транспорт, виртуальное время `runTest`), `JamSessionCodecTest`.
