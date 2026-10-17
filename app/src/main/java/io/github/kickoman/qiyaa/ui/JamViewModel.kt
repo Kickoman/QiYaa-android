@@ -9,7 +9,6 @@ import io.github.kickoman.qiyaa.appGraph
 import io.github.kickoman.qiyaa.jam.JamOrder
 import io.github.kickoman.qiyaa.jam.JamSettingsPatch
 import io.github.kickoman.qiyaa.playback.JamHost
-import io.github.kickoman.qiyaa.playback.JamHostPhase
 import io.github.kickoman.qiyaa.yandex.ErrorKind
 import io.github.kickoman.qiyaa.yandex.Track
 import kotlinx.coroutines.CancellationException
@@ -122,8 +121,6 @@ class JamViewModel(application: Application) : AndroidViewModel(application) {
     fun setWaveFeedback(enabled: Boolean) = settings.setJamWaveFeedback(enabled)
 
     fun setShareAudio(enabled: Boolean) = settings.setJamShareAudio(enabled)
-
-    val isActive: Boolean get() = state.value.phase == JamHostPhase.ACTIVE
 
     private fun changeSettings(patch: JamSettingsPatch) = sent(host.changeSettings(patch))
 
