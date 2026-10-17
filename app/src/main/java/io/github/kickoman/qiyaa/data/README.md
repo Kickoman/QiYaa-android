@@ -9,7 +9,7 @@
 | `AppLanguage.kt` | `AppLanguage` — языки интерфейса: белорусский (по умолчанию), русский, английский |
 | `TokenStore.kt` | `TokenStore` — токен |
 | `QueueFile.kt` | `QueueFile` — сохранённая очередь, файл `queue.json` |
-| `JamFile.kt` | `JamFile` — сессия хозяина джема, файл `jam.json` |
+| `JamFile.kt` | `JamFile` — сессия хозяина джема (`jam.json`) и членства гостя (`jam-guest.json`) |
 | `AccentTheme.kt` | `AccentTheme` — три акцентные темы |
 | `VisualizerMode.kt` | `VisualizerMode` — спектр / осциллограф / выкл |
 
@@ -57,8 +57,22 @@
 
 ## `JamFile`
 
-Как `QueueFile`, только файл `filesDir/jam.json`, а `write(null)` удаляет его: джем закончился.
-Формат знает `jam/JamSessionCodec`; `AppGraph` оборачивает файл в `jam.JamStore`.
+```kotlin
+class JamFile(context: Context, name: String = HOST) {
+    fun read(): String?;  fun write(text: String?)   // null удаляет файл
+    companion object { const val HOST = "jam.json"; const val GUEST = "jam-guest.json" }
+}
+```
+
+Как `QueueFile`, только файл `filesDir/<name>`, а `write(null)` удаляет его. Два файла:
+
+| Имя | Что в нём | Формат | `write(null)` |
+|---|---|---|---|
+| `jam.json` (`HOST`) | сессия хозяина джема | `jam/JamSessionCodec` | джем закончился |
+| `jam-guest.json` (`GUEST`) | членства гостя в чужих комнатах и открытая сессия | `jam/JamGuestCodec` | выход из аккаунта |
+
+`AppGraph` оборачивает каждый файл в `jam.JamStore`. В `jam-guest.json` есть секреты (`joinSecret`, `participantId`);
+файл приватный, резервное копирование отключено.
 
 ## `AccentTheme`, `VisualizerMode`, `AudioQuality`
 

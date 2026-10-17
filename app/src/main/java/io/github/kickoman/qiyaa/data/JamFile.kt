@@ -5,9 +5,8 @@ import android.util.AtomicFile
 import java.io.File
 import java.io.IOException
 
-/** The host's jam session as text; the format belongs to `jam/JamSessionCodec`. */
-class JamFile(context: Context) {
-    private val file = AtomicFile(File(context.filesDir, NAME))
+class JamFile(context: Context, name: String = HOST) {
+    private val file = AtomicFile(File(context.filesDir, name))
 
     fun read(): String? = try {
         file.readFully().toString(Charsets.UTF_8)
@@ -31,6 +30,7 @@ class JamFile(context: Context) {
     }
 
     companion object {
-        const val NAME = "jam.json"
+        const val HOST = "jam.json"
+        const val GUEST = "jam-guest.json"
     }
 }

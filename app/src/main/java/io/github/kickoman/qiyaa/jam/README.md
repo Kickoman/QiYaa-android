@@ -19,6 +19,7 @@ grep -rlnE '^import (android|androidx|io\.github\.kickoman)' app/src/main/java/i
 | `JamClient.kt` | `JamClient`, `JamTransport`, `JamSocket`, `JamHandler`, `JamStatus` |
 | `JamSessionStore.kt` | `JamSession`, `JamSessionStore`, `JamSessionCodec`, `JamStore` |
 | `JamLink.kt` | `JamLink` — ссылка для входа гостя: сервер, комната, секрет |
+| `JamGuestStore.kt` | `GuestRoom`, `GuestMembership`, `GuestMemory`, `JamGuestStore`, `JamGuestCodec` — членства гостя на диске |
 
 ## `Protocol.kt`
 
@@ -154,9 +155,61 @@ data class JamLink(val serverUrl: String, val roomId: String, val joinSecret: St
 - Секрет живёт в `JamLink.toString()` (это `data class`): не писать ссылку в лог целиком.
 - Мессенджеры иногда теряют `#…`. Тогда `joinSecret = null`, и войти можно только в комнату, членство в которой уже есть.
 
+## `JamGuestStore`
+
+```kotlin
+data class GuestRoom(val serverUrl: String, val roomId: String)          // serverUrl — нормализованный, как в JamLink
+data class GuestMembership(val room: GuestRoom, val participantId: String, val name: String, val joinSecret: String,
+                           val firstJoinedAt: Long, val joined: Boolean = false, val ended: Boolean = false)
+data class GuestMemory(val current: GuestRoom? = null, val memberships: List<GuestMembership> = emptyList(),
+                       val lastName: String? = null) {
+    fun membership(room: GuestRoom): GuestMembership?
+    fun with(membership: GuestMembership): GuestMemory   // новое — первым, известное — на своём месте
+    fun without(room: GuestRoom): GuestMemory            // и current, если это он
+    fun alive(now: Long): GuestMemory                    // срок жизни и 20 новейших
+}
+class JamGuestStore(store: JamStore) {
+    fun load(now: Long): GuestMemory;  fun save(memory: GuestMemory);  fun clear()
+    companion object { const val MEMBERSHIP_LIFE_MS = 43_200_000L; const val MAX_MEMBERSHIPS = 20 }
+}
+object JamGuestCodec { const val VERSION = 1; fun encode(memory: GuestMemory): String; fun decode(text: String?): GuestMemory? }
+```
+
+Что гость в приложении помнит о комнатах (GUEST-03, GUEST-19). **Членство** — одна комната одного сервера:
+`participantId` (UUID v4 в нижнем регистре, по нему сервер узнаёт того же участника, ROOM-05), имя, секрет входа,
+время первого входа, `joined` (сервер хоть раз ответил `joined`) и `ended` (хозяин закончил джем, `ended{host-ended}`).
+`current` — комната открытой сессии гостя: по ней приложение после перезапуска входит снова (GUEST-19). `lastName` —
+последнее имя гостя, им заполняется поле имени в новой комнате (GUEST-02).
+
+Членство живёт `MEMBERSHIP_LIFE_MS` = 12 ч от первого входа (`limits.md`, «Connections», «Membership life»): комната
+не живёт дольше (максимальный возраст комнаты — те же 12 ч, `limits.md`, «Rooms»), а сама она существовала до входа.
+`alive(now)` (его зовёт `load`) отбрасывает членства с возрастом от 12 ч, оставляет 20 новейших по `firstJoinedAt` и
+сбрасывает `current`, если его членство ушло. Забыть всё (выход из аккаунта) — `clear()`.
+
+Формат файла — компактный JSON, `version` = 1; поля со значением по умолчанию (`null`, `false`) не пишутся:
+
+```json
+{"version":1,"current":{"serverUrl":"https://qiyaa.kanstancin.net","roomId":"7k3m9q2x"},"lastName":"Аня",
+ "rooms":[{"serverUrl":"https://qiyaa.kanstancin.net","roomId":"7k3m9q2x","participantId":"3f6c1a2e-8b4d-4c7a-9e21-5d0b7f3a1c64",
+           "name":"Аня","joinSecret":"WDkyFgMr5iV3hKwManPvsg","firstJoinedAt":1790730000000,"joined":true}]}
+```
+
+`decode` возвращает `null` для пустого, битого файла и другой версии (`load` — пустую память). Членство, с которым
+сервер не принял бы `join`, отбрасывается: `serverUrl` не в нормальной форме `JamLink`, `roomId`, секрет,
+`participantId` или имя не проходят `JamCodec` (кадр, нарушающий схему, закрывается с 1008 и идёт в счёт бана IP,
+ROOM-56). `current` без своего членства — `null`. В приложении хранилище — `data/JamFile(context, JamFile.GUEST)`
+(`filesDir/jam-guest.json`, `AtomicFile`).
+
+**Ловушки:**
+- В файле секреты: `joinSecret` и `participantId`. Он приватный, резервное копирование отключено (`allowBackup=false`,
+  `data_extraction_rules`), но в лог содержимое не писать.
+- Членство не забывается ни по `kicked`, ни по `ended`, ни по истёкшему ожиданию комнаты (GUEST-03, GUEST-17): только
+  `clear()` и 12 ч. По тому же `participantId` сервер после кика снова ответит `rejected{kicked}` (ROOM-08).
+
 ## Тесты
 
 `app/src/test/.../jam/`: `JamCodecTest` (все примеры спецификации, кодирование туда и обратно,
 правила `source`: каждое — правильный пример с одной правкой),
 `JamClientTest` (поддельный транспорт, виртуальное время `runTest`), `JamSessionCodecTest`, `JamLinkTest`
-(GUEST-01, GUEST-05: текст вокруг ссылки, нормализация сервера, отказы; все `joinUrl` примеров `created` и `linkRotated`).
+(GUEST-01, GUEST-05: текст вокруг ссылки, нормализация сервера, отказы; все `joinUrl` примеров `created` и `linkRotated`),
+`JamGuestStoreTest` (GUEST-03, GUEST-19: формат, битые файлы и записи, срок жизни, 20 новейших).
