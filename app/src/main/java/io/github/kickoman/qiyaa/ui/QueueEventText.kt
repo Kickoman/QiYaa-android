@@ -7,21 +7,33 @@ import io.github.kickoman.qiyaa.queue.QueueEvent.Stage
 
 fun QueueEvent.render(context: Context): String = when (this) {
     is QueueEvent.SourceLoading -> context.getString(R.string.queue_loading, title)
+
     is QueueEvent.SearchStarted -> context.getString(R.string.queue_searching, title)
+
     is QueueEvent.SourceLoaded ->
         context.resources.getQuantityString(R.plurals.queue_loaded, trackCount, title, trackCount)
+
     is QueueEvent.SourceEmpty -> context.getString(R.string.queue_empty, title)
+
     is QueueEvent.WaveStarted -> context.getString(R.string.queue_wave_started, title)
+
     QueueEvent.NothingFound -> context.getString(R.string.queue_nothing_found)
+
     QueueEvent.LoadingMore -> context.getString(R.string.playlist_loading_more_toast)
+
     is QueueEvent.LikeChanged -> context.getString(
         if (liked) R.string.queue_liked else R.string.queue_unliked,
     )
+
     QueueEvent.DislikedAndSkipped -> context.getString(R.string.queue_disliked)
+
     QueueEvent.Disliked -> context.getString(R.string.queue_disliked_only)
+
     QueueEvent.WaitingForNetwork -> context.getString(R.string.queue_waiting_for_network)
+
     is QueueEvent.StoppedAfterFailures ->
         context.resources.getQuantityString(R.plurals.queue_stopped_after_failures, count, count)
+
     is QueueEvent.Failed -> context.getString(stage.stringId(), error.render(context))
 }
 

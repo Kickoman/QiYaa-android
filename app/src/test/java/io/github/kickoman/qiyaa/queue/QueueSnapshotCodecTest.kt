@@ -11,18 +11,18 @@ class QueueSnapshotCodecTest {
     private val snapshot =
         QueueSnapshot(
             tracks =
-            listOf(
-                Track(
-                    "1",
-                    "Кукушка",
-                    listOf("Кино"),
-                    "4053",
-                    398_000,
-                    true,
-                    "https://avatars.yandex.net/x/400x400",
+                listOf(
+                    Track(
+                        "1",
+                        "Кукушка",
+                        listOf("Кино"),
+                        "4053",
+                        398_000,
+                        true,
+                        "https://avatars.yandex.net/x/400x400",
+                    ),
+                    Track("2", "Без обложки", emptyList(), "", 0, true, null),
                 ),
-                Track("2", "Без обложки", emptyList(), "", 0, true, null),
-            ),
             batchIds = listOf("B1", ""),
             title = "Моя волна",
             sourceId = "user:onyourwave",

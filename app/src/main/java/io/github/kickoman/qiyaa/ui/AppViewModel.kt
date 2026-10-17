@@ -154,6 +154,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private fun follow(action: LinkAction): Boolean {
         when (action) {
             LinkAction.Ignore -> return false
+
             is LinkAction.Refuse -> {
                 say(
                     string(
@@ -166,9 +167,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 if (action.reason == LinkRefusal.HOSTING) go(Screen.JAM)
                 return false
             }
+
             is LinkAction.AskSignIn -> pendingLink = action.link
+
             LinkAction.OpenHostJam -> go(Screen.JAM)
+
             LinkAction.ShowGuest -> go(Screen.JAM_GUEST)
+
             is LinkAction.OpenGuest -> {
                 jamGuest.open(action.link)
                 go(Screen.JAM_GUEST)

@@ -104,10 +104,12 @@ class Reporter(
             synchronized(lock) {
                 when {
                     forgotten -> return
+
                     errors >= MAX_ERRORS_PER_SESSION -> {
                         errorsDropped++
                         false
                     }
+
                     else -> {
                         errors++
                         true
@@ -306,14 +308,17 @@ class Reporter(
                             remove(batch)
                             "HTTP ${answer.status}, $events events sent"
                         }
+
                         is Answer.Dropped -> {
                             remove(batch)
                             "HTTP ${answer.status}, $events events dropped"
                         }
+
                         is Answer.RetryAfter -> {
                             blockedUntilMs = uptimeMs() + answer.seconds * MS_PER_SECOND
                             "HTTP 429, $events events kept, next try in ${answer.seconds} s"
                         }
+
                         is Answer.Failed -> {
                             failures++
                             val seconds = Backoff.seconds(failures)

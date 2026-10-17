@@ -42,12 +42,18 @@ fun route(
     launchedFromHistory: Boolean,
 ): LinkAction = when {
     launchedFromHistory -> LinkAction.Ignore
+
     link == null -> LinkAction.Refuse(LinkRefusal.NOT_A_LINK)
+
     !signedIn -> LinkAction.AskSignIn(link)
+
     host.roomId != null && host.roomId == link.roomId -> LinkAction.OpenHostJam
+
     host.active || host.storedSession -> LinkAction.Refuse(LinkRefusal.HOSTING)
+
     guest.serverUrl == link.serverUrl &&
         guest.roomId == link.roomId &&
         (guest.phase.isActive || guest.phase == GuestPhase.NeedName) -> LinkAction.ShowGuest
+
     else -> LinkAction.OpenGuest(link)
 }

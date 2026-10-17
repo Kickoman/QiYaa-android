@@ -79,7 +79,9 @@ class DeviceAuth(
             if (token.isNotEmpty()) return token
             when (val error = response.string("error")) {
                 "authorization_pending" -> {}
+
                 "slow_down" -> intervalMs += SLOW_DOWN_STEP_MS
+
                 else -> throw OAuthException(
                     status,
                     "POST",

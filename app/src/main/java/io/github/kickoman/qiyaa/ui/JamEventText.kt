@@ -11,6 +11,7 @@ import io.github.kickoman.qiyaa.playback.JamHostEvent
 
 fun JamHostEvent.render(context: Context): String = when (this) {
     is JamHostEvent.Refused -> context.getString(refusedText(reason))
+
     is JamHostEvent.Ended -> context.getString(
         when (why) {
             JamHostEvent.Ended.Why.BY_HOST -> R.string.jam_ended_by_host
@@ -19,6 +20,7 @@ fun JamHostEvent.render(context: Context): String = when (this) {
             JamHostEvent.Ended.Why.GONE -> R.string.jam_ended_gone
         },
     )
+
     JamHostEvent.NotConnected -> context.getString(R.string.jam_no_connection)
 }
 
@@ -54,14 +56,20 @@ fun guestRefusedText(reason: String): Int =
 
 fun GuestPhase.endText(): Int? = when (this) {
     GuestPhase.NoSecret -> R.string.jam_guest_no_secret
+
     is GuestPhase.Refused -> guestRefusedText(reason)
+
     is GuestPhase.Ended -> when (reason) {
         EndReason.HOST_ENDED -> R.string.jam_guest_ended_host
         EndReason.EXPIRED -> R.string.jam_guest_ended_expired
     }
+
     GuestPhase.Kicked -> R.string.jam_guest_kicked
+
     GuestPhase.UpdateRequired -> R.string.jam_refused_update_required
+
     GuestPhase.None, GuestPhase.NeedName, GuestPhase.Joining -> null
+
     GuestPhase.InRoom, GuestPhase.WaitingForRoom -> null
 }
 

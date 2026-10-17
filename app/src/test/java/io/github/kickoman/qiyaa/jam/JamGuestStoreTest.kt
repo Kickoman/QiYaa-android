@@ -11,11 +11,11 @@ class JamGuestStoreTest {
             GuestMemory(
                 current = ROOM,
                 memberships =
-                listOf(
-                    membership(ROOM, NOW, joined = true),
-                    membership(OTHER, NOW - 1_000, joined = true, ended = true),
-                    membership(GuestRoom("https://example.org:8443/jam", "a1b2c3d4"), NOW - 2_000),
-                ),
+                    listOf(
+                        membership(ROOM, NOW, joined = true),
+                        membership(OTHER, NOW - 1_000, joined = true, ended = true),
+                        membership(GuestRoom("https://example.org:8443/jam", "a1b2c3d4"), NOW - 2_000),
+                    ),
                 lastName = "Аня",
             )
         assertEquals(memory, JamGuestCodec.decode(JamGuestCodec.encode(memory)))

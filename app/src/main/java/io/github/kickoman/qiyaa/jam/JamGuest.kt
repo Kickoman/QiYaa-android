@@ -218,7 +218,9 @@ class JamGuest(
                 remember(memory.with(known.copy(joinSecret = secret)).copy(current = key))
                 connect()
             }
+
             link.joinSecret == null -> phase = GuestPhase.NoSecret
+
             else -> {
                 linkSecret = link.joinSecret
                 phase = GuestPhase.NeedName
@@ -377,11 +379,16 @@ class JamGuest(
                 log("jam: a join was refused as not-allowed: this connection has joined already", null)
                 joined(id)
             }
+
             membership == null || !membership.joined ->
                 refusedForGood(if (reason == KICKED) GuestPhase.Kicked else GuestPhase.Refused(reason))
+
             reason == KICKED -> finish(GuestPhase.Kicked)
+
             membership.ended && reason == ROOM_NOT_FOUND -> finish(GuestPhase.Ended(EndReason.HOST_ENDED))
+
             !membership.ended && reason in ROOM_WAIT_REASONS && waitForRoom() -> Unit
+
             else -> finish(GuestPhase.Refused(reason))
         }
     }

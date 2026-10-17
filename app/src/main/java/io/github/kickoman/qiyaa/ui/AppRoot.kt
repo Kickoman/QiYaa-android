@@ -107,13 +107,17 @@ fun AppRoot(
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     when (screen) {
                         Screen.LOGIN -> LoginScreen(app)
+
                         Screen.PLAYER -> PlayerScreen(player, onJam = { app.go(Screen.JAM) }.takeIf { jamOn })
+
                         Screen.PLAYLIST -> PlaylistScreen(
                             player,
                             jam,
                             onAdd = { app.go(if (jamOn) Screen.JAM else Screen.LIBRARY) },
                         )
+
                         Screen.EQ -> EqScreen(player)
+
                         Screen.LIBRARY -> section?.let { LibrarySectionScreen(app, it) }
                             ?: LibraryScreen(
                                 app,
@@ -122,18 +126,22 @@ fun AppRoot(
                                 guestOf = (guestState.room?.hostName ?: "…").takeIf { guestOn },
                                 onJam = { app.go(if (guestOn) Screen.JAM_GUEST else Screen.JAM) },
                             )
+
                         Screen.JAM -> JamScreen(
                             jam,
                             onSettings = { app.go(Screen.JAM_SETTINGS) },
                             onJoinLink = openLink,
                         )
+
                         Screen.JAM_SETTINGS -> JamSettingsScreen(jam, onDone = { app.go(Screen.JAM) })
+
                         Screen.JAM_GUEST -> JamGuestScreen(
                             guest,
                             onAdd = { app.go(Screen.JAM_GUEST_ADD) },
                             onClose = { app.go(Screen.PLAYER) },
                             onJoinLink = openLink,
                         )
+
                         Screen.JAM_GUEST_ADD -> JamGuestAddScreen(
                             guest,
                             onBack = { app.go(Screen.JAM_GUEST) },

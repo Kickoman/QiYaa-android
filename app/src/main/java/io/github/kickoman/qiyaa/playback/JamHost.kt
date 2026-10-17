@@ -273,7 +273,9 @@ class JamHost(
         val create = creating
         when {
             active != null -> sendResume(active, client.outbox.value)
+
             old != null -> sendResume(old, old.outbox)
+
             create != null -> {
                 val id = newId()
                 requestId = id
@@ -286,20 +288,31 @@ class JamHost(
     override fun onMessage(message: ServerMessage) {
         when (message) {
             is Created -> if (message.id == requestId) created(message)
+
             is Resumed -> if (message.id == requestId) resumed()
+
             is Rejected -> rejected(message)
+
             is Ack -> if (message.id == endId) finishDiscard()
+
             is State -> applyState(message)
+
             is Snapshot -> session?.let { save(it.copy(snapshot = message.data as? JsonObject)) }
+
             is LinkRotated -> session?.let { save(it.copy(joinUrl = message.joinUrl)) }
+
             is SearchRequest -> search(message)
+
             is ValidateRequest -> validate(message)
+
             is Command -> if (message.kind == CommandKind.SKIP &&
                 session != null
             ) {
                 queue.jamSkip(message.itemId)
             }
+
             is Ended -> ended(message.reason)
+
             else -> Unit
         }
         publish()
@@ -327,6 +340,7 @@ class JamHost(
                     positionMs = playback.positionMs,
                     paused = playback.paused,
                 )
+
                 JamPlayback.Kind.BASE -> Playing(
                     NowPlayingSource.WAVE,
                     // A wave track the protocol cannot carry is not reported at all.
@@ -334,6 +348,7 @@ class JamHost(
                     positionMs = playback.positionMs,
                     paused = playback.paused,
                 )
+
                 JamPlayback.Kind.IDLE -> Playing(NowPlayingSource.IDLE, positionMs = 0, paused = true)
             }
         client.send(
@@ -402,14 +417,18 @@ class JamHost(
                 pendingPinAdd = null
                 mutableEvents.tryEmit(JamHostEvent.Refused(message.reason))
             }
+
             id != null && id == requestId && discarding != null -> finishDiscard()
+
             id != null && id == endId -> finishDiscard()
+
             id != null && id == requestId && creating != null -> {
                 creating = null
                 requestId = null
                 disconnect()
                 mutableEvents.tryEmit(JamHostEvent.Refused(message.reason))
             }
+
             id != null && id == requestId && session != null -> {
                 requestId = null
                 if (message.reason in GONE_REASONS) {
@@ -419,6 +438,7 @@ class JamHost(
                     retryLater()
                 }
             }
+
             else -> mutableEvents.tryEmit(JamHostEvent.Refused(message.reason))
         }
     }
@@ -571,11 +591,11 @@ class JamHost(
         mutableState.value =
             mutableState.value.copy(
                 phase =
-                when {
-                    active != null -> JamHostPhase.ACTIVE
-                    creating != null -> JamHostPhase.CREATING
-                    else -> JamHostPhase.NONE
-                },
+                    when {
+                        active != null -> JamHostPhase.ACTIVE
+                        creating != null -> JamHostPhase.CREATING
+                        else -> JamHostPhase.NONE
+                    },
                 connection = client.status.value,
                 connected = connected,
                 room = if (active != null) mutableState.value.room else null,

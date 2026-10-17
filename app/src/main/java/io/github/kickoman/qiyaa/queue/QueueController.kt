@@ -194,15 +194,18 @@ class QueueController(
                     current.play()
                 }
             }
+
             state.isWave -> {
                 emit(QueueEvent.LoadingMore)
                 requestMore()
             }
+
             state.continueWithVibe -> {
                 stalled = false
                 waitForMore(current)
                 if (asking) emit(QueueEvent.LoadingMore) else stopAtEnd()
             }
+
             else -> stopAtEnd()
         }
         if (target == null) reportJam()
@@ -486,7 +489,9 @@ class QueueController(
             )
         ) {
             ErrorAction.WaitForNetwork -> waitForNetwork(current)
+
             ErrorAction.Hold -> emit(QueueEvent.Failed(Stage.PLAYBACK, error))
+
             ErrorAction.SkipToNext -> {
                 consecutiveTrackFailures++
                 emit(QueueEvent.Failed(Stage.PLAYBACK, error))
@@ -494,6 +499,7 @@ class QueueController(
                 current.prepare()
                 current.play()
             }
+
             ErrorAction.WaitForMore -> {
                 consecutiveTrackFailures++
                 emit(QueueEvent.Failed(Stage.PLAYBACK, error))
@@ -501,6 +507,7 @@ class QueueController(
                 if (!asking) stoppedAtEnd = true
                 reportJam()
             }
+
             ErrorAction.Stop -> {
                 emit(QueueEvent.StoppedAfterFailures(consecutiveTrackFailures + 1))
                 consecutiveTrackFailures = 0
@@ -606,8 +613,10 @@ class QueueController(
                             when {
                                 result.bestType == "artist" && result.bestId.isNotEmpty() ->
                                     source.artistTopTracks(result.bestId) to result.bestName
+
                                 result.bestType == "album" && result.bestId.isNotEmpty() ->
                                     source.albumTracks(result.bestId) to result.bestName
+
                                 else -> result.tracks to title
                             }
                         }
@@ -987,7 +996,7 @@ class QueueController(
 
     private fun announce(context: WaveContext, historyVibe: Boolean) {
         val run = jam
-        if (run == null || historyVibe && run.waveFeedback) {
+        if (run == null || (historyVibe && run.waveFeedback)) {
             sendFeedback(context, WaveEvent.RADIO_STARTED, null, 0.0)
         } else {
             radioStartedPending = context
@@ -1040,9 +1049,11 @@ class QueueController(
                 start != null -> {
                     { source.startWave(start.seeds) }
                 }
+
                 session != null && fits -> {
                     { source.moreWave(session, recent) }
                 }
+
                 else -> return
             }
         val first = !own && (session == null || !fits)
@@ -1121,10 +1132,12 @@ class QueueController(
                 seeds = station
                 version = null
             }
+
             hint != null && hint.seeds.isNotEmpty() -> {
                 seeds = hint.seeds
                 version = hint.version
             }
+
             else -> {
                 seeds = history.seeds().ifEmpty { station }
                 version = null
@@ -1139,7 +1152,7 @@ class QueueController(
     }
 
     private fun repeatHoldsHead(entries: List<QueueEntry> = mutableState.value.entries): Boolean {
-        val inAHead = entries.isEmpty() || inHead && entries.any { it.part == EntryPart.HEAD }
+        val inAHead = entries.isEmpty() || (inHead && entries.any { it.part == EntryPart.HEAD })
         return repeatRule.playerModeFor(modesLocked()) && inAHead
     }
 

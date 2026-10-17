@@ -97,18 +97,18 @@ object JamGuestCodec {
             current = memory.current?.let { RoomEntry(it.serverUrl, it.roomId) },
             lastName = memory.lastName,
             rooms =
-            memory.memberships.map {
-                MembershipEntry(
-                    it.room.serverUrl,
-                    it.room.roomId,
-                    it.participantId,
-                    it.name,
-                    it.joinSecret,
-                    it.firstJoinedAt,
-                    it.joined,
-                    it.ended,
-                )
-            },
+                memory.memberships.map {
+                    MembershipEntry(
+                        it.room.serverUrl,
+                        it.room.roomId,
+                        it.participantId,
+                        it.name,
+                        it.joinSecret,
+                        it.firstJoinedAt,
+                        it.joined,
+                        it.ended,
+                    )
+                },
         ),
     )
 

@@ -28,13 +28,17 @@ sealed interface Answer {
 
         fun of(status: Int?, retryAfter: String?): Answer = when {
             status == null -> Failed(null)
+
             status in 200..299 -> Accepted(status)
+
             status == 400 || status == 413 -> Dropped(status)
+
             status == 429 ->
                 RetryAfter(
                     retryAfter?.trim()?.toLongOrNull()?.takeIf { it > 0 }?.coerceAtMost(MAX_RETRY_SECONDS)
                         ?: DEFAULT_RETRY_SECONDS,
                 )
+
             else -> Failed(status)
         }
     }

@@ -145,10 +145,14 @@ fun JamGuestScreen(
             ScreenHeader(stringResource(R.string.jam_title))
             JoinJamSection(onJoinLink)
         }
+
         GuestPhase.NeedName -> NameStep(viewModel, state, onCancel = close)
+
         GuestPhase.InRoom, GuestPhase.WaitingForRoom ->
             if (room != null) Room(viewModel, state, room, onAdd, onLeft = close) else NoRoom(state, close)
+
         GuestPhase.Joining -> NoRoom(state, close)
+
         else -> phase.endText()?.let { EndStep(state, stringResource(it), close) }
     }
 }
@@ -185,8 +189,10 @@ private fun GuestStatus(state: JamGuestState) {
     val (text, color) =
         when {
             state.connected -> R.string.jam_status_online to colors.accent
+
             state.connection == JamStatus.CONNECTING || state.connection == JamStatus.ONLINE ->
                 R.string.jam_status_connecting to colors.muted
+
             else -> R.string.jam_status_offline to colors.error
         }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -610,6 +616,7 @@ fun JamGuestAddScreen(viewModel: JamGuestViewModel, onBack: () -> Unit) {
                 )
                 Tracks(ui.results, state, viewModel, loadingText = stringResource(R.string.jam_searching))
             }
+
             GuestTab.LIKED -> {
                 val liked by viewModel.likedShown.collectAsStateWithLifecycle()
                 InsetField(
@@ -619,6 +626,7 @@ fun JamGuestAddScreen(viewModel: JamGuestViewModel, onBack: () -> Unit) {
                 )
                 Tracks(liked, state, viewModel)
             }
+
             GuestTab.PLAYLISTS -> {
                 val playlist = ui.playlist
                 if (playlist == null) {
@@ -649,6 +657,7 @@ private fun AddStatus(state: JamGuestState) {
     val status = state.statusText()
     when {
         status != null -> StatusLine(stringResource(status))
+
         room != null && state.waitingOfYours >= room.settings.maxPendingPerGuest -> {
             val max = room.settings.maxPendingPerGuest
             Note(pluralStringResource(R.plurals.jam_guest_limit_hint, max, max), Qi.colors.accent)
@@ -665,8 +674,11 @@ private fun ColumnScope.Tracks(
 ) {
     when (list) {
         ListState.Idle -> Unit
+
         ListState.Loading -> Note(loadingText)
+
         is ListState.Failed -> LoadFailed(list, viewModel)
+
         is ListState.Loaded ->
             if (list.items.isEmpty()) {
                 Note(stringResource(R.string.jam_nothing_found))
@@ -686,8 +698,11 @@ private fun ColumnScope.Playlists(list: ListState<PlaylistRef>, viewModel: JamGu
     val colors = Qi.colors
     when (list) {
         ListState.Idle -> Unit
+
         ListState.Loading -> Note(stringResource(R.string.library_loading))
+
         is ListState.Failed -> LoadFailed(list, viewModel)
+
         is ListState.Loaded ->
             if (list.items.isEmpty()) {
                 Note(stringResource(R.string.jam_nothing_found))
@@ -770,18 +785,23 @@ private fun AddCell(action: AddAction?, connected: Boolean, onAdd: () -> Unit) {
     val colors = Qi.colors
     when (action) {
         AddAction.Yours -> AddLabel(stringResource(R.string.jam_guest_yours_queued), colors.accent)
+
         is AddAction.QueuedBy -> AddLabel(
             action.name?.let { stringResource(R.string.jam_guest_queued_by, it) }
                 ?: stringResource(R.string.jam_guest_queued),
             colors.muted,
         )
+
         is AddAction.Limit -> AddLabel(stringResource(R.string.jam_guest_limit), colors.dim)
+
         AddAction.Sending -> AddButton(stringResource(R.string.jam_guest_sending), false) {}
+
         AddAction.Add, is AddAction.Failed -> AddButton(
             stringResource(R.string.jam_guest_add),
             connected,
             onAdd,
         )
+
         AddAction.HostOffline, null -> AddButton(stringResource(R.string.jam_guest_add), false, onAdd)
     }
 }

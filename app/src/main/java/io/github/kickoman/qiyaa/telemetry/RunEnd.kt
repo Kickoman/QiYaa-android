@@ -28,7 +28,9 @@ object RunEnd {
         return when (exit?.reason) {
             ExitReason.NATIVE_CRASH ->
                 Event.Crash(at, session, marker.version, signalName(exit.signal), emptyList(), seconds)
+
             ExitReason.ANR, ExitReason.CRASH -> Event.UncleanExit(at, session, marker.version, seconds)
+
             ExitReason.OTHER, null -> Event.Exit(at, session, marker.version, marker.counts)
         }
     }

@@ -47,26 +47,26 @@ object QueueSnapshotCodec {
                 continueWithVibe = snapshot.continueWithVibe,
                 history = snapshot.history,
                 tracks =
-                snapshot.tracks.mapIndexed { i, track ->
-                    val item = snapshot.items.getOrNull(i)
-                    val stored = snapshot.parts.getOrNull(i)?.takeIf { it != EntryPart.ITEM }
-                    val part = if (item != null) EntryPart.ITEM else stored
-                    TrackEntry(
-                        id = track.id,
-                        title = track.title,
-                        artists = track.artists,
-                        albumId = track.albumId,
-                        durationMs = track.durationMs,
-                        available = track.available,
-                        coverUrl = track.coverUrl,
-                        batchId = snapshot.batchIds.getOrElse(i) { "" },
-                        part = part?.takeIf { it != defaultPart }?.key,
-                        itemId = item?.itemId,
-                        addedBy = item?.addedBy,
-                        waiting = item?.waiting == true,
-                        seedsVersion = snapshot.seedsVersions.getOrNull(i),
-                    )
-                },
+                    snapshot.tracks.mapIndexed { i, track ->
+                        val item = snapshot.items.getOrNull(i)
+                        val stored = snapshot.parts.getOrNull(i)?.takeIf { it != EntryPart.ITEM }
+                        val part = if (item != null) EntryPart.ITEM else stored
+                        TrackEntry(
+                            id = track.id,
+                            title = track.title,
+                            artists = track.artists,
+                            albumId = track.albumId,
+                            durationMs = track.durationMs,
+                            available = track.available,
+                            coverUrl = track.coverUrl,
+                            batchId = snapshot.batchIds.getOrElse(i) { "" },
+                            part = part?.takeIf { it != defaultPart }?.key,
+                            itemId = item?.itemId,
+                            addedBy = item?.addedBy,
+                            waiting = item?.waiting == true,
+                            seedsVersion = snapshot.seedsVersions.getOrNull(i),
+                        )
+                    },
             ),
         )
     }

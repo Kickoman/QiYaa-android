@@ -250,11 +250,14 @@ private fun AddTracks(viewModel: JamViewModel, enabled: Boolean) {
     )
     when (val results = ui.results) {
         ListState.Idle -> Unit
+
         ListState.Loading -> Note(stringResource(R.string.jam_searching))
+
         is ListState.Failed -> Note(
             stringResource(R.string.jam_search_failed, results.error.render()),
             colors.error,
         )
+
         is ListState.Loaded ->
             if (results.items.isEmpty()) {
                 Note(stringResource(R.string.jam_nothing_found))

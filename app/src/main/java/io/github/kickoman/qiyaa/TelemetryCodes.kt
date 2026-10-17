@@ -56,6 +56,7 @@ object TelemetryCodes {
 
     fun error(event: JamHostEvent): ErrorCode? = when (event) {
         is JamHostEvent.Refused -> ErrorCode(ErrorArea.JAM, EventCodec.kind(event.reason))
+
         is JamHostEvent.Ended ->
             when (event.why) {
                 JamHostEvent.Ended.Why.GONE -> "gone"
@@ -63,6 +64,7 @@ object TelemetryCodes {
                 JamHostEvent.Ended.Why.BY_SERVER -> "ended-by-server"
                 JamHostEvent.Ended.Why.BY_HOST -> null
             }?.let { ErrorCode(ErrorArea.JAM, it) }
+
         JamHostEvent.NotConnected -> null
     }
 

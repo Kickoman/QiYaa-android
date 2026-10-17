@@ -157,7 +157,9 @@ class JamClient(
                 event.connection.socket?.send(
                     JamCodec.encode(Hello(JAM_PROTOCOL, JamApp.ANDROID, appVersion)),
                 )
+
             is Event.Received -> receive(event.text)
+
             is Event.Closed -> closed()
         }
     }
@@ -167,9 +169,11 @@ class JamClient(
         val message =
             when {
                 decoded is Decoded.Message -> decoded.message
+
                 JamCodec.isUnknownReason(
                     decoded,
                 ) -> JamCodec.json.decodeFromString(ServerMessage.serializer(), text)
+
                 else -> {
                     if (decoded is Decoded.Invalid) log("jam: ignored an invalid message: ${decoded.problem}")
                     return
@@ -183,7 +187,9 @@ class JamClient(
                 handler.onWelcome()
                 return
             }
+
             is State -> clockOffsetMs = message.serverTime - clock()
+
             else -> Unit
         }
         handler.onMessage(message)
