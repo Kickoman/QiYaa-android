@@ -4,10 +4,10 @@ class WaveModeRule {
     var wanted: Boolean = false
         private set
 
-    fun playerModeFor(isWave: Boolean): Boolean = wanted && !isWave
+    fun playerModeFor(locked: Boolean): Boolean = wanted && !locked
 
-    fun onPlayerChanged(enabled: Boolean, isWave: Boolean): Boolean {
-        if (isWave) return false
+    fun onUserChanged(enabled: Boolean, locked: Boolean): Boolean {
+        if (locked) return false
         wanted = enabled
         return enabled
     }

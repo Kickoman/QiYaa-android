@@ -250,12 +250,12 @@ class QueueWaveTest {
         val harness = QueueHarness(this)
         harness.controller.loadSource("Liked") { tracks("l1", "l2") }
         runCurrent()
-        harness.engine.shuffleEnabled = true
+        harness.controller.setShuffle(true)
         harness.source.onStartWave = { WaveBatch("S1", "B1", tracks("w1", "w2", "w3")) }
         harness.controller.playWave(listOf("user:onyourwave"), "My Wave")
         runCurrent()
         assertFalse(harness.engine.shuffleEnabled)
-        harness.engine.shuffleEnabled = true
+        harness.controller.setShuffle(true)
         assertFalse("turning shuffle on during a wave is reverted", harness.engine.shuffleEnabled)
     }
 
@@ -264,7 +264,7 @@ class QueueWaveTest {
         val harness = QueueHarness(this)
         harness.controller.loadSource("Liked") { tracks("l1", "l2") }
         runCurrent()
-        harness.engine.shuffleEnabled = true
+        harness.controller.setShuffle(true)
         harness.source.onStartWave = { WaveBatch("S1", "B1", tracks("w1", "w2", "w3")) }
         harness.controller.playWave(listOf("user:onyourwave"), "My Wave")
         runCurrent()
@@ -278,13 +278,13 @@ class QueueWaveTest {
         val harness = QueueHarness(this)
         harness.controller.loadSource("Liked") { tracks("l1", "l2") }
         runCurrent()
-        harness.engine.repeatEnabled = true
+        harness.controller.setRepeat(true)
         harness.source.onStartWave = { WaveBatch("S1", "B1", tracks("w1", "w2", "w3")) }
         harness.source.onMoreWave = { _, _ -> CompletableDeferred<WaveBatch>().await() }
         harness.controller.playWave(listOf("user:onyourwave"), "My Wave")
         runCurrent()
         assertFalse(harness.engine.repeatEnabled)
-        harness.engine.repeatEnabled = true
+        harness.controller.setRepeat(true)
         assertFalse("turning repeat on during a wave is reverted", harness.engine.repeatEnabled)
         repeat(3) { harness.engine.finishTrack() }
         runCurrent()
@@ -297,7 +297,7 @@ class QueueWaveTest {
         val harness = QueueHarness(this)
         harness.controller.loadSource("Liked") { tracks("l1", "l2") }
         runCurrent()
-        harness.engine.repeatEnabled = true
+        harness.controller.setRepeat(true)
         harness.source.onStartWave = { WaveBatch("S1", "B1", tracks("w1", "w2", "w3")) }
         harness.controller.playWave(listOf("user:onyourwave"), "My Wave")
         runCurrent()

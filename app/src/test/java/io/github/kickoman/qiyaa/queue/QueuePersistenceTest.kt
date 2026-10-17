@@ -73,7 +73,7 @@ class QueuePersistenceTest {
         val first = QueueHarness(this)
         first.controller.loadSource("Liked", sourceId = "liked") { tracks("a", "b", "c") }
         runCurrent()
-        first.engine.repeatEnabled = true
+        first.controller.setRepeat(true)
         first.engine.seekTo(2)
         first.engine.positionMs = 7_000
         first.engine.startPlaying()

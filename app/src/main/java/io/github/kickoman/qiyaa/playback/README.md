@@ -10,7 +10,7 @@ grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   #
 |---|---|
 | `PlaybackService.kt` | `PlaybackService` — сборка ExoPlayer и `MediaSession`, уведомление, подключение `Media3Engine` |
 | `Media3Engine.kt` | `Media3Engine` — `queue.PlayerEngine` поверх `Player`; пересылает события листенера в `QueueController` |
-| `QueueForwardingPlayer.kt` | `QueueForwardingPlayer` — плеер, которого видит `MediaSession`: «вперёд» и «назад» уходят в `QueueController` |
+| `QueueForwardingPlayer.kt` | `QueueForwardingPlayer` — плеер, которого видит `MediaSession`: «вперёд» и «назад», shuffle и повтор уходят в `QueueController` |
 | `NotificationButtons.kt` | `NotificationButtons` — команды сессии «лайк» и «дизлайк» и их кнопки в уведомлении |
 | `PlaybackFailures.kt` | `PlaybackFailures.classify` — `queue.FailureKind` по коду `PlaybackException` и причине; `errorKind` — `yandex.ErrorKind` для пользователя |
 | `MediaItems.kt` | `MediaItems` — `Track` ↔ `MediaItem` |
@@ -44,8 +44,8 @@ grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   #
 
 | Откуда | Путь |
 |---|---|
-| Кнопки приложения | `ui/PlayerViewModel` → `MediaController` → `MediaSession` → `QueueForwardingPlayer` → `QueueController.next()`/`previous()` |
-| Уведомление, экран блокировки, гарнитура, Bluetooth | `MediaSession` → `QueueForwardingPlayer` → `QueueController` |
+| Кнопки приложения | `ui/PlayerViewModel` → `MediaController` → `MediaSession` → `QueueForwardingPlayer` → `QueueController.next()`/`previous()`; SHF и RPT — `QueueController.setShuffle()`/`setRepeat()` напрямую |
+| Уведомление, экран блокировки, гарнитура, Bluetooth | `MediaSession` → `QueueForwardingPlayer` → `QueueController`: «вперёд», «назад», shuffle, повтор |
 | Выбор источника, правка очереди, лайки | `ui/AppViewModel` → `QueueController` напрямую |
 | События ExoPlayer | `Media3Engine` (листенер) → `QueueController` |
 
@@ -79,14 +79,16 @@ object NotificationButtons {
 
 ## `QueueForwardingPlayer`
 
-`ForwardingPlayer` над ExoPlayer: `seekToNext`/`seekToNextMediaItem` → `QueueController.next()`, `seekToPrevious`/`seekToPreviousMediaItem` → `previous()`. Всё остальное (play, pause, seek по позиции, громкость) уходит в ExoPlayer как есть.
+`ForwardingPlayer` над ExoPlayer: `seekToNext`/`seekToNextMediaItem` → `QueueController.next()`, `seekToPrevious`/`seekToPreviousMediaItem` → `previous()`, `setShuffleModeEnabled(on)` → `setShuffle(on)`, `setRepeatMode(mode)` → `setRepeat(mode != REPEAT_MODE_OFF)`. Всё остальное (play, pause, seek по позиции, громкость) уходит в ExoPlayer как есть. Режимы ExoPlayer ставит только контроллер (`queue/README.md`).
+
+**Отклонённый выбор публикуется заново.** Если после `setShuffle`/`setRepeat` режим ExoPlayer не равен запрошенному, ExoPlayer события не даёт, и контроллер сессии (уведомление, Bluetooth) остался бы со своим замаскированным значением. Так бывает, когда выбор отклонён (волна, станция, джем) или когда запрошен `REPEAT_MODE_ONE`: повтор бывает только всей очереди (TR-06), и действует `REPEAT_MODE_ALL`. Тогда `QueueForwardingPlayer` сам зовёт `onShuffleModeEnabledChanged`/`onRepeatModeChanged` с действующим значением у всех слушателей сессии. `MediaSessionImpl.PlayerListener` в Media3 1.4.1 на каждый такой вызов обновляет `PlayerInfo` и рассылает его контроллерам, не сравнивая со старым значением (сверено по байткоду AAR через `javap`, на устройстве не проверялось). Внешние контроллеры поэтому видят режим, который действует в ExoPlayer; экран приложения показывает выбор пользователя (`QueueController.modes`).
 
 `getAvailableCommands` добавляет `COMMAND_SEEK_TO_NEXT(_MEDIA_ITEM)` и `COMMAND_SEEK_TO_PREVIOUS(_MEDIA_ITEM)`, когда в очереди есть треки: сам ExoPlayer убирает «вперёд» на последнем треке, и тогда сессия отбросила бы команду, а в конце волны она значит «догрузить» (WAVE-09), а в конце конечной очереди — «стоп» (TR-04).
 
 **Traps:**
 - `MediaSession` берёт набор команд и из `getAvailableCommands`, и из события `onAvailableCommandsChanged`; поэтому листенеры оборачиваются (`TransportCommandsListener`), и событие несёт тот же расширенный набор.
 - `TransportCommandsListener` пересылает каждый из 37 методов `Player.Listener` явно, включая устаревшие (`@Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")`: их пересылает и `ForwardingListener` из Media3). Делегирование Kotlin `Player.Listener by listener` не годится: для default-методов Java-интерфейса Kotlin пересылку не генерирует, а в `Player.Listener` все методы такие. Так было в v0.2.0: сессия получала только смену команд, и контроллеры (экран плеера, уведомление Media3, экран блокировки) навсегда оставались со снимком состояния на момент подключения — не шёл прогресс и спектр, не появлялось уведомление, сервис не уходил в foreground и умирал при выходе из приложения. `playback/QueueForwardingPlayerTest` сверяет доставку каждого события с обычным `ForwardingPlayer`; новый метод слушателя в Media3 уронит этот тест, пока его не перешлют.
-- `Media3Engine` управляет самим ExoPlayer, а не `QueueForwardingPlayer`: иначе `QueueController.next()` → `skipToNext()` вернулся бы в `next()`.
+- `Media3Engine` управляет самим ExoPlayer, а не `QueueForwardingPlayer`: иначе `QueueController.next()` → `skipToNext()` вернулся бы в `next()`, а `applyModes()` — в `setShuffle()`.
 
 ## `Media3Engine`
 
@@ -104,10 +106,10 @@ class Media3Engine(player: Player, controller: QueueController) : PlayerEngine {
 | `onMediaItemTransition(item, reason)` | `onItemChanged(MediaItems.toTrack(item), transition, player.isPlaying)`; причина: `AUTO` → `AUTO`, `REPEAT` → `REPEAT`, `SEEK` → `SEEK`, остальное (`PLAYLIST_CHANGED`) → `NEW_QUEUE` |
 | `onPlaybackStateChanged(STATE_ENDED)` | `onEnded()` |
 | `onPositionDiscontinuity(old, new, reason)` | `onSeeked()`, только при `DISCONTINUITY_REASON_SEEK` и одном `mediaItemIndex` у `old` и `new`; перемотка на другой элемент приходит как `onMediaItemTransition(SEEK)`. `seekToPrevious/NextMediaItem` на тот же элемент (повтор текущего, `repeatCurrentMediaItem` в Media3) даёт и `onSeeked()`, и сразу за ним `onMediaItemTransition(SEEK)` — это безвредно (вне джема лишнее сохранение, в джеме повтор выключен), так что фильтр «тот же элемент» остаётся как есть |
-| `onShuffleModeEnabledChanged(on)` | `onShuffleChanged(on)` |
-| `onRepeatModeChanged(mode)` | `onRepeatChanged(mode != REPEAT_MODE_OFF)`; `repeatEnabled = true` — это `REPEAT_MODE_ALL` (повтора одного трека нет, TR-06) |
 | `onIsPlayingChanged(playing)` | `onPlayingChanged(playing)` |
 | `onPlayerError(error)` | `Log.w("QiYaa", …, error)`, затем `onFailure(PlaybackFailures.classify(error.errorCode, error.cause), PlaybackFailures.errorKind(error.errorCode, error.cause))` |
+
+`onShuffleModeEnabledChanged` и `onRepeatModeChanged` не пересылаются: режимы ExoPlayer пишет только контроллер (`shuffleEnabled` = `shuffleModeEnabled`, `repeatEnabled = true` — это `REPEAT_MODE_ALL`: повтора одного трека нет, TR-06), а выбор пользователя приходит командами через `QueueForwardingPlayer`.
 
 `playOrder()` обходит `currentTimeline` через `getFirstWindowIndex`/`getNextWindowIndex(…, REPEAT_MODE_OFF, shuffle)`.
 

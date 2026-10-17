@@ -37,7 +37,7 @@ class QueueTransportTest {
         assertEquals(0, harness.engine.currentIndex)
         assertEquals("seek to 0", harness.engine.commands.last())
         assertEquals(listOf("a" to "play-1", "a" to "play-2"), harness.source.reports)
-        harness.engine.repeatEnabled = true
+        harness.controller.setRepeat(true)
         harness.engine.positionMs = 1_000
         harness.controller.previous()
         assertEquals(2, harness.engine.currentIndex)
@@ -87,7 +87,7 @@ class QueueTransportTest {
     @Test
     fun `TR-03 Next plays the next track in play order`() = runTest {
         val harness = loaded(this, "a", "b", "c")
-        harness.engine.shuffleEnabled = true
+        harness.controller.setShuffle(true)
         harness.engine.shuffleOrder = listOf(0, 2, 1)
         harness.controller.next()
         assertEquals(2, harness.engine.currentIndex)
@@ -107,7 +107,7 @@ class QueueTransportTest {
     @Test
     fun `TR-05 Next on the last track with repeat plays the first`() = runTest {
         val harness = loaded(this, "a", "b")
-        harness.engine.repeatEnabled = true
+        harness.controller.setRepeat(true)
         harness.engine.seekTo(1)
         harness.controller.next()
         assertEquals(0, harness.engine.currentIndex)
@@ -133,7 +133,7 @@ class QueueTransportTest {
     @Test
     fun `a new player gets the same queue, paused on the same track and position`() = runTest {
         val harness = loaded(this, "a", "b", "c")
-        harness.engine.repeatEnabled = true
+        harness.controller.setRepeat(true)
         harness.engine.seekTo(1)
         harness.engine.positionMs = 42_000
         harness.controller.detach(harness.engine)

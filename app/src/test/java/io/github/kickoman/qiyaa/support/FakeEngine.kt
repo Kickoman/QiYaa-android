@@ -33,7 +33,6 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
             if (field == value) return
             field = value
             commands += "shuffle $value"
-            controller.onShuffleChanged(value)
         }
 
     override var repeatEnabled = false
@@ -41,7 +40,6 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
             if (field == value) return
             field = value
             commands += "repeat $value"
-            controller.onRepeatChanged(value)
         }
 
     override fun hasNext(): Boolean =

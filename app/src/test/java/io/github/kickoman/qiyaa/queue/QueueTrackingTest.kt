@@ -81,7 +81,7 @@ class QueueTrackingTest {
     @Test
     fun `TRK-02 repeat of a one-track queue reports the track again`() = runTest {
         val harness = loaded(this, autoplay = true, "a")
-        harness.engine.repeatEnabled = true
+        harness.controller.setRepeat(true)
         harness.engine.startPlaying()
         harness.engine.finishTrack()
         harness.engine.startPlaying()

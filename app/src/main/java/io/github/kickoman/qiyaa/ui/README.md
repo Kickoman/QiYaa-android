@@ -49,7 +49,7 @@ ui/
 
 `PlayerViewModel` — `MediaController` к `PlaybackService`, снимок `PlayerUi` (позиция тикает каждые 250 мс, пока играет), транспорт, громкость/баланс/визуализатор/тема, EQ. Свои сообщения (shuffle, повтор, тема, EQ) публикует в `notices`, которые `AppRoot` перекладывает в `AppViewModel.say`. Громкость, баланс и EQ только записывает в `Settings`; к плееру и `AudioBus` их применяют `AppGraph` и `PlaybackService`, так что настройки действуют и без открытого экрана (см. `data/README.md`).
 
-`toggleShuffle()` и `toggleRepeat()` во время волны плеер не трогают и показывают `player_shuffle_wave` / `player_repeat_wave`; кнопки SHF и RPT на экране плеера при волне приглушены (`dimmer`). Правило живёт в `queue/WaveModeRule`.
+`toggleShuffle()` и `toggleRepeat()` зовут `QueueController.setShuffle`/`setRepeat` (не `MediaController`) и показывают тост по выбору после команды (`queue.modes`); во время волны очередь не трогают и показывают `player_shuffle_wave` / `player_repeat_wave`. Кнопки SHF и RPT на экране плеера читают `queue.modes`, а не режим ExoPlayer: подсвечены, когда режим выбран и очередь не заперта, приглушены (`dimmer`), когда заперта (волна, станция, джем). Правило живёт в `queue/WaveModeRule`.
 
 `next()` и `previous()` вызывают `seekToNext`/`seekToPrevious` у `MediaController`, `stop()` — `queue.stop()`; правила (3 с, конец очереди, конец волны) живут в `queue/QueueController` и одинаковы для приложения, уведомления и гарнитуры (см. `playback/README.md`, «Один хозяин плеера»). «Loading more…» показывает событие `QueueEvent.LoadingMore`.
 

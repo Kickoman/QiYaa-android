@@ -33,6 +33,8 @@ data class QueueState(
     val jamSlots: List<JamSlot>? = null,
 )
 
+data class PlayModes(val shuffle: Boolean = false, val repeat: Boolean = false, val locked: Boolean = false)
+
 /** Where playback would resume: for the notification's "play" after the process was killed. */
 data class ResumePoint(val tracks: List<Track>, val index: Int, val positionMs: Long)
 
@@ -86,6 +88,8 @@ class QueueController(
     private var restorePoint: RestorePoint? = null
     private val shuffleRule = WaveModeRule()
     private val repeatRule = WaveModeRule()
+    private val mutableModes = MutableStateFlow(PlayModes())
+    val modes: StateFlow<PlayModes> = mutableModes.asStateFlow()
     private val saves = Channel<String>(Channel.CONFLATED)
     private var waveSessionStale = false
     private var playing = false
@@ -127,8 +131,7 @@ class QueueController(
         restorePoint = null
         val state = mutableState.value
         if (state.tracks.isEmpty()) return
-        engine.shuffleEnabled = shuffleRule.playerModeFor(state.isWave)
-        engine.repeatEnabled = repeatRule.playerModeFor(state.isWave)
+        applyModes()
         val index = restore.index.coerceIn(0, state.tracks.lastIndex)
         engine.setTracks(state.tracks, restore.playWhenReady, index, restore.positionMs)
         jam?.let(::applyJamQueue)
@@ -260,16 +263,28 @@ class QueueController(
 
     private fun modesLocked(): Boolean = mutableState.value.isWave || jam != null
 
-    fun onShuffleChanged(enabled: Boolean) {
-        val current = engine ?: return
-        val target = shuffleRule.onPlayerChanged(enabled, modesLocked())
-        if (target != enabled) current.shuffleEnabled = target
+    fun setShuffle(on: Boolean) {
+        shuffleRule.onUserChanged(on, modesLocked())
+        applyModes()
+        save()
     }
 
-    fun onRepeatChanged(enabled: Boolean) {
+    fun setRepeat(on: Boolean) {
+        repeatRule.onUserChanged(on, modesLocked())
+        applyModes()
+        save()
+    }
+
+    private fun applyModes() {
+        publishModes()
         val current = engine ?: return
-        val target = repeatRule.onPlayerChanged(enabled, modesLocked())
-        if (target != enabled) current.repeatEnabled = target
+        val locked = modesLocked()
+        current.shuffleEnabled = shuffleRule.playerModeFor(locked)
+        current.repeatEnabled = repeatRule.playerModeFor(locked)
+    }
+
+    private fun publishModes() {
+        mutableModes.value = PlayModes(shuffleRule.wanted, repeatRule.wanted, modesLocked())
     }
 
     fun onPlayingChanged(isPlaying: Boolean) {
@@ -441,14 +456,13 @@ class QueueController(
         }
         mutableState.value =
             QueueState(tracks = playable, title = title, isWave = isWave, activeSourceId = sourceId)
+        applyModes()
         if (current == null) {
             restorePoint = RestorePoint(0, 0, playWhenReady = autoplay)
             save()
             return
         }
         restorePoint = null
-        current.shuffleEnabled = shuffleRule.playerModeFor(isWave)
-        current.repeatEnabled = repeatRule.playerModeFor(isWave)
         current.setTracks(playable, playWhenReady = autoplay)
         save()
     }
@@ -472,6 +486,7 @@ class QueueController(
         waveSessionId = null
         waveSessionStale = false
         mutableState.value = QueueState()
+        publishModes()
         save()
         val current = engine ?: return
         current.stop()
@@ -601,8 +616,8 @@ class QueueController(
                 isWave = snapshot.isWave,
                 activeSourceId = snapshot.sourceId,
             )
-        shuffleRule.onPlayerChanged(snapshot.shuffle, isWave = false)
-        repeatRule.onPlayerChanged(snapshot.repeat, isWave = false)
+        shuffleRule.onUserChanged(snapshot.shuffle, locked = false)
+        repeatRule.onUserChanged(snapshot.repeat, locked = false)
         if (snapshot.isWave && snapshot.waveSessionId.isNotEmpty()) {
             waveSessionId = snapshot.waveSessionId
             waveStationId = snapshot.waveStationId
@@ -616,6 +631,7 @@ class QueueController(
         if (snapshot.jamSlots != null && snapshot.jamSlots.size == snapshot.tracks.size) {
             mutableState.update { it.copy(jamSlots = snapshot.jamSlots) }
         }
+        publishModes()
     }
 
     /** A wave session does not outlive the process: the restored wave asks its station for a new one. */
@@ -720,8 +736,7 @@ class QueueController(
             mutableState.value = QueueState(title = title, jamSlots = emptyList())
         }
         jam = run
-        current?.shuffleEnabled = false
-        current?.repeatEnabled = false
+        applyModes()
         run.reporter =
             scope.launch {
                 while (true) {
@@ -751,6 +766,7 @@ class QueueController(
         val run = jam
         jam = null
         run?.reporter?.cancel()
+        publishModes()
         val slots = mutableState.value.jamSlots ?: return
         val current = engine
         if (current != null && current.itemCount > 0) {
@@ -760,8 +776,7 @@ class QueueController(
         }
         waveContexts.clear()
         mutableState.update { it.copy(jamSlots = null) }
-        current?.shuffleEnabled = shuffleRule.playerModeFor(isWave = false)
-        current?.repeatEnabled = repeatRule.playerModeFor(isWave = false)
+        applyModes()
         save()
     }
 

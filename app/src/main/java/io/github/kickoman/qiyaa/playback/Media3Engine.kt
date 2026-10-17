@@ -34,14 +34,6 @@ class Media3Engine(private val player: Player, private val controller: QueueCont
                 if (reason == Player.DISCONTINUITY_REASON_SEEK && sameItem) controller.onSeeked()
             }
 
-            override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
-                controller.onShuffleChanged(shuffleModeEnabled)
-            }
-
-            override fun onRepeatModeChanged(repeatMode: Int) {
-                controller.onRepeatChanged(repeatMode != Player.REPEAT_MODE_OFF)
-            }
-
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 controller.onPlayingChanged(isPlaying)
             }
