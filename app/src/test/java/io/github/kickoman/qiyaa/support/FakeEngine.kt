@@ -49,6 +49,13 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
             commands += "repeat $value"
         }
 
+    override var pauseAtEndOfCurrent = false
+        set(value) {
+            if (field == value) return
+            field = value
+            commands += "pause at end $value"
+        }
+
     override fun hasNext(): Boolean =
         PlayOrder.remainingAfter(playOrder(), currentIndex) > 0 || (repeatEnabled && tracks.isNotEmpty())
 
@@ -195,6 +202,12 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
     }
 
     fun finishTrack() {
+        if (pauseAtEndOfCurrent) {
+            playWhenReady = false
+            controller.onPausedAtEnd()
+            if (!playWhenReady && playing) stopPlaying()
+            return
+        }
         val next = nextInOrder()
         if (next != null) {
             val transition = if (next == currentIndex) Transition.REPEAT else Transition.AUTO

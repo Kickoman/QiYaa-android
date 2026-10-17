@@ -185,7 +185,7 @@ class QueueController(
         when {
             current.hasNext() -> {
                 val wasStopped = stoppedAtEnd
-                current.skipToNext()
+                skipForward(current)
                 if (wasStopped) {
                     current.prepare()
                     current.play()
@@ -222,11 +222,38 @@ class QueueController(
             current.seekToPosition(0)
             return
         }
+        val head = wrappingHead(current)
         when {
             current.positionMs > RESTART_AFTER_MS -> current.seekToPosition(0)
+            current.currentIndex == head.firstOrNull() -> wrapTo(head.last(), current)
             current.hasPrevious() -> current.skipToPrevious()
             else -> restart(current)
         }
+    }
+
+    fun onPausedAtEnd() {
+        val current = engine ?: return
+        val head = wrappingHead(current)
+        if (current.currentIndex == head.lastOrNull()) {
+            apply(playTracker.onEnded())
+            wrapTo(head.first(), current)
+        }
+        current.play()
+    }
+
+    private fun skipForward(current: PlayerEngine) {
+        val head = wrappingHead(current)
+        if (current.currentIndex == head.lastOrNull()) wrapTo(head.first(), current) else current.skipToNext()
+    }
+
+    private fun wrapTo(target: Int, current: PlayerEngine) {
+        if (target == current.currentIndex) restart(current) else current.seekTo(target)
+    }
+
+    private fun wrappingHead(current: PlayerEngine): List<Int> {
+        if (!repeatWaitsBehindHead()) return emptyList()
+        val entries = mutableState.value.entries
+        return current.playOrder().filter { entries.getOrNull(it)?.part == EntryPart.HEAD }
     }
 
     fun stop() {
@@ -276,6 +303,7 @@ class QueueController(
         val current = engine ?: return
         playing = isPlaying
         if (track != null) stoppedAtEnd = false
+        applyModes()
         apply(playTracker.onItemChanged(track, transition, isPlaying))
         save()
         maybeLoadMore(current)
@@ -332,9 +360,10 @@ class QueueController(
     private fun applyModes() {
         publishModes()
         val current = engine ?: return
-        val locked = modesLocked()
-        current.shuffleEnabled = shuffleRule.playerModeFor(locked)
-        current.repeatEnabled = repeatRule.playerModeFor(locked)
+        current.shuffleEnabled = shuffleRule.playerModeFor(modesLocked())
+        val waits = repeatWaitsBehindHead()
+        current.repeatEnabled = repeatHoldsHead() && !waits
+        current.pauseAtEndOfCurrent = waits && current.currentIndex == wrappingHead(current).lastOrNull()
     }
 
     private fun publishModes() {
@@ -372,7 +401,7 @@ class QueueController(
             ErrorAction.SkipToNext -> {
                 consecutiveTrackFailures++
                 emit(QueueEvent.Failed(Stage.PLAYBACK, error))
-                current.skipToNext()
+                skipForward(current)
                 current.prepare()
                 current.play()
             }
@@ -571,6 +600,7 @@ class QueueController(
         if (playable.isEmpty()) return
         mutableState.update { it.copy(entries = it.entries + playable) }
         engine?.appendTracks(playable.map(QueueEntry::track))
+        applyModes()
         save()
     }
 
@@ -602,6 +632,7 @@ class QueueController(
             }
             engine?.removeAt(index)
         }
+        applyModes()
         save()
     }
 
@@ -841,7 +872,10 @@ class QueueController(
     }
 
     private fun repeatHoldsHead(): Boolean =
-        repeatRule.playerModeFor(modesLocked()) && currentEntry()?.part == EntryPart.HEAD
+        repeatRule.playerModeFor(modesLocked()) && currentEntry()?.part != EntryPart.CONTINUATION
+
+    private fun repeatWaitsBehindHead(): Boolean =
+        repeatHoldsHead() && mutableState.value.entries.any { it.part == EntryPart.CONTINUATION }
 
     private fun publishLoadingMore() {
         mutableState.update { it.copy(loadingMore = asking && (it.isWave || continueAtEnd)) }

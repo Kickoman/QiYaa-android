@@ -282,4 +282,28 @@ class QueuePersistenceTest {
         runCurrent()
         assertEquals(listOf("trackStarted V1/track:a/B1 v1 0.0"), second.source.feedback)
     }
+
+    @Test
+    fun `CONT-09 with shuffle on, a restored head with vibe tracks plays a head pass, then the vibe`() =
+        runTest {
+            val first = QueueHarness(this, continueWithVibe = true)
+            first.source.onStartWave = { WaveBatch("V1", "B1", tracks("v1", "v2")) }
+            first.controller.loadSource("Liked") { tracks("a", "b", "c", "d") }
+            runCurrent()
+            first.controller.setShuffle(true)
+            first.engine.startPlaying()
+            first.engine.finishTrack()
+            first.engine.finishTrack()
+            runCurrent()
+            assertEquals(listOf("a", "b", "c", "d", "v1", "v2"), first.engine.ids())
+            first.engine.seekTo(1)
+            first.engine.stopPlaying()
+            runCurrent()
+
+            val second = QueueHarness(this, store = FakeQueueStore(first.store.text), continueWithVibe = true)
+            runCurrent()
+            assertTrue(second.engine.shuffleEnabled)
+            assertEquals(listOf(1, 0, 2, 3, 4, 5), second.engine.playOrder())
+            assertEquals(emptyList<String>(), second.source.calls)
+        }
 }

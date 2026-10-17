@@ -50,6 +50,11 @@ class Media3Engine(
                 controller.onPlayingChanged(isPlaying)
             }
 
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                val atEnd = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM
+                if (!playWhenReady && atEnd) controller.onPausedAtEnd()
+            }
+
             override fun onPlayerError(error: PlaybackException) {
                 Log.w(LOG_TAG, "Playback failed: ${error.errorCodeName}", error)
                 controller.onFailure(
@@ -81,6 +86,12 @@ class Media3Engine(
         get() = player.repeatMode != Player.REPEAT_MODE_OFF
         set(value) {
             player.repeatMode = if (value) Player.REPEAT_MODE_ALL else Player.REPEAT_MODE_OFF
+        }
+
+    override var pauseAtEndOfCurrent: Boolean
+        get() = player.pauseAtEndOfMediaItems
+        set(value) {
+            player.pauseAtEndOfMediaItems = value
         }
 
     fun attach() {
