@@ -172,9 +172,10 @@ class QueueController(
 
     fun next() {
         val current = engine ?: return
+        val target = walkNext(current)
         jam?.let { run ->
-            if (current.hasNext()) {
-                current.skipToNext()
+            if (target != null) {
+                skipForward(current, target)
             } else {
                 run.waitingForWave = true
                 ensureJamWave(run)
@@ -183,9 +184,9 @@ class QueueController(
         }
         val state = mutableState.value
         when {
-            current.hasNext() -> {
+            target != null -> {
                 val wasStopped = stoppedAtEnd
-                skipForward(current)
+                skipForward(current, target)
                 if (wasStopped) {
                     current.prepare()
                     current.play()
@@ -233,17 +234,35 @@ class QueueController(
 
     fun onPausedAtEnd() {
         val current = engine ?: return
-        val head = wrappingHead(current)
-        if (current.currentIndex == head.lastOrNull()) {
-            apply(playTracker.onEnded())
-            wrapTo(head.first(), current)
+        val target = walkNext(current)
+        if (target == naturalNext(current)) {
+            current.play()
+            return
         }
+        apply(playTracker.onEnded())
+        if (target == null) {
+            onQueueEnd(current)
+            return
+        }
+        wrapTo(target, current)
         current.play()
     }
 
-    private fun skipForward(current: PlayerEngine) {
-        val head = wrappingHead(current)
-        if (current.currentIndex == head.lastOrNull()) wrapTo(head.first(), current) else current.skipToNext()
+    private fun skipForward(current: PlayerEngine, target: Int) {
+        if (target == naturalNext(current)) current.skipToNext() else wrapTo(target, current)
+    }
+
+    private fun walkNext(current: PlayerEngine): Int? {
+        if (current.itemCount == 0) return null
+        val entries = mutableState.value.entries
+        return QueueWalk.next(entries, current.playOrder(), current.currentIndex, repeatHoldsHead())
+    }
+
+    private fun naturalNext(current: PlayerEngine): Int? {
+        if (current.itemCount == 0) return null
+        val order = current.playOrder()
+        val following = order.getOrNull(order.indexOf(current.currentIndex) + 1)
+        return following ?: order.firstOrNull()?.takeIf { current.repeatEnabled }
     }
 
     private fun wrapTo(target: Int, current: PlayerEngine) {
@@ -328,6 +347,10 @@ class QueueController(
     fun onEnded() {
         apply(playTracker.onEnded())
         val current = engine ?: return
+        onQueueEnd(current)
+    }
+
+    private fun onQueueEnd(current: PlayerEngine) {
         if (jam == null) {
             if (continuationFollows()) waitForMore(current)
             if (!continueAtEnd) stoppedAtEnd = true
@@ -370,9 +393,9 @@ class QueueController(
         publishModes()
         val current = engine ?: return
         current.shuffleEnabled = shuffleRule.playerModeFor(modesLocked())
-        val waits = repeatWaitsBehindHead()
-        current.repeatEnabled = repeatHoldsHead() && !waits
-        current.pauseAtEndOfCurrent = waits && current.currentIndex == wrappingHead(current).lastOrNull()
+        val continued = mutableState.value.entries.any { it.part == EntryPart.CONTINUATION }
+        current.repeatEnabled = repeatHoldsHead() && !continued
+        current.pauseAtEndOfCurrent = walkNext(current) != naturalNext(current)
     }
 
     private fun publishModes() {
@@ -398,11 +421,12 @@ class QueueController(
 
     fun onFailure(kind: FailureKind, error: ErrorKind) {
         val current = engine ?: return
+        val target = walkNext(current)
         when (
             ErrorPolicy.decide(
                 kind,
                 consecutiveTrackFailures,
-                current.hasNext(),
+                target != null,
                 continuationFollows(),
             )
         ) {
@@ -411,7 +435,7 @@ class QueueController(
             ErrorAction.SkipToNext -> {
                 consecutiveTrackFailures++
                 emit(QueueEvent.Failed(Stage.PLAYBACK, error))
-                skipForward(current)
+                target?.let { skipForward(current, it) }
                 current.prepare()
                 current.play()
             }
@@ -430,7 +454,7 @@ class QueueController(
             ErrorAction.Stop -> {
                 emit(QueueEvent.StoppedAfterFailures(consecutiveTrackFailures + 1))
                 consecutiveTrackFailures = 0
-                if (!current.hasNext()) stoppedAtEnd = true
+                if (target == null) stoppedAtEnd = true
             }
         }
     }
@@ -887,10 +911,8 @@ class QueueController(
         return if (own) station else history.seeds().ifEmpty { station }
     }
 
-    private fun remaining(current: PlayerEngine): Int {
-        if (repeatHoldsHead()) return Int.MAX_VALUE
-        return PlayOrder.remainingAfter(current.playOrder(), current.currentIndex) + 1
-    }
+    private fun remaining(current: PlayerEngine): Int =
+        QueueWalk.remaining(current.playOrder(), current.currentIndex, repeatHoldsHead())
 
     private fun repeatHoldsHead(): Boolean =
         repeatRule.playerModeFor(modesLocked()) && currentEntry()?.part != EntryPart.CONTINUATION
