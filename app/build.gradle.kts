@@ -1,3 +1,5 @@
+import java.net.URI
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -47,6 +49,9 @@ android {
         versionName = releaseVersion?.joinToString(".") ?: "0.0.0-dev"
         val jamUrl = providers.gradleProperty("qiyaaJamUrl").orNull.orEmpty()
         buildConfigField("String", "JAM_URL", "\"$jamUrl\"")
+        val jamUri = runCatching { URI(jamUrl) }.getOrNull()
+        manifestPlaceholders["jamHost"] = jamUri?.host ?: "jam.invalid"
+        manifestPlaceholders["jamPathPrefix"] = (jamUri?.path?.trimEnd('/') ?: "") + "/j/"
     }
 
     signingConfigs {

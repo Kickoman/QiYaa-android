@@ -19,7 +19,7 @@ ui/
 | Файл | Содержит |
 |---|---|
 | `AppRoot.kt` | `AppRoot`, `MiniPlayer`, `TabBar` |
-| `MainActivity.kt` | `MainActivity` — язык интерфейса (`applyOverrideConfiguration` в `attachBaseContext`), `setContent { AppRoot() }` и запрос `POST_NOTIFICATIONS` на Android 13+ |
+| `MainActivity.kt` | `MainActivity` — язык интерфейса (`applyOverrideConfiguration` в `attachBaseContext`), `setContent { AppRoot(app) }`, запрос `POST_NOTIFICATIONS` на Android 13+ и ссылки на джем из `Intent` (App Link и «Поделиться») → `AppViewModel.openJamLink` |
 | `AppViewModel.kt` | `Screen`, `LibrarySection`, `LoginStatus`, `LoginUi`, `LibraryUi`, `AppViewModel` (в том числе `openJamLink`), `PlaylistRef.sourceId` |
 | `LinkRouting.kt` | `HostSide`, `GuestSide`, `LinkRefusal`, `LinkAction`, `route(…)`, `GuestPhase.isSession` — решение, что делать со ссылкой на джем (GUEST-01, GUEST-20, GUEST-21) |
 | `ListLoader.kt` | `ListState` (`Idle`, `Loading`, `Loaded(items)`, `Failed(error)`), `ListLoader` — загрузка одного списка библиотеки со своей ошибкой и повтором |
@@ -115,6 +115,7 @@ grep -nE 'graph\.queue|QueueController|PlayerViewModel|MediaController' app/src/
 
 **Входы.**
 - «Войти в джем» (`JoinJamSection`) на экране джема в фазе `NONE`, под «Начать джем»: поле (`KeyboardType.Uri`), «Вставить» читает буфер обмена только по нажатию (иначе Android 12+ показывает тост о чтении буфера в случайный момент), «Войти» — `AppViewModel.openJamLink(text)`; принятая ссылка очищает поле. Тот же блок — на комнате гостя без сессии (`None`).
+- **App Link и «Поделиться»** (GUEST-01, GUEST-21). Манифест объявляет `MainActivity` для `ACTION_VIEW` на `https://<jamHost><jamPathPrefix>…` с `autoVerify` (плейсхолдеры из `qiyaaJamUrl`, проверка домена и шаги владельца — `docs/release.md`, «App Links») и для `ACTION_SEND` с `text/plain`, так что QiYaa есть и в системном «Поделиться» любого текста. `MainActivity` берёт текст — `dataString` у `ACTION_VIEW`, `EXTRA_TEXT` у `ACTION_SEND` — в `onCreate` (только при `savedInstanceState == null`: после смерти процесса система отдаёт старый `Intent` снова) и в `onNewIntent` (активность `singleTask`) и зовёт `app.openJamLink(text, launchedFromHistory)`, где `launchedFromHistory` — флаг `FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY`: так Android помечает базовый `Intent` задачи, который он повторяет при открытии из «Недавних», и `route` такой `Intent` не обрабатывает. После обработки `setIntent` ставит простой `ACTION_MAIN`/`LAUNCHER`. `AppViewModel` в `MainActivity` — тот же экземпляр, что `viewModel()` в `AppRoot` (одно хранилище view model активности).
 - Строка «Джем» библиотеки во время гостевой сессии (`GuestPhase.isSession`): мета `jam_library_guest` («Гость · <хозяин>», до первого `state` — «…»), тап — `Screen.JAM_GUEST`, а не `Screen.JAM`.
 
 **Куда ведёт ссылка** — чистая функция в `LinkRouting.kt` (`LinkRoutingTest`):
@@ -200,6 +201,7 @@ fun setLikedFilter(text: String);  fun openPlaylist(playlist: PlaylistRef);  fun
 **Traps:**
 - `graph.jamGuest` живёт на `Dispatchers.Main.immediate`: его зовут с главного потока (view model, колбэки Compose).
 - `jamGuest.open(link)` для знакомой комнаты подключается сразу, поэтому ссылку до входа держит `AppViewModel.pendingLink`, а не `JamGuest`.
+- `savedInstanceState == null` от повтора ссылки не спасает. Ссылка, запустившая приложение, становится базовым `Intent` задачи; на Android 8–11 «назад» с «Плеера» закрывает активность, и «Недавние» запускают её заново с тем же `Intent`, флагом `FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY` и пустым состоянием. Без проверки флага гость после «Выйти» молча вошёл бы снова: членство осталось, а знакомая комната входит сразу.
 - `restore()` даёт `true` и для конца сессии, который ещё не закрыли кнопкой (фаза не `None`), — тогда стартовый экран показывает текст конца.
 - Ключей у строк списков треков нет: в плейлисте один трек может стоять дважды, а одинаковые ключи `LazyColumn` роняют приложение.
 
