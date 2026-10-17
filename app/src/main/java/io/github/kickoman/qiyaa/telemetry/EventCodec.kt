@@ -59,14 +59,19 @@ object EventCodec {
             put("version", version(event.version))
             when (event) {
                 is Event.Start -> putStart(event.fields)
+
                 is Event.Exit -> putCounts(event.counts)
+
                 is Event.Crash -> putCrash(event)
+
                 is Event.UncleanExit -> put("seconds", count(event.seconds))
+
                 is Event.Error -> {
                     put("area", event.area.code)
                     put("kind", kind(event.kind))
                     httpStatus(event.httpStatus)?.let { put("httpStatus", it) }
                 }
+
                 is Event.Feature -> {
                     put("name", event.name.code)
                     put("value", event.value)

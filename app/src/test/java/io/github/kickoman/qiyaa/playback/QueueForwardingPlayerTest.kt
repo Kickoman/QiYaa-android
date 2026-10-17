@@ -185,17 +185,27 @@ class QueueForwardingPlayerTest {
 
         fun sample(type: Class<*>, player: Player): Any = when (type) {
             Int::class.javaPrimitiveType -> 1
+
             Long::class.javaPrimitiveType -> 1L
+
             Boolean::class.javaPrimitiveType -> true
+
             Float::class.javaPrimitiveType -> 0.5f
+
             Player::class.java -> player
+
             Player.Events::class.java -> Player.Events(FlagSet.Builder().build())
+
             Player.PositionInfo::class.java ->
                 Player.PositionInfo(null, 0, MediaItem.EMPTY, null, 0, 0, 0, C.INDEX_UNSET, C.INDEX_UNSET)
+
             PlaybackException::class.java ->
                 PlaybackException("test", null, PlaybackException.ERROR_CODE_UNSPECIFIED)
+
             Metadata::class.java -> Metadata()
+
             List::class.java -> emptyList<Any>()
+
             else -> type.fields.first { Modifier.isStatic(it.modifiers) && it.type == type }.get(null)!!
         }
     }

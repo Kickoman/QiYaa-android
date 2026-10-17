@@ -117,6 +117,7 @@ fun LibrarySectionScreen(viewModel: AppViewModel, section: LibrarySection) {
                         )
                     }
             }
+
             LibrarySection.WHEEL -> {
                 val waves by viewModel.wheel.state.collectAsStateWithLifecycle()
                 listState = waves
@@ -133,12 +134,14 @@ fun LibrarySectionScreen(viewModel: AppViewModel, section: LibrarySection) {
                     }
                 listOf(ChipGroup(stringResource(name), items)).filter { it.items.isNotEmpty() }
             }
+
             LibrarySection.FOR_YOU -> {
                 val forYou by viewModel.forYou.state.collectAsStateWithLifecycle()
                 listState = forYou
                 val items = forYou.itemsOrEmpty().map { playlistChip(it, viewModel) }
                 listOf(ChipGroup(stringResource(R.string.library_group_for_you), items))
             }
+
             LibrarySection.PLAYLISTS -> {
                 val playlists by viewModel.playlists.state.collectAsStateWithLifecycle()
                 listState = playlists
@@ -158,6 +161,7 @@ fun LibrarySectionScreen(viewModel: AppViewModel, section: LibrarySection) {
                     ),
                 ).filter { it.items.isNotEmpty() }
             }
+
             LibrarySection.ARTISTS -> {
                 val artists by viewModel.artists.state.collectAsStateWithLifecycle()
                 listState = artists
@@ -166,6 +170,7 @@ fun LibrarySectionScreen(viewModel: AppViewModel, section: LibrarySection) {
                 }
                 listOf(ChipGroup(stringResource(R.string.library_group_liked_top), items))
             }
+
             LibrarySection.ALBUMS -> {
                 val albums by viewModel.albums.state.collectAsStateWithLifecycle()
                 listState = albums
@@ -213,6 +218,7 @@ fun LibrarySectionScreen(viewModel: AppViewModel, section: LibrarySection) {
                             color = colors.accent,
                         )
                     }
+
                 !loaded ->
                     QiText(
                         stringResource(R.string.library_loading),
@@ -220,6 +226,7 @@ fun LibrarySectionScreen(viewModel: AppViewModel, section: LibrarySection) {
                         Modifier.padding(top = 14.dp),
                         color = colors.dimmer,
                     )
+
                 groups.isEmpty() ->
                     QiText(
                         stringResource(R.string.library_empty),

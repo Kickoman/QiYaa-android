@@ -27,7 +27,9 @@ object ErrorPolicy {
         endless: Boolean = false,
     ): ErrorAction = when (kind) {
         FailureKind.NETWORK -> ErrorAction.WaitForNetwork
+
         FailureKind.SESSION -> ErrorAction.Hold
+
         FailureKind.TRACK ->
             when {
                 consecutiveTrackFailures + 1 >= MAX_CONSECUTIVE_TRACK_FAILURES -> ErrorAction.Stop

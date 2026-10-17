@@ -34,12 +34,14 @@ fun accentColors(theme: AccentTheme): QiColors = when (theme) {
             accentDark = Color(0xFF1C8742),
             accentBackground = Color(0xFF0F3118),
         )
+
     AccentTheme.AMBER ->
         QiColors(
             accent = Color(0xFFFFB113),
             accentDark = Color(0xFF9D6800),
             accentBackground = Color(0xFF372508),
         )
+
     AccentTheme.ICE_BLUE ->
         QiColors(
             accent = Color(0xFF59D6FA),

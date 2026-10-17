@@ -43,6 +43,7 @@ sealed interface ErrorKind {
 
         private fun direct(failure: Throwable): ErrorKind? = when {
             isNetworkFailure(failure) -> NoNetwork
+
             failure is HttpException -> if (failure.isTokenRejected) {
                 TokenRejected
             } else {
@@ -50,11 +51,17 @@ sealed interface ErrorKind {
                     failure.status,
                 )
             }
+
             failure is NotSignedInException -> TokenRejected
+
             failure is OAuthException -> SignInRefused
+
             failure is CodeExpiredException -> CodeExpired
+
             failure is AuthException -> TokenRejected
+
             failure is MalformedResponseException -> Malformed
+
             else -> null
         }
     }

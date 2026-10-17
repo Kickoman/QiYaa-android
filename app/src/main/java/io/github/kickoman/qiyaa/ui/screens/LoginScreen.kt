@@ -140,8 +140,11 @@ fun LoginScreen(viewModel: AppViewModel) {
             val status =
                 when (val current = login.status) {
                     LoginStatus.Requesting -> stringResource(R.string.login_status_requesting)
+
                     LoginStatus.Waiting -> stringResource(R.string.login_status_waiting)
+
                     LoginStatus.SigningIn -> stringResource(R.string.login_status_signing_in)
+
                     is LoginStatus.Failed -> stringResource(
                         R.string.login_status_failed,
                         current.error.render().uppercase(),

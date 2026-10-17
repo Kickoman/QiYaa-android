@@ -156,11 +156,11 @@ fun PlayerScreen(viewModel: PlayerViewModel, onJam: (() -> Unit)? = null) {
                 audioBus = viewModel.audioBus,
                 offLabel = stringResource(R.string.player_vis_off),
                 modifier =
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(start = 14.dp, end = 14.dp, bottom = 14.dp)
-                    .fillMaxWidth()
-                    .height(36.dp),
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(start = 14.dp, end = 14.dp, bottom = 14.dp)
+                        .fillMaxWidth()
+                        .height(36.dp),
                 onTap = viewModel::cycleVisualizer,
             )
         }
@@ -255,11 +255,11 @@ fun PlayerScreen(viewModel: PlayerViewModel, onJam: (() -> Unit)? = null) {
                     stringResource(R.string.player_shuffle),
                     TransportLabelStyle,
                     color =
-                    when {
-                        modes.locked -> colors.dimmer
-                        modes.shuffle -> colors.accent
-                        else -> colors.muted
-                    },
+                        when {
+                            modes.locked -> colors.dimmer
+                            modes.shuffle -> colors.accent
+                            else -> colors.muted
+                        },
                 )
             }
             RoundButton(56.dp, colors.surface2, onClick = viewModel::previous) {
@@ -292,11 +292,11 @@ fun PlayerScreen(viewModel: PlayerViewModel, onJam: (() -> Unit)? = null) {
                     stringResource(R.string.player_repeat),
                     TransportLabelStyle,
                     color =
-                    when {
-                        modes.locked -> colors.dimmer
-                        modes.repeat -> colors.accent
-                        else -> colors.muted
-                    },
+                        when {
+                            modes.locked -> colors.dimmer
+                            modes.repeat -> colors.accent
+                            else -> colors.muted
+                        },
                 )
             }
         }

@@ -74,10 +74,15 @@ data class CrashReport(
                 val value = line.substring(equals + 1)
                 when (line.substring(0, equals)) {
                     KEY_SESSION -> session = value
+
                     KEY_VERSION -> version = value
+
                     KEY_SIGNAL -> signal = value
+
                     KEY_SECONDS -> seconds = value.toLongOrNull()?.let(EventCodec::count) ?: 0
+
                     KEY_EXCEPTION -> exceptionType = EventCodec.exceptionType(value)
+
                     KEY_FRAME ->
                         if (frames.size < EventCodec.MAX_FRAMES) EventCodec.frame(value)?.let(frames::add)
                 }

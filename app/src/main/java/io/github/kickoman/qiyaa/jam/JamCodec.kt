@@ -87,13 +87,16 @@ object JamCodec {
                 atLeast("protocol", message.protocol.toLong(), 1)
                 time("serverTime", message.serverTime)
             }
+
             is Rejected -> {
                 message.id?.let { pattern("id", it, requestId) }
                 message.detail?.let { require(it.length <= 200) { "detail is over 200 characters" } }
                 message.serverProtocol?.let { atLeast("serverProtocol", it.toLong(), 1) }
                 require(message.reason in REASONS) { "$UNKNOWN_REASON ${message.reason}" }
             }
+
             is Ack -> pattern("id", message.id, requestId)
+
             is Created -> {
                 pattern("id", message.id, requestId)
                 pattern("roomId", message.roomId, roomId)
@@ -102,37 +105,47 @@ object JamCodec {
                 joinUrl(message.joinUrl)
                 pattern("publicId", message.publicId, publicId)
             }
+
             is Resumed -> pattern("id", message.id, requestId)
+
             is Joined -> {
                 pattern("id", message.id, requestId)
                 pattern("publicId", message.publicId, publicId)
             }
+
             is SearchResults -> {
                 pattern("id", message.id, requestId)
                 catalogTracks("searchResults.tracks", message.tracks, 20)
             }
+
             is LinkRotated -> {
                 pattern("id", message.id, requestId)
                 pattern("joinSecret", message.joinSecret, joinSecret)
                 joinUrl(message.joinUrl)
             }
+
             is SearchRequest -> {
                 pattern("requestId", message.requestId, requestId)
                 searchText(message.text)
             }
+
             is ValidateRequest -> {
                 pattern("requestId", message.requestId, requestId)
                 require(message.trackIds.size in 1..20) { "trackIds has ${message.trackIds.size} entries" }
                 message.trackIds.forEach { pattern("trackIds[]", it, catalogId) }
             }
+
             is Command -> pattern("itemId", message.itemId, itemId)
+
             is Snapshot -> snapshot(message.data)
+
             is State -> {
                 atLeast("version", message.version, 1)
                 time("serverTime", message.serverTime)
                 noSecrets(raw, "state")
                 room(message.room)
             }
+
             is Ended, Kicked -> Unit
         }
     }
@@ -143,11 +156,13 @@ object JamCodec {
                 atLeast("protocol", message.protocol.toLong(), 1)
                 pattern("appVersion", message.appVersion, appVersion)
             }
+
             is Create -> {
                 pattern("id", message.id, requestId)
                 name("hostName", message.hostName)
                 message.settings?.let(::settingsPatch)
             }
+
             is Resume -> {
                 pattern("id", message.id, requestId)
                 pattern("roomId", message.roomId, roomId)
@@ -159,6 +174,7 @@ object JamCodec {
                     pattern("outbox[].itemId", it.itemId, itemId)
                 }
             }
+
             is Playing -> {
                 atLeast("positionMs", message.positionMs, 0)
                 message.itemId?.let { pattern("itemId", it, itemId) }
@@ -172,7 +188,9 @@ object JamCodec {
                     NowPlayingSource.IDLE -> Unit
                 }
             }
+
             is Started -> pattern("itemId", message.itemId, itemId)
+
             is Add -> {
                 pattern("id", message.id, requestId)
                 require((message.trackId == null) != (message.track == null)) {
@@ -181,20 +199,28 @@ object JamCodec {
                 message.trackId?.let { pattern("trackId", it, catalogId) }
                 message.track?.let(::track)
             }
+
             is Pin -> requestAndItem(message.id, message.itemId)
+
             is Remove -> requestAndItem(message.id, message.itemId)
+
             is Skip -> requestAndItem(message.id, message.itemId)
+
             is Kick -> {
                 pattern("id", message.id, requestId)
                 pattern("publicId", message.publicId, publicId)
             }
+
             is ChangeSettings -> {
                 pattern("id", message.id, requestId)
                 settingsPatch(message.settings)
                 require(message.settings != JamSettingsPatch()) { "settings changes nothing" }
             }
+
             is RotateLink -> pattern("id", message.id, requestId)
+
             is End -> pattern("id", message.id, requestId)
+
             is SearchResult -> {
                 pattern("requestId", message.requestId, requestId)
                 require((message.tracks == null) != (message.error == null)) {
@@ -202,6 +228,7 @@ object JamCodec {
                 }
                 message.tracks?.let { catalogTracks("searchResult.tracks", it, 20) }
             }
+
             is ValidateResult -> {
                 pattern("requestId", message.requestId, requestId)
                 require(message.results.size in 1..20) { "results has ${message.results.size} entries" }
@@ -213,6 +240,7 @@ object JamCodec {
                     it.track?.let { track -> catalogTrack("results[].track", track) }
                 }
             }
+
             is Join -> {
                 pattern("id", message.id, requestId)
                 pattern("roomId", message.roomId, roomId)
@@ -220,6 +248,7 @@ object JamCodec {
                 pattern("participantId", message.participantId, participantId)
                 name("name", message.name)
             }
+
             is Search -> {
                 pattern("id", message.id, requestId)
                 searchText(message.text)
@@ -278,7 +307,9 @@ object JamCodec {
                 require(nowPlaying.itemId != null && nowPlaying.track != null && nowPlaying.addedBy != null) {
                     "nowPlaying item needs itemId, track and addedBy"
                 }
+
             NowPlayingSource.WAVE -> require(nowPlaying.track != null) { "nowPlaying wave needs track" }
+
             NowPlayingSource.IDLE -> Unit
         }
     }
@@ -297,7 +328,9 @@ object JamCodec {
                     require(key !in SECRET_FIELDS) { "$where carries $key" }
                     noSecrets(value, where)
                 }
+
             is JsonArray -> element.forEach { noSecrets(it, where) }
+
             else -> Unit
         }
     }
