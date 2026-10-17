@@ -3,10 +3,12 @@ package io.github.kickoman.qiyaa.queue
 import io.github.kickoman.qiyaa.support.FakeEngine
 import io.github.kickoman.qiyaa.support.QueueHarness
 import io.github.kickoman.qiyaa.support.QueueHarness.Companion.tracks
+import io.github.kickoman.qiyaa.support.QueueHarness.Companion.wave
 import io.github.kickoman.qiyaa.yandex.WaveBatch
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -27,10 +29,14 @@ class QueueTransportTest {
     @Test
     fun `TR-01 on the first track Previous goes to the last with repeat and restarts without it`() = runTest {
         val harness = loaded(this, "a", "b", "c")
+        harness.engine.startPlaying()
         harness.engine.positionMs = 1_000
         harness.controller.previous()
+        harness.engine.startPlaying()
+        runCurrent()
         assertEquals(0, harness.engine.currentIndex)
         assertEquals("seek to 0", harness.engine.commands.last())
+        assertEquals(listOf("a" to "play-1", "a" to "play-2"), harness.source.reports)
         harness.engine.repeatEnabled = true
         harness.engine.positionMs = 1_000
         harness.controller.previous()
@@ -38,13 +44,44 @@ class QueueTransportTest {
     }
 
     @Test
-    fun `TR-02 after 3 s Previous restarts the current track`() = runTest {
+    fun `TR-02 after 3 s Previous restarts the current track as a seek, not a new play`() = runTest {
         val harness = loaded(this, "a", "b", "c")
         harness.engine.seekTo(1)
+        harness.engine.startPlaying()
         harness.engine.positionMs = 3_001
         harness.controller.previous()
+        harness.engine.startPlaying()
+        runCurrent()
         assertEquals(1, harness.engine.currentIndex)
         assertEquals("seek to 0", harness.engine.commands.last())
+        assertEquals(listOf("b" to "play-1"), harness.source.reports)
+    }
+
+    @Test
+    fun `TR-02 Previous after 3 s while paused is a seek`() = runTest {
+        val harness = wave(this, "w1", "w2", "w3")
+        harness.engine.startPlaying()
+        advanceTimeBy(10_000)
+        harness.engine.stopPlaying()
+        advanceTimeBy(5_000)
+        harness.engine.positionMs = 10_000
+        harness.controller.previous()
+        advanceTimeBy(5_000)
+        harness.engine.startPlaying()
+        advanceTimeBy(20_000)
+        harness.engine.finishTrack()
+        runCurrent()
+        assertEquals("seek to 0", harness.engine.commands.last())
+        assertEquals(listOf("w1" to "play-1", "w2" to "play-2"), harness.source.reports)
+        assertEquals(
+            listOf(
+                "radioStarted S1/user:onyourwave/B1 - 0.0",
+                "trackStarted S1/user:onyourwave/B1 w1 0.0",
+                "trackFinished S1/user:onyourwave/B1 w1 30.0",
+                "trackStarted S1/user:onyourwave/B1 w2 0.0",
+            ),
+            harness.source.feedback,
+        )
     }
 
     @Test

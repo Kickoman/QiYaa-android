@@ -44,6 +44,21 @@ class QueuePersistenceTest {
     }
 
     @Test
+    fun `a seek saves the new position`() = runTest {
+        val harness = QueueHarness(this)
+        harness.controller.loadSource("Liked") { tracks("a", "b") }
+        runCurrent()
+        harness.engine.seekTo(1)
+        harness.engine.startPlaying()
+        runCurrent()
+        harness.engine.seekToPosition(42_000)
+        runCurrent()
+        val saved = harness.store.snapshot()!!
+        assertEquals(1, saved.index)
+        assertEquals(42_000L, saved.positionMs)
+    }
+
+    @Test
     fun `clearing the queue saves an empty queue`() = runTest {
         val harness = QueueHarness(this)
         harness.controller.loadSource("Liked") { tracks("a") }
@@ -77,6 +92,27 @@ class QueuePersistenceTest {
             },
         )
         assertTrue("the user's repeat comes back", second.engine.repeatEnabled)
+    }
+
+    @Test
+    fun `TR-02 Previous on a restored queue at 42 s seeks to 0, and Play reports the track once`() = runTest {
+        val first = QueueHarness(this)
+        first.controller.loadSource("Liked") { tracks("a", "b") }
+        runCurrent()
+        first.engine.seekTo(1)
+        first.engine.positionMs = 42_000
+        first.engine.startPlaying()
+        first.engine.stopPlaying()
+        runCurrent()
+
+        val second = QueueHarness(this, attached = false, store = FakeQueueStore(first.store.text))
+        second.controller.attach(second.engine)
+        second.controller.previous()
+        second.engine.startPlaying()
+        runCurrent()
+        assertEquals(1, second.engine.currentIndex)
+        assertEquals(0L, second.engine.positionMs)
+        assertEquals(listOf("b" to "play-1"), second.source.reports)
     }
 
     @Test

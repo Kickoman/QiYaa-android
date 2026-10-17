@@ -120,16 +120,82 @@ class QueueJamTest {
         }
 
     @Test
-    fun `HOST-07 previous restarts the current track`() = runTest {
+    fun `HOST-06 a seek reports the new position, also while paused`() = runTest {
         val h = QueueHarness(this)
-        h.startJam()
+        val jam = h.startJam()
         h.state(item("i1", "A"), item("i2", "B"))
+        h.engine.startPlaying()
+        h.engine.seekToPosition(42_000)
+        assertEquals(
+            JamPlayback(
+                JamPlayback.Kind.ITEM,
+                "i1",
+                track("A"),
+                42_000,
+                paused = false,
+                nextTrack = track("B"),
+            ),
+            jam.playbacks.last(),
+        )
+        h.engine.stopPlaying()
+        val reports = jam.playbacks.size
+        h.engine.seekToPosition(10_000)
+        assertEquals(reports + 1, jam.playbacks.size)
+        assertEquals(
+            JamPlayback(
+                JamPlayback.Kind.ITEM,
+                "i1",
+                track("A"),
+                10_000,
+                paused = true,
+                nextTrack = track("B"),
+            ),
+            jam.playbacks.last(),
+        )
+    }
+
+    @Test
+    fun `HOST-07 Previous in a jam is a seek`() = runTest {
+        val h = QueueHarness(this)
+        val jam = h.startJam()
+        h.state(item("i1", "A"), item("i2", "B"))
+        h.engine.startPlaying()
         h.state(item("i2", "B"))
         h.engine.finishTrack()
         h.engine.positionMs = 1_000
+        val reports = jam.playbacks.size
         h.controller.previous()
         assertEquals(1, h.engine.currentIndex)
         assertEquals("seek to 0", h.engine.commands.last())
+        assertEquals(listOf("i1", "i2"), jam.started)
+        assertEquals(reports + 1, jam.playbacks.size)
+        assertEquals(
+            JamPlayback(JamPlayback.Kind.ITEM, "i2", track("B"), 0, paused = false),
+            jam.playbacks.last(),
+        )
+    }
+
+    @Test
+    fun `HOST-07 HOST-16 Previous on a jam wave track sends no skip and no second trackStarted`() = runTest {
+        val h = QueueHarness(this)
+        h.startJam(waveFeedback = true)
+        h.source.onStartWave = { WaveBatch("SJ", "B1", tracks("w1", "w2")) }
+        h.state(item("i1", "A"), seeds = listOf("track:A"), seedsVersion = 1)
+        h.engine.startPlaying()
+        h.state(seeds = listOf("track:A"), seedsVersion = 1)
+        runCurrent()
+        h.engine.finishTrack()
+        runCurrent()
+        h.engine.positionMs = 10_000
+        h.controller.previous()
+        h.engine.startPlaying()
+        runCurrent()
+        assertEquals("seek to 0", h.engine.commands.last())
+        assertEquals(
+            listOf("radioStarted SJ/track:A/B1 - 0.0", "trackStarted SJ/track:A/B1 w1 0.0"),
+            h.source.feedback,
+        )
+        assertEquals(emptyList<Pair<String, String>>(), h.source.reports)
     }
 
     @Test

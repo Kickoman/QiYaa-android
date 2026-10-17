@@ -103,6 +103,7 @@ class Media3Engine(player: Player, controller: QueueController) : PlayerEngine {
 |---|---|
 | `onMediaItemTransition(item, reason)` | `onItemChanged(MediaItems.toTrack(item), transition, player.isPlaying)`; причина: `AUTO` → `AUTO`, `REPEAT` → `REPEAT`, `SEEK` → `SEEK`, остальное (`PLAYLIST_CHANGED`) → `NEW_QUEUE` |
 | `onPlaybackStateChanged(STATE_ENDED)` | `onEnded()` |
+| `onPositionDiscontinuity(old, new, reason)` | `onSeeked()`, только при `DISCONTINUITY_REASON_SEEK` и одном `mediaItemIndex` у `old` и `new`; перемотка на другой элемент приходит как `onMediaItemTransition(SEEK)`. `seekToPrevious/NextMediaItem` на тот же элемент (повтор текущего, `repeatCurrentMediaItem` в Media3) даёт и `onSeeked()`, и сразу за ним `onMediaItemTransition(SEEK)` — это безвредно (вне джема лишнее сохранение, в джеме повтор выключен), так что фильтр «тот же элемент» остаётся как есть |
 | `onShuffleModeEnabledChanged(on)` | `onShuffleChanged(on)` |
 | `onRepeatModeChanged(mode)` | `onRepeatChanged(mode != REPEAT_MODE_OFF)`; `repeatEnabled = true` — это `REPEAT_MODE_ALL` (повтора одного трека нет, TR-06) |
 | `onIsPlayingChanged(playing)` | `onPlayingChanged(playing)` |
@@ -110,7 +111,9 @@ class Media3Engine(player: Player, controller: QueueController) : PlayerEngine {
 
 `playOrder()` обходит `currentTimeline` через `getFirstWindowIndex`/`getNextWindowIndex(…, REPEAT_MODE_OFF, shuffle)`.
 
-**Traps:** все вызовы — с главного потока ExoPlayer; листенеры ExoPlayer срабатывают после завершения команды, так что контроллер видит уже обновлённое состояние.
+**Traps:**
+- Все вызовы — с главного потока ExoPlayer; листенеры ExoPlayer срабатывают после завершения команды, так что контроллер видит уже обновлённое состояние.
+- `onSeeked` опирается на код Media3 1.4.1 (сверено по байткоду AAR через `javap`, на устройстве не проверялось). `seekTo` заканчивается `updatePlaybackInfo(…, DISCONTINUITY_REASON_SEEK)` и `flushEvents()`, поэтому разрыв доходит до листенера внутри самого вызова, уже с новой позицией и без `STATE_ENDED` (перемотка из `READY` или `ENDED` сначала показывает `BUFFERING`); исключение — перемотка из колбэка ExoPlayer, тогда разрыв приходит сразу после него. `QueueController` перематывает только из команд сессии, UI и сокета джема, поэтому `support/FakeEngine.seekToPosition` зовёт `onSeeked()` синхронно. `setMediaItems` даёт разрыв с причиной `REMOVE`, повтор после ошибки (`prepare()`) разрыва не даёт, так что `onSeeked` приходит только на настоящую перемотку: ползунок экрана и уведомления, «назад», перемотка в 0 у «стоп».
 
 ## Классификация ошибок
 

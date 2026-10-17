@@ -183,11 +183,11 @@ class QueueController(
     fun previous() {
         val current = engine ?: return
         if (jam != null) {
-            restart(current)
+            current.seekToPosition(0)
             return
         }
         when {
-            current.positionMs > RESTART_AFTER_MS -> restart(current)
+            current.positionMs > RESTART_AFTER_MS -> current.seekToPosition(0)
             current.hasPrevious() -> current.skipToPrevious()
             else -> restart(current)
         }
@@ -278,6 +278,11 @@ class QueueController(
         playTracker.onPlayingChanged(isPlaying)?.let(::onStarted)
         if (!isPlaying) save()
         reportJam()
+    }
+
+    fun onSeeked() {
+        reportJam()
+        save()
     }
 
     fun onFailure(kind: FailureKind, error: ErrorKind) {
