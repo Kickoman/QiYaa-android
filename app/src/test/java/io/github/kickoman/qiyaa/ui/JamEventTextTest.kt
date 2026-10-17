@@ -1,9 +1,15 @@
 package io.github.kickoman.qiyaa.ui
 
 import io.github.kickoman.qiyaa.R
+import io.github.kickoman.qiyaa.jam.Decoded
 import io.github.kickoman.qiyaa.jam.EndReason
 import io.github.kickoman.qiyaa.jam.GuestAddResult
 import io.github.kickoman.qiyaa.jam.GuestPhase
+import io.github.kickoman.qiyaa.jam.JamCodec
+import io.github.kickoman.qiyaa.jam.JamGuestState
+import io.github.kickoman.qiyaa.jam.JamRoom
+import io.github.kickoman.qiyaa.jam.JamStatus
+import io.github.kickoman.qiyaa.jam.State
 import io.github.kickoman.qiyaa.support.Spec
 import java.io.File
 import kotlinx.serialization.json.Json
@@ -61,11 +67,55 @@ class JamEventTextTest {
     }
 
     @Test
+    fun `GUEST-16 a wait for the room says the server lost the jam, with or without a room on screen`() {
+        val waiting = JamGuestState(phase = GuestPhase.WaitingForRoom, connection = JamStatus.ONLINE)
+        assertEquals(R.string.jam_guest_waiting_for_room, waiting.statusText())
+        assertEquals(R.string.jam_guest_waiting_for_room, waiting.copy(room = room()).statusText())
+        assertEquals(
+            R.string.jam_guest_waiting_for_room,
+            waiting.copy(connection = JamStatus.OFFLINE, room = room(hostOnline = false)).statusText(),
+        )
+    }
+
+    @Test
+    fun `GUEST-15 GUEST-09 in the room the status says no connection, then that the host is away`() {
+        val inRoom = JamGuestState(phase = GuestPhase.InRoom, connected = true, room = room())
+        assertNull(inRoom.statusText())
+        val away = inRoom.copy(room = room(hostOnline = false))
+        assertEquals(R.string.jam_guest_host_offline, away.statusText())
+        assertEquals(R.string.jam_offline_strip, inRoom.copy(connected = false).statusText())
+        assertEquals(R.string.jam_offline_strip, away.copy(connected = false).statusText())
+    }
+
+    @Test
+    fun `GUEST-03 GUEST-17 no status line while joining, before the first state, or after the end`() {
+        assertNull(JamGuestState(phase = GuestPhase.Joining, connection = JamStatus.CONNECTING).statusText())
+        assertNull(JamGuestState(phase = GuestPhase.InRoom, connected = true).statusText())
+        assertNull(JamGuestState(phase = GuestPhase.InRoom, connected = false).statusText())
+        for (phase in listOf(
+            GuestPhase.None,
+            GuestPhase.NoSecret,
+            GuestPhase.NeedName,
+            GuestPhase.Refused("room-not-found"),
+            GuestPhase.Ended(EndReason.EXPIRED),
+            GuestPhase.Kicked,
+        )) {
+            assertNull(phase.toString(), JamGuestState(phase = phase, room = room()).statusText())
+        }
+    }
+
+    @Test
     fun `GUEST-07 GUEST-09 every add that is not sent says why`() {
         assertNull(GuestAddResult.SENT.text())
         val texts = (GuestAddResult.entries - GuestAddResult.SENT).map { it.text() }
         assertTrue(texts.all { it != null })
         assertEquals(texts.size, texts.toSet().size)
         assertEquals(R.string.jam_guest_add_invalid, GuestAddResult.INVALID.text())
+    }
+
+    private fun room(hostOnline: Boolean = true): JamRoom {
+        val text = File(Spec.root, "jam/protocol/examples/state/guest.json").readText()
+        val room = ((JamCodec.decodeServer(text) as Decoded.Message).message as State).room
+        return room.copy(hostOnline = hostOnline)
     }
 }

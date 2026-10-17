@@ -6,6 +6,7 @@ import io.github.kickoman.qiyaa.jam.EndReason
 import io.github.kickoman.qiyaa.jam.GuestAddResult
 import io.github.kickoman.qiyaa.jam.GuestPhase
 import io.github.kickoman.qiyaa.jam.JamGuestEvent
+import io.github.kickoman.qiyaa.jam.JamGuestState
 import io.github.kickoman.qiyaa.playback.JamHostEvent
 
 fun JamHostEvent.render(context: Context): String = when (this) {
@@ -61,6 +62,17 @@ fun GuestPhase.endText(): Int? = when (this) {
     GuestPhase.UpdateRequired -> R.string.jam_refused_update_required
     GuestPhase.None, GuestPhase.NeedName, GuestPhase.Joining -> null
     GuestPhase.InRoom, GuestPhase.WaitingForRoom -> null
+}
+
+fun JamGuestState.statusText(): Int? {
+    val room = room
+    return when {
+        phase == GuestPhase.WaitingForRoom -> R.string.jam_guest_waiting_for_room
+        phase != GuestPhase.InRoom || room == null -> null
+        !connected -> R.string.jam_offline_strip
+        !room.hostOnline -> R.string.jam_guest_host_offline
+        else -> null
+    }
 }
 
 fun GuestAddResult.text(): Int? = when (this) {

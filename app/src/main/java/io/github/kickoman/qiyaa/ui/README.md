@@ -26,7 +26,7 @@ ui/
 | `PlayerViewModel.kt` | `PlayerUi`, `TrackActions`, `PlayerViewModel`, `AccentTheme.labelId` |
 | `JamViewModel.kt` | `JamUi`, `JamViewModel` — хозяин джема для экранов: `playback/JamHost`, поиск треков для джема, настройки `jam/*` |
 | `JamGuestViewModel.kt` | `GuestTab`, `JamGuestUi`, `JamGuestViewModel` — гость в чужом джеме для экранов: `jam/JamGuest`, свои поиск, лайки и плейлисты через `yandex/Library`, «лайк себе» |
-| `JamEventText.kt` | `JamHostEvent.render(context)`, `JamGuestEvent.render(context)`, `refusedText(reason)` (все 18 причин протокола), `guestRefusedText(reason)`, `GuestPhase.endText()`, `GuestAddResult.text()` — отказы, концы джема и сессии гостя → строки |
+| `JamEventText.kt` | `JamHostEvent.render(context)`, `JamGuestEvent.render(context)`, `refusedText(reason)` (все 18 причин протокола), `guestRefusedText(reason)`, `GuestPhase.endText()`, `JamGuestState.statusText()`, `GuestAddResult.text()` — отказы, концы джема и сессии гостя, строка состояния гостя → строки |
 | `QueueEventText.kt` | `QueueEvent.render(context)` — событие очереди → строка из ресурсов |
 | `ErrorText.kt` | `ErrorKind.text()` — строка вида ошибки (`error_*`, у `ServerError` со статусом), `render(context)` и `@Composable render()`; `LOG_TAG = "QiYaa"` |
 | `Format.kt` | `formatTime`, `positionAt` (доля полосы перемотки → мс), `timeLabel` (подпись времени плеера), `balanceLabel`, `formatReadout`, `formatDb` |
@@ -126,7 +126,7 @@ data class GuestSide(val serverUrl: String? = null, val roomId: String? = null, 
 enum class LinkRefusal { NOT_A_LINK, HOSTING }
 sealed interface LinkAction   // Ignore, Refuse(reason), AskSignIn(link), OpenHostJam, ShowGuest, OpenGuest(link)
 fun route(link: JamLink?, host: HostSide, guest: GuestSide, signedIn: Boolean, launchedFromHistory: Boolean): LinkAction
-val GuestPhase.isSession: Boolean   // isActive, NeedName или NoSecret
+val GuestPhase.isSession: Boolean   // isActive или NeedName
 ```
 
 Первая подходящая строка:
@@ -141,7 +141,7 @@ val GuestPhase.isSession: Boolean   // isActive, NeedName или NoSecret
 | та же комната (сервер и `roomId`) в `Joining`, `InRoom`, `WaitingForRoom` или `NeedName` | `ShowGuest` | `Screen.JAM_GUEST` |
 | иначе | `OpenGuest(link)` | `jamGuest.open(link)` (сессия другой комнаты уходит, как `leave`, D7), `Screen.JAM_GUEST` |
 
-`HostSide` и `GuestSide` строит `AppViewModel.routeLink` из `jamHost.state` и `jamGuest.state`. `signedIn` — есть ли токен в `TokenStore`, а не `Library.isLoggedIn`: на холодном старте аккаунт ещё не загружен. `openJamLink(text, launchedFromHistory = false): Boolean` — `true`, когда ссылка принята (`AskSignIn`, `OpenHostJam`, `ShowGuest`, `OpenGuest`). Обратное исключение (D1): `JamViewModel.start()` во время гостевой сессии — тост `jam_host_while_guest`, джем не создаётся.
+`HostSide` и `GuestSide` строит `AppViewModel.routeLink` из `jamHost.state` и `jamGuest.state`. `signedIn` — есть ли токен в `TokenStore`, а не `Library.isLoggedIn`: на холодном старте аккаунт ещё не загружен. `openJamLink(text, launchedFromHistory = false): Boolean` — `true`, когда ссылка принята (`AskSignIn`, `OpenHostJam`, `ShowGuest`, `OpenGuest`). Обратное исключение (D1): `JamViewModel.start()` во время гостевой сессии — тост `jam_host_while_guest`, джем не создаётся. `NoSecret` (GUEST-05) сессией не считается: членства нет и ничего не соединено, поэтому системное «назад» вместо «Закрыть» не мешает начать джем и не делает строку «Джем» библиотеки гостевой.
 
 **`JamGuestScreen`** по `GuestPhase`:
 
@@ -150,14 +150,15 @@ val GuestPhase.isSession: Boolean   // isActive, NeedName или NoSecret
 | `None` | `JoinJamSection` |
 | `NeedName` | приглашение `jam_guest_invited`, сервер ссылки моноширинным, поле имени, «Войти» (`join`; отказ — тост `jam_guest_name_invalid`), «Отмена». Имя (GUEST-02) — `lastName`, иначе `displayName` или `login` аккаунта, через `GuestNames.prefill` (≤ 24 кодовых точки) |
 | `Joining`, а также `InRoom` до первого `state` | `jam_guest_joining` и «Отмена» |
-| `InRoom`, `WaitingForRoom` | комната |
+| `WaitingForRoom` без комнаты | строка состояния `jam_guest_waiting_for_room` вместо `jam_guest_joining` и «Отмена» (GUEST-16) |
+| `InRoom`, `WaitingForRoom` с комнатой | комната |
 | `NoSecret`, `Refused`, `Ended`, `Kicked`, `UpdateRequired` | `GuestPhase.endText()` и «Закрыть» |
 
 «Отмена», «Закрыть» и «Выйти» — `jamGuest.leave()` (закрытие 1000, членство остаётся, GUEST-18) и `Screen.PLAYER`.
 
 **Комната** (`LazyColumn`: очередь бывает до 300 элементов):
 - Шапка «Джем · <хозяин>» и светодиод: `connected` — «На связи», соединение открыто или открывается — «Подключаюсь…», иначе «Нет связи». В концах сессии светодиода нет.
-- Строка состояния: `WaitingForRoom` — `jam_guest_waiting_for_room` (GUEST-16); нет `connected` — `jam_offline_strip` (GUEST-15); `!hostOnline` — `jam_guest_host_offline` (GUEST-09).
+- Строка состояния — `JamGuestState.statusText()` (`JamEventTextTest`), первая подходящая: `WaitingForRoom` — `jam_guest_waiting_for_room` (GUEST-16), с комнатой и без; дальше только `InRoom` с комнатой: нет `connected` — `jam_offline_strip` (GUEST-15); `!hostOnline` — `jam_guest_host_offline` (GUEST-09); иначе строки нет.
 - «Сейчас играет» (GUEST-14): обложка 64 dp (`JamTracks.fromJam(track).coverUrl`; у трека `source: host` обложки нет), название, исполнители и кто добавил: у `ITEM` — «Добавлено вами» или имя из `participants` (неизвестный — «кто-то»), у `WAVE` — `jam_guest_from_host` (D9). Время — `formatTime(positionMsAt(serverNow()))` из `jam/`, тикает раз в секунду (`LaunchedEffect` экрана; `serverNow` — часы сервера) и стоит на паузе. `IDLE` — `jam_guest_silence`. Справа ♥ (GUEST-12; только у трека каталога) и «Пропустить», пока `JamGuestState.canSkip` (GUEST-11).
 - «Добавить треки» → `JAM_GUEST_ADD`. Без связи или без хозяина приглушена, но открывается: списки работают и так (D10).
 - Очередь в порядке игры: «Очередь» и «Ваши N/max» (`waitingOfYours`, `maxPendingPerGuest`); свои строки — акцентом и с «×» (`remove`, GUEST-10; для TalkBack — `jam_guest_remove`), чужие — с именем добавившего; закреплённые — «следующий»; пусто — `jam_guest_queue_empty`; на пределе — plurals `jam_guest_limit_hint`.
@@ -202,6 +203,7 @@ fun setLikedFilter(text: String);  fun openPlaylist(playlist: PlaylistRef);  fun
 - `graph.jamGuest` живёт на `Dispatchers.Main.immediate`: его зовут с главного потока (view model, колбэки Compose).
 - `jamGuest.open(link)` для знакомой комнаты подключается сразу, поэтому ссылку до входа держит `AppViewModel.pendingLink`, а не `JamGuest`.
 - `savedInstanceState == null` от повтора ссылки не спасает. Ссылка, запустившая приложение, становится базовым `Intent` задачи; на Android 8–11 «назад» с «Плеера» закрывает активность, и «Недавние» запускают её заново с тем же `Intent`, флагом `FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY` и пустым состоянием. Без проверки флага гость после «Выйти» молча вошёл бы снова: членство осталось, а знакомая комната входит сразу.
+- Ожидание комнаты бывает и без комнаты на экране. `open(link)` и `restore()` начинают сессию без `room`, а `state` до `joined` не принимается, поэтому `room-not-found` на первый же `join` ждёт с пустой комнатой. Так выходит, когда ссылку открывают заново после «Выйти», после заморозки приложения в фоне или после `ended{expired}`, и после перезапуска (GUEST-19). Без `statusText()` на экране без комнаты эти 10 минут выглядели бы как «Вхожу…».
 - `restore()` даёт `true` и для конца сессии, который ещё не закрыли кнопкой (фаза не `None`), — тогда стартовый экран показывает текст конца.
 - Ключей у строк списков треков нет: в плейлисте один трек может стоять дважды, а одинаковые ключи `LazyColumn` роняют приложение.
 

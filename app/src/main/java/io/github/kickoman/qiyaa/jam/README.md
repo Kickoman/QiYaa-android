@@ -206,8 +206,8 @@ ROOM-56). `current` без своего членства — `null`. В прил
 (`filesDir/jam-guest.json`, `AtomicFile`).
 
 **Ловушки:**
-- В файле секреты: `joinSecret` и `participantId`. Он приватный, резервное копирование отключено (`allowBackup=false`,
-  `data_extraction_rules`), но в лог содержимое не писать.
+- В файле секреты: `joinSecret` и `participantId`. Он приватный и не уходит ни в облачную копию, ни на новое
+  устройство (`data/README.md`, «Резервное копирование»), но в лог содержимое не писать.
 - Членство не забывается ни по `kicked`, ни по `ended`, ни по истёкшему ожиданию комнаты (GUEST-03, GUEST-17): только
   `clear()` и 12 ч. По тому же `participantId` сервер после кика снова ответит `rejected{kicked}` (ROOM-08).
 

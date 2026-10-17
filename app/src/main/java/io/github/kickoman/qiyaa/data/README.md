@@ -1,6 +1,6 @@
 # `data/` — сохранение настроек
 
-Всё, что переживает перезапуск: пользовательские настройки и OAuth-токен в приватных `SharedPreferences` приложения (`MODE_PRIVATE`), очередь — в файле `queue.json` во внутренней памяти. Резервное копирование отключено в манифесте. Пакет **не** применяет настройки к плееру: EQ и баланс в `AudioBus` передаёт `AppGraph` (подписки на `StateFlow` в `applicationScope`), громкость — `playback/PlaybackService`. Экраны только меняют настройки.
+Всё, что переживает перезапуск: пользовательские настройки и OAuth-токен в приватных `SharedPreferences` приложения (`MODE_PRIVATE`), очередь и джем — в файлах `queue.json`, `jam.json` и `jam-guest.json` во внутренней памяти (`filesDir`); что из этого уходит в копии и на другое устройство — в «Резервном копировании» ниже. Пакет **не** применяет настройки к плееру: EQ и баланс в `AudioBus` передаёт `AppGraph` (подписки на `StateFlow` в `applicationScope`), громкость — `playback/PlaybackService`. Экраны только меняют настройки.
 
 | Файл | Содержит |
 |---|---|
@@ -12,6 +12,20 @@
 | `JamFile.kt` | `JamFile` — сессия хозяина джема (`jam.json`) и членства гостя (`jam-guest.json`) |
 | `AccentTheme.kt` | `AccentTheme` — три акцентные темы |
 | `VisualizerMode.kt` | `VisualizerMode` — спектр / осциллограф / выкл |
+
+## Резервное копирование
+
+`allowBackup="false"` и `fullBackupContent="false"` в манифесте выключают облачную копию и `adb backup` на всех версиях Android, а на Android 8–11 и перенос на новое устройство. На Android 12 и новее перенос с устройства на устройство `allowBackup` не выключает: что не переносится, решает `res/xml/data_extraction_rules.xml` (`dataExtractionRules`). Его исключения (одни и те же в `<cloud-backup>` и `<device-transfer>`):
+
+| Домен | Путь | Что это |
+|---|---|---|
+| `sharedpref` | `.` | все `SharedPreferences`: токен (`auth`) и настройки (`settings`) |
+| `file` | `jam-guest.json`, `jam-guest.json.new` | членства гостя с секретами входа (`JamFile.GUEST`); `.new` — недописанная копия `AtomicFile` |
+
+`queue.json` и `jam.json` при переносе на Android 12+ уезжают на новое устройство. В `jam.json` — `hostSecret` и `joinUrl` с секретом входа идущего джема (`jam/README.md`, HOST-22).
+
+**Traps:**
+- Новый файл с токеном или секретами нужно добавить в обе секции `data_extraction_rules.xml`: `allowBackup="false"` его от переноса на Android 12+ не спасёт. Путь — без масок, поэтому временные файлы `AtomicFile` (`<имя>.new`) перечисляются отдельно.
 
 ## `Settings`
 
@@ -71,8 +85,9 @@ class JamFile(context: Context, name: String = HOST) {
 | `jam.json` (`HOST`) | сессия хозяина джема | `jam/JamSessionCodec` | джем закончился |
 | `jam-guest.json` (`GUEST`) | членства гостя в чужих комнатах и открытая сессия | `jam/JamGuestCodec` | выход из аккаунта |
 
-`AppGraph` оборачивает каждый файл в `jam.JamStore`. В `jam-guest.json` есть секреты (`joinSecret`, `participantId`);
-файл приватный, резервное копирование отключено.
+`AppGraph` оборачивает каждый файл в `jam.JamStore`. В `jam-guest.json` есть секреты (`joinSecret`, `participantId`):
+он не уходит ни в облачную копию, ни на новое устройство; `jam.json` при переносе на Android 12+ уезжает
+(«Резервное копирование» выше).
 
 ## `AccentTheme`, `VisualizerMode`, `AudioQuality`
 

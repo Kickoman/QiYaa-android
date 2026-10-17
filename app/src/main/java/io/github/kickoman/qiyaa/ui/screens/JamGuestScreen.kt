@@ -78,6 +78,7 @@ import io.github.kickoman.qiyaa.ui.endText
 import io.github.kickoman.qiyaa.ui.formatTime
 import io.github.kickoman.qiyaa.ui.guestRefusedText
 import io.github.kickoman.qiyaa.ui.render
+import io.github.kickoman.qiyaa.ui.statusText
 import io.github.kickoman.qiyaa.ui.theme.CaptionStyle
 import io.github.kickoman.qiyaa.ui.theme.HintStyle
 import io.github.kickoman.qiyaa.ui.theme.LabelStyle
@@ -146,8 +147,8 @@ fun JamGuestScreen(
         }
         GuestPhase.NeedName -> NameStep(viewModel, state, onCancel = close)
         GuestPhase.InRoom, GuestPhase.WaitingForRoom ->
-            if (room != null) Room(viewModel, state, room, onAdd, onLeft = close) else Joining(state, close)
-        GuestPhase.Joining -> Joining(state, close)
+            if (room != null) Room(viewModel, state, room, onAdd, onLeft = close) else NoRoom(state, close)
+        GuestPhase.Joining -> NoRoom(state, close)
         else -> phase.endText()?.let { EndStep(state, stringResource(it), close) }
     }
 }
@@ -239,15 +240,20 @@ private fun NameStep(viewModel: JamGuestViewModel, state: JamGuestState, onCance
 }
 
 @Composable
-private fun Joining(state: JamGuestState, onCancel: () -> Unit) {
+private fun NoRoom(state: JamGuestState, onCancel: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         GuestHeader(state)
-        QiText(
-            stringResource(R.string.jam_guest_joining).uppercase(),
-            ReadoutStyle,
-            Modifier.padding(start = 16.dp, end = 16.dp, top = 24.dp),
-            color = Qi.colors.muted,
-        )
+        val status = state.statusText()
+        if (status != null) {
+            StatusLine(stringResource(status))
+        } else {
+            QiText(
+                stringResource(R.string.jam_guest_joining).uppercase(),
+                ReadoutStyle,
+                Modifier.padding(start = 16.dp, end = 16.dp, top = 24.dp),
+                color = Qi.colors.muted,
+            )
+        }
         ActionButton(
             stringResource(R.string.jam_cancel).uppercase(),
             Modifier.padding(16.dp).fillMaxWidth(),
@@ -309,7 +315,7 @@ private fun Room(
 
     LazyColumn(Modifier.fillMaxSize()) {
         item { GuestHeader(state) }
-        item { RoomStatus(state, room) }
+        item { state.statusText()?.let { StatusLine(stringResource(it)) } }
         item {
             NowPlaying(
                 viewModel,
@@ -370,18 +376,6 @@ private fun Room(
             }
         }
     }
-}
-
-@Composable
-private fun RoomStatus(state: JamGuestState, room: JamRoom) {
-    val text =
-        when {
-            state.phase == GuestPhase.WaitingForRoom -> R.string.jam_guest_waiting_for_room
-            !state.connected -> R.string.jam_offline_strip
-            !room.hostOnline -> R.string.jam_guest_host_offline
-            else -> return
-        }
-    StatusLine(stringResource(text))
 }
 
 @Composable
@@ -652,12 +646,9 @@ fun JamGuestAddScreen(viewModel: JamGuestViewModel, onBack: () -> Unit) {
 @Composable
 private fun AddStatus(state: JamGuestState) {
     val room = state.room
+    val status = state.statusText()
     when {
-        state.phase == GuestPhase.WaitingForRoom -> StatusLine(
-            stringResource(R.string.jam_guest_waiting_for_room),
-        )
-        !state.connected -> StatusLine(stringResource(R.string.jam_offline_strip))
-        room != null && !room.hostOnline -> StatusLine(stringResource(R.string.jam_guest_host_offline))
+        status != null -> StatusLine(stringResource(status))
         room != null && state.waitingOfYours >= room.settings.maxPendingPerGuest -> {
             val max = room.settings.maxPendingPerGuest
             Note(pluralStringResource(R.plurals.jam_guest_limit_hint, max, max), Qi.colors.accent)

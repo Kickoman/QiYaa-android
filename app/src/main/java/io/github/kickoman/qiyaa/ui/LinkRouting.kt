@@ -32,7 +32,7 @@ sealed interface LinkAction {
 }
 
 val GuestPhase.isSession: Boolean
-    get() = isActive || this == GuestPhase.NeedName || this == GuestPhase.NoSecret
+    get() = isActive || this == GuestPhase.NeedName
 
 fun route(
     link: JamLink?,

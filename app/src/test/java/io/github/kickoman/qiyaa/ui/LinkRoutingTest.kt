@@ -123,9 +123,8 @@ class LinkRoutingTest {
     }
 
     @Test
-    fun `GUEST-20 a guest session lasts from the link to its end`() {
+    fun `GUEST-20 GUEST-05 a session lasts from the link to its end, a link with no secret opens none`() {
         for (phase in listOf(
-            GuestPhase.NoSecret,
             GuestPhase.NeedName,
             GuestPhase.Joining,
             GuestPhase.InRoom,
@@ -135,6 +134,7 @@ class LinkRoutingTest {
         }
         for (phase in listOf(
             GuestPhase.None,
+            GuestPhase.NoSecret,
             GuestPhase.Refused("bad-secret"),
             GuestPhase.Ended(EndReason.HOST_ENDED),
             GuestPhase.Kicked,
