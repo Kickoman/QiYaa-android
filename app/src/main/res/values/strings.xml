@@ -57,6 +57,10 @@
     <string name="playlist_loading_more_toast">Loading more tracks…</string>
     <string name="playlist_selected">SELECTED</string>
     <string name="playlist_tap_hint">TAP NUMBER TO SELECT</string>
+    <string name="playlist_hold_hint">HOLD A LINE FOR LIKE, DISLIKE, OPEN</string>
+    <string name="playlist_actions">Track actions</string>
+    <string name="playlist_unlike">REMOVE FROM LIKED</string>
+    <string name="playlist_open">OPEN IN BROWSER</string>
     <string name="playlist_add" translatable="false">ADD</string>
     <string name="playlist_rem" translatable="false">REM</string>
     <string name="playlist_all">ALL</string>
@@ -129,6 +133,7 @@
     <string name="queue_liked">Added to Liked</string>
     <string name="queue_unliked">Removed from Liked</string>
     <string name="queue_disliked">Disliked · skipping</string>
+    <string name="queue_disliked_only">Disliked</string>
     <string name="queue_wave_error">Vibe error: %1$s</string>
     <string name="queue_wave_more_error">Vibe: %1$s</string>
     <string name="queue_search_error">Search error: %1$s</string>

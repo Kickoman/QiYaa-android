@@ -131,13 +131,29 @@ class QueueFeedbackTest {
         val harness = wave(this, "w1", "w2", "w3")
         harness.engine.startPlaying()
         advanceTimeBy(3_000)
-        harness.controller.dislikeAndSkip(harness.engine.tracks[0])
+        harness.controller.dislike(harness.engine.tracks[0])
         runCurrent()
         assertEquals(
             listOf("skip ${ctx(first)} w1 3.0", "trackStarted ${ctx(first)} w2 0.0"),
             harness.source.feedback.takeLast(2),
         )
         assertEquals(1, harness.engine.currentIndex)
+    }
+
+    @Test
+    fun `TRK-07 TR-10 a dislike of another line of the current wave track closes it with a skip`() = runTest {
+        val harness = wave(this, "w1", "w2", "w1")
+        harness.engine.startPlaying()
+        advanceTimeBy(3_000)
+        harness.controller.dislike(harness.controller.state.value.tracks[2])
+        runCurrent()
+        assertTrue(harness.source.calls.contains("dislike w1"))
+        assertEquals(
+            listOf("skip ${ctx(first)} w1 3.0", "trackStarted ${ctx(first)} w2 0.0"),
+            harness.source.feedback.takeLast(2),
+        )
+        assertEquals(1, harness.engine.currentIndex)
+        assertEquals(QueueEvent.DislikedAndSkipped, harness.events.last())
     }
 
     @Test

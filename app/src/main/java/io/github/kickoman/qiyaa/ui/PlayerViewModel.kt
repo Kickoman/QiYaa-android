@@ -46,6 +46,8 @@ data class PlayerUi(
     val isBuffering: Boolean get() = playbackState == Player.STATE_BUFFERING && playWhenReady
 }
 
+data class TrackActions(val track: Track, val liked: Boolean, val isCurrent: Boolean)
+
 class PlayerViewModel(application: Application) : AndroidViewModel(application) {
     private val graph = application.appGraph
     val settings = graph.settings
@@ -63,6 +65,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     private val mutablePresetsOpen = MutableStateFlow(false)
     val presetsOpen: StateFlow<Boolean> = mutablePresetsOpen.asStateFlow()
+
+    private val mutableTrackActions = MutableStateFlow<TrackActions?>(null)
+    val trackActions: StateFlow<TrackActions?> = mutableTrackActions.asStateFlow()
 
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var controller: MediaController? = null
@@ -169,7 +174,32 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun dislikeCurrent() {
-        mutableUi.value.current?.let(queue::dislikeAndSkip)
+        mutableUi.value.current?.let(queue::dislike)
+    }
+
+    fun showTrackActions(track: Track) {
+        mutableTrackActions.value =
+            TrackActions(
+                track = track,
+                liked = track.id in library.likedIds.value,
+                isCurrent = track.id == mutableUi.value.current?.id,
+            )
+    }
+
+    fun closeTrackActions() {
+        mutableTrackActions.value = null
+    }
+
+    fun likeOrUnlikePicked() {
+        val picked = mutableTrackActions.value ?: return
+        closeTrackActions()
+        queue.setLiked(picked.track, !picked.liked)
+    }
+
+    fun dislikePicked() {
+        val picked = mutableTrackActions.value ?: return
+        closeTrackActions()
+        queue.dislike(picked.track)
     }
 
     fun setEqEnabled(on: Boolean) = settings.setEq(settings.eq.value.copy(enabled = on), eqPreset.value)

@@ -664,27 +664,38 @@ class QueueController(
     }
 
     fun toggleLike(track: Track) {
-        val liked = source.isLiked(track.id)
+        setLiked(track, !source.isLiked(track.id))
+    }
+
+    fun setLiked(track: Track, liked: Boolean) {
         scope.launch {
             try {
-                withContext(io) { source.setLiked(track.id, !liked) }
-                emit(QueueEvent.LikeChanged(liked = !liked))
+                withContext(io) { source.setLiked(track.id, liked) }
+                emit(QueueEvent.LikeChanged(liked = liked))
             } catch (failed: Exception) {
                 fail(Stage.LIKE, failed)
             }
         }
     }
 
-    fun dislikeAndSkip(track: Track) {
+    fun dislike(track: Track) {
+        if (currentTrack()?.id == track.id) dislikeAndSkip(track) else sendDislike(track, QueueEvent.Disliked)
+    }
+
+    private fun dislikeAndSkip(track: Track) {
+        sendDislike(track, QueueEvent.DislikedAndSkipped)
+        next()
+    }
+
+    private fun sendDislike(track: Track, done: QueueEvent) {
         scope.launch {
             try {
                 withContext(io) { source.dislike(track.id) }
-                emit(QueueEvent.DislikedAndSkipped)
+                emit(done)
             } catch (failed: Exception) {
                 fail(Stage.LIKE, failed)
             }
         }
-        next()
     }
 
     fun currentWaveSeed(): String? =
@@ -695,7 +706,7 @@ class QueueController(
     }
 
     fun dislikeCurrent() {
-        currentTrack()?.let(::dislikeAndSkip)
+        currentTrack()?.let(::dislike)
     }
 
     private fun currentTrack(): Track? = currentEntry()?.track

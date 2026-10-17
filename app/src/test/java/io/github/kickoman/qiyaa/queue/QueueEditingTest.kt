@@ -3,12 +3,15 @@ package io.github.kickoman.qiyaa.queue
 import io.github.kickoman.qiyaa.support.QueueHarness
 import io.github.kickoman.qiyaa.support.QueueHarness.Companion.track
 import io.github.kickoman.qiyaa.support.QueueHarness.Companion.tracks
+import io.github.kickoman.qiyaa.support.QueueHarness.Companion.wave
 import io.github.kickoman.qiyaa.yandex.WaveBatch
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -97,11 +100,11 @@ class QueueEditingTest {
         val harness = QueueHarness(this)
         harness.controller.loadSource("Liked") { tracks("a", "b") }
         runCurrent()
-        harness.controller.dislikeAndSkip(track("a"))
+        harness.controller.dislike(track("a"))
         runCurrent()
         assertEquals(1, harness.engine.currentIndex)
         assertEquals(QueueEvent.DislikedAndSkipped, harness.events.last())
-        harness.controller.dislikeAndSkip(track("b"))
+        harness.controller.dislike(track("b"))
         runCurrent()
         assertEquals(listOf("pause", "seek to 0"), harness.engine.commands.takeLast(2))
         assertEquals(1, harness.engine.currentIndex)
@@ -116,11 +119,99 @@ class QueueEditingTest {
         runCurrent()
         harness.source.calls.clear()
         harness.source.onMoreWave = { _, _ -> CompletableDeferred<WaveBatch>().await() }
-        harness.controller.dislikeAndSkip(track("w1"))
+        harness.controller.dislike(track("w1"))
         runCurrent()
         assertEquals(listOf("dislike w1", "moreWave S1 [w1]"), harness.source.calls.sorted())
         assertEquals(0, harness.engine.currentIndex)
     }
+
+    @Test
+    fun `TR-10 a dislike of a track that is not current sends only the dislike, no Next and no wave skip`() =
+        runTest {
+            val harness = wave(this, "w1", "w2", "w3")
+            harness.engine.startPlaying()
+            advanceTimeBy(3_000)
+            runCurrent()
+            val commands = harness.engine.commands.toList()
+            val feedback = harness.source.feedback.toList()
+            val reports = harness.source.reports.toList()
+            harness.source.calls.clear()
+            harness.controller.dislike(harness.engine.tracks[2])
+            runCurrent()
+            assertEquals(listOf("dislike w3"), harness.source.calls)
+            assertEquals(QueueEvent.Disliked, harness.events.last())
+            assertFalse(QueueEvent.DislikedAndSkipped in harness.events)
+            assertEquals(0, harness.engine.currentIndex)
+            assertTrue(harness.engine.playing)
+            assertEquals(commands, harness.engine.commands)
+            assertEquals(feedback, harness.source.feedback)
+            assertEquals(reports, harness.source.reports)
+            assertEquals(listOf("w1", "w2", "w3"), harness.controller.state.value.tracks.map { it.id })
+        }
+
+    @Test
+    fun `TR-10 TR-07 the current track disliked from its own line or another copy dislikes and skips`() =
+        runTest {
+            val harness = QueueHarness(this)
+            harness.controller.loadSource("Liked") { tracks("a", "b", "a", "c") }
+            runCurrent()
+            val lines = harness.controller.state.value.tracks
+            harness.controller.dislike(lines[2].copy(albumId = "another album"))
+            runCurrent()
+            assertEquals(1, harness.engine.currentIndex)
+            assertEquals(QueueEvent.DislikedAndSkipped, harness.events.last())
+            harness.controller.dislike(lines[1])
+            runCurrent()
+            assertEquals(2, harness.engine.currentIndex)
+            assertEquals(QueueEvent.DislikedAndSkipped, harness.events.last())
+            assertEquals(listOf("dislike a", "dislike b"), harness.source.calls)
+        }
+
+    @Test
+    fun `TR-10 a paused current track is current too, so its dislike skips`() = runTest {
+        val harness = QueueHarness(this)
+        harness.controller.loadSource("Liked") { tracks("a", "b") }
+        runCurrent()
+        harness.engine.startPlaying()
+        harness.engine.pause()
+        harness.controller.dislike(track("a"))
+        runCurrent()
+        assertEquals(1, harness.engine.currentIndex)
+        assertEquals(QueueEvent.DislikedAndSkipped, harness.events.last())
+        assertEquals(listOf("dislike a"), harness.source.calls)
+    }
+
+    @Test
+    fun `TR-10 a track that stopped being current before the action only gets the dislike`() = runTest {
+        val harness = QueueHarness(this)
+        harness.controller.loadSource("Liked") { tracks("a", "b", "c") }
+        runCurrent()
+        harness.engine.startPlaying()
+        val picked = harness.controller.state.value.tracks[0]
+        harness.engine.finishTrack()
+        val commands = harness.engine.commands.toList()
+        harness.controller.dislike(picked)
+        runCurrent()
+        assertEquals(1, harness.engine.currentIndex)
+        assertEquals(commands, harness.engine.commands)
+        assertEquals(QueueEvent.Disliked, harness.events.last())
+        assertEquals(listOf("dislike a"), harness.source.calls)
+    }
+
+    @Test
+    fun `a like from the playlist sends the state the user saw, even if the liked set changed meanwhile`() =
+        runTest {
+            val harness = QueueHarness(this)
+            harness.source.liked += "a"
+            harness.controller.setLiked(track("a"), liked = true)
+            runCurrent()
+            assertEquals(QueueEvent.LikeChanged(liked = true), harness.events.last())
+            harness.source.liked -= "a"
+            harness.controller.setLiked(track("a"), liked = false)
+            runCurrent()
+            assertEquals(QueueEvent.LikeChanged(liked = false), harness.events.last())
+            assertEquals(listOf("setLiked a true", "setLiked a false"), harness.source.calls)
+        }
 
     @Test
     fun `a like from the notification goes to the current track`() = runTest {

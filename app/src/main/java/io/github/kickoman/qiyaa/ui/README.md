@@ -21,7 +21,7 @@ ui/
 | `MainActivity.kt` | `MainActivity` — язык интерфейса (`applyOverrideConfiguration` в `attachBaseContext`), `setContent { AppRoot() }` и запрос `POST_NOTIFICATIONS` на Android 13+ |
 | `AppViewModel.kt` | `Screen`, `LibrarySection`, `LoginStatus`, `LoginUi`, `LibraryUi`, `AppViewModel`, `PlaylistRef.sourceId` |
 | `ListLoader.kt` | `ListState` (`Idle`, `Loading`, `Loaded(items)`, `Failed(error)`), `ListLoader` — загрузка одного списка библиотеки со своей ошибкой и повтором |
-| `PlayerViewModel.kt` | `PlayerUi`, `PlayerViewModel`, `AccentTheme.labelId` |
+| `PlayerViewModel.kt` | `PlayerUi`, `TrackActions`, `PlayerViewModel`, `AccentTheme.labelId` |
 | `JamViewModel.kt` | `JamUi`, `JamViewModel` — хозяин джема для экранов: `playback/JamHost`, поиск треков для джема, настройки `jam/*` |
 | `JamEventText.kt` | `JamHostEvent.render(context)`, `refusedText(reason)` — отказы сервера и конец джема → строки |
 | `QueueEventText.kt` | `QueueEvent.render(context)` — событие очереди → строка из ресурсов |
@@ -33,7 +33,7 @@ ui/
 | `components/QrCode.kt` | `QrCodeImage` — QR (qrcodegen, коррекция M) тёмным по белому с полями в 4 модуля |
 | `screens/LoginScreen.kt` | `LoginScreen` |
 | `screens/PlayerScreen.kt` | `PlayerScreen`, `marqueeText`, `queueTitle` |
-| `screens/PlaylistScreen.kt` | `PlaylistScreen` |
+| `screens/PlaylistScreen.kt` | `PlaylistScreen`, `TrackActionsSheet` — лист действий с треком строки |
 | `screens/EqScreen.kt` | `EqScreen`, `PresetsSheet` |
 | `screens/LibraryScreen.kt` | `LibraryScreen` |
 | `screens/JamScreen.kt` | `JamScreen`, `JamSettingsScreen`, `JamContinueDialog` |
@@ -55,6 +55,19 @@ ui/
 
 `next()` и `previous()` вызывают `seekToNext`/`seekToPrevious` у `MediaController`, `stop()` — `queue.stop()`; правила (3 с, конец очереди, конец волны) живут в `queue/QueueController` и одинаковы для приложения, уведомления и гарнитуры (см. `playback/README.md`, «Один хозяин плеера»). «Loading more…» показывает событие `QueueEvent.LoadingMore`.
 
+**Лайк и дизлайк.** ♥ экрана плеера и библиотеки — `toggleLikeCurrent()` → `queue.toggleLike(ui.current)`. Их дизлайк — `dislikeCurrent()` → `queue.dislike(ui.current)`: запрос уходит показанному треку, а «вперёд» — только если он ещё текущий, когда очередь получает вызов (TR-10, `queue/README.md`, «Дизлайк»). Нажатие во время смены трека дизлайкает показанный (старый) трек и не пропускает новый.
+
+**Действия с треком плейлиста** (Kickoman/QiYaa-android#84, TR-10):
+
+```kotlin
+data class TrackActions(val track: Track, val liked: Boolean, val isCurrent: Boolean)
+val trackActions: StateFlow<TrackActions?>
+fun showTrackActions(track: Track);  fun closeTrackActions()
+fun likeOrUnlikePicked();  fun dislikePicked()
+```
+
+`trackActions` — открытый лист, `null` — закрыт. `showTrackActions(track)` захватывает трек строки и оба флага в момент долгого нажатия: `liked` — по `library.likedIds` (тот же набор, что у ♥ плеера и у уведомления), `isCurrent` — `track.id == ui.value.current?.id` (тот же трек, что подсвечен в плейлисте и показан на экране плеера). Дальше лист из очереди ничего не перечитывает: под открытым листом строки могут сдвинуться (догрузка волны, правки джема), а действие должно уйти тому треку, что показан. `likeOrUnlikePicked()` — `queue.setLiked(track, !liked)`: шлёт состояние, которое видел пользователь, а не переключение, как `setLiked(key, !liked)` на десктопе. `dislikePicked()` — `queue.dislike(track)`: очередь заново решает в момент действия, текущий ли трек. Оба сначала закрывают лист, а при закрытом листе ничего не делают, поэтому второй тап по строке листа второго запроса не шлёт.
+
 **Traps:**
 - Обе view model — `AndroidViewModel` с областью Activity; `PlayerViewModel.onCleared` освобождает контроллер.
 - `PlayerUi.durationMs` берёт длительность из `MediaItem.extras`, пока ExoPlayer её не знает.
@@ -64,7 +77,7 @@ ui/
 
 `AppRoot` при `SessionState.Offline` показывает над экраном строку `session_offline` («НЕТ СЕТИ · ПОВТОРЮ САМ») с красным `LedDot`; на экране входа строки нет. Повторы идут сами, кнопки «повторить» нет.
 
-**«Назад».** `Screen.backTarget`: с вкладок EQ, Плейлист и Библиотека — на вкладку «Плеер» (`AppRoot`, `BackHandler`), с «Плеера» и экрана входа — системное поведение, то есть выход из приложения. Обработчики, объявленные позже, важнее: открытый раздел библиотеки сначала закрывается (`LibrarySectionScreen`), открытый лист пресетов EQ — тоже (`closePresets`), и только потом срабатывает переход на «Плеер».
+**«Назад».** `Screen.backTarget`: с вкладок EQ, Плейлист и Библиотека — на вкладку «Плеер» (`AppRoot`, `BackHandler`), с «Плеера» и экрана входа — системное поведение, то есть выход из приложения. Обработчики, объявленные позже, важнее: открытый раздел библиотеки сначала закрывается (`LibrarySectionScreen`), открытый лист пресетов EQ — тоже (`closePresets`), лист действий с треком — тоже (`closeTrackActions`, объявлен после пресетов), и только потом срабатывает переход на «Плеер».
 
 `PlaylistScreen` показывает внизу списка строку `playlist_loading_more`, пока `QueueState.loadingMore`, а не всё время, пока играет волна. Когда это так, решает очередь (`queue/README.md`, «Ждёт продолжения»): у своей волны — пока идёт догрузка, у волны по истории — только пока очередь ждёт её треков после конца головы; тихий запрос за два трека до конца головы строку не показывает (CONT-04: без статуса).
 
@@ -145,6 +158,23 @@ key(trackId) { HorizontalSlider(value = fraction, onChange = …, onChangeFinish
 
 `EqScreen`: подписи полос `BAND_LABELS` живут здесь, а не в `audio`. График соединяет значения полос в координатах макета (x = 10 + i·344/9 из 364, y = 44 ∓ 36 из 88). `PresetsSheet` рисуется поверх всего приложения из `AppRoot`.
 
+**Долгое нажатие на строку плейлиста.** Строка — `combinedClickable` без индикации (как `Chip`, отсюда `@OptIn(ExperimentalFoundationApi::class)` на `PlaylistScreen`): тап играет строку, долгое нажатие — `showTrackActions(track)`; `onLongClickLabel = playlist_actions`: без неё TalkBack предлагает безымянное долгое нажатие. Номер слева — свой `tap` внутри строки и получает касание первым: тап по номеру выделяет строку, долгое нажатие на номер лист не открывает. Подсказка `playlist_hold_hint` стоит отдельной строкой под «ВЫБРАНО n · m:ss / h:mm:ss». Оценка по ширине знака `HintStyle` (около 7,6 dp, не замер на устройстве): справа от счётчика, рядом с `playlist_tap_hint`, ей осталось бы 120–190 dp на телефоне 360–412 dp, то есть 2–3 строки; в своей строке ей нужно около 266 dp по-английски, 296 по-русски и 319 по-белорусски, и на 360 dp (328 dp внутри отступов) она помещается в одну.
+
+`TrackActionsSheet(actions, viewModel)` рисуется из `AppRoot` поверх всего приложения, включая мини-плеер и вкладки, пока `trackActions != null`: затемнение (тап закрывает) и панель снизу — название и исполнители трека и три строки:
+
+| Строка | Подпись | Действие |
+|---|---|---|
+| лайк | `player_like` с контуром сердца или `playlist_unlike` с залитым, по `liked` | `likeOrUnlikePicked()` |
+| дизлайк | `player_dislike_skip`, когда `isCurrent`, иначе `library_dislike` | `dislikePicked()` |
+| браузер | `playlist_open` | `Intent.ACTION_VIEW` с `track.webUrl`, как кнопка библиотеки; `Intent` нужен `Context`, поэтому живёт в листе |
+
+У строк `Role.Button`, подпись строки — её текст для TalkBack. Панель листа — `paneTitle = playlist_actions`, поэтому TalkBack объявляет лист, когда тот открывается. Каждое действие закрывает лист; «назад» — тоже (`BackHandler` в `AppRoot`).
+
+**Traps (`TrackActionsSheet`):**
+- Панель получает `navigationBarsPadding()` после фона. `MainActivity` включает `enableEdgeToEdge()`, а `AppRoot` отступает от системных полос только в колонке экранов; лист рисуется вне её, и без отступа последняя строка (браузер) легла бы под трёхкнопочную навигацию (48 dp), где тапы уходят системе.
+- Панель ловит касания сама (`pointerInput { detectTapGestures() }`): иначе тап по названию трека прошёл бы к затемнению под ней и закрыл лист.
+- Подпись дизлайка выбирается при открытии листа, а очередь решает при нажатии. Если текущий трек сменился, пока лист открыт, подпись может разойтись с тем, что произойдёт, в любую сторону; поведение при этом верное (TR-10), и десктоп устроен так же: подпись строится вместе с меню, проверка идёт при действии.
+
 **Списки библиотеки.** Каждый список грузит свой `ListLoader` в своей корутине на `Dispatchers.IO`, поэтому списки приходят параллельно, и упавший или зависший список не держит остальные.
 
 ```kotlin
@@ -174,7 +204,7 @@ class ListLoader<T>(scope: CoroutineScope, io: CoroutineContext, fetch: suspend 
 
 **Качество звука** (`spec/player/quality.md`). Внизу библиотеки, над выбором языка: заголовок `quality_title`, строки «Wi-Fi» (`quality_wifi`) и «Мобильная сеть» (`quality_mobile`) с двумя `PillToggle` — `quality_standard` и `quality_economy` — и пояснение `quality_note`. Выбор уходит в `AppViewModel.setQuality` / `setQualityMetered` и действует со следующей подписи ссылки (см. `playback/README.md`, кэш ссылок). Примечание к «Слушать вместе» (`jam_share_audio_note`) говорит, что слушатели получают файлы только при стандартном качестве (LISTEN-13).
 
-**Язык интерфейса — свой, не системный.** `data/Settings.language` (по умолчанию белорусский). `AppLocale` даёт его приложению и `PlaybackService` в `attachBaseContext` (контекст с локалью) и активности — через `applyOverrideConfiguration`, чтобы она по-прежнему следила за экраном и тёмной темой. `LanguageSwitch` (коды `BE RU EN`, текущий подсвечен) стоит на экране входа (сменить язык можно до входа) и внизу библиотеки с подписью `language_title` и английским словом «LANGUAGE», чтобы непонятный язык можно было отменить. Выбор: `AppViewModel.setLanguage` сохраняет язык и переводит ресурсы приложения (`AppLocale.apply`), экран пересоздаёт активность; сервис перестраивает кнопки уведомления под новый язык. Системная смена конфигурации сбрасывает локаль ресурсов приложения и сервиса — `onConfigurationChanged` применяет язык заново. В сборке `bundle.language.enableSplit = false`: все языки должны быть в установке. Ключи `jam_*` — экраны джема; `toggle_on` / `toggle_off` — подписи `OnOffPills` по умолчанию (до #79 — `jam_on` / `jam_off`, тексты те же: On / Off, Да / Нет, Так / Не); `vibe_continue_*` — «Продолжать волной» в плейлисте и библиотеке; `jam_refused_*` — причины отказа сервера, неизвестная причина — `jam_refused_other`. Ключи `queue_*` рендерят `QueueEvent` (в том числе `queue_waiting_for_network` и plurals `queue_stopped_after_failures`), `theme_*` — подписи `AccentTheme`.
+**Язык интерфейса — свой, не системный.** `data/Settings.language` (по умолчанию белорусский). `AppLocale` даёт его приложению и `PlaybackService` в `attachBaseContext` (контекст с локалью) и активности — через `applyOverrideConfiguration`, чтобы она по-прежнему следила за экраном и тёмной темой. `LanguageSwitch` (коды `BE RU EN`, текущий подсвечен) стоит на экране входа (сменить язык можно до входа) и внизу библиотеки с подписью `language_title` и английским словом «LANGUAGE», чтобы непонятный язык можно было отменить. Выбор: `AppViewModel.setLanguage` сохраняет язык и переводит ресурсы приложения (`AppLocale.apply`), экран пересоздаёт активность; сервис перестраивает кнопки уведомления под новый язык. Системная смена конфигурации сбрасывает локаль ресурсов приложения и сервиса — `onConfigurationChanged` применяет язык заново. В сборке `bundle.language.enableSplit = false`: все языки должны быть в установке. Ключи `jam_*` — экраны джема; `toggle_on` / `toggle_off` — подписи `OnOffPills` по умолчанию (до #79 — `jam_on` / `jam_off`, тексты те же: On / Off, Да / Нет, Так / Не); `vibe_continue_*` — «Продолжать волной» в плейлисте и библиотеке; `jam_refused_*` — причины отказа сервера, неизвестная причина — `jam_refused_other`; `playlist_hold_hint`, `playlist_actions` (подпись долгого нажатия для TalkBack), `playlist_unlike`, `playlist_open` — долгое нажатие и лист действий с треком, а дизлайк в листе берёт готовые `library_dislike` и `player_dislike_skip`. Ключи `queue_*` рендерят `QueueEvent` (в том числе `queue_waiting_for_network` и plurals `queue_stopped_after_failures`), `theme_*` — подписи `AccentTheme`.
 
 ## Not here
 

@@ -46,6 +46,10 @@
     <string name="playlist_loading_more_toast">Загружаю ещё треки…</string>
     <string name="playlist_selected">ВЫБРАНО</string>
     <string name="playlist_tap_hint">ТАП ПО НОМЕРУ — ВЫБРАТЬ</string>
+    <string name="playlist_hold_hint">ДОЛГОЕ НАЖАТИЕ — ЛАЙК, ДИЗЛАЙК, ОТКРЫТЬ</string>
+    <string name="playlist_actions">Действия с треком</string>
+    <string name="playlist_unlike">УБРАТЬ ИЗ «МНЕ НРАВИТСЯ»</string>
+    <string name="playlist_open">ОТКРЫТЬ В БРАУЗЕРЕ</string>
     <string name="playlist_all">ВСЕ</string>
     <string name="playlist_none">НИЧЕГО</string>
     <string name="playlist_clear">ОЧИСТИТЬ</string>
@@ -114,6 +118,7 @@
     <string name="queue_liked">Добавлено в «Мне нравится»</string>
     <string name="queue_unliked">Убрано из «Мне нравится»</string>
     <string name="queue_disliked">Не нравится · пропускаю</string>
+    <string name="queue_disliked_only">Не нравится</string>
     <string name="queue_wave_error">Ошибка волны: %1$s</string>
     <string name="queue_wave_more_error">Волна: %1$s</string>
     <string name="queue_search_error">Ошибка поиска: %1$s</string>
