@@ -1,5 +1,5 @@
 [versions]
-agp = "8.7.3"
+agp = "9.3.3"
 kotlin = "2.4.21"
 coreKtx = "1.13.1"
 activityCompose = "1.9.2"
@@ -40,10 +40,10 @@ coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coi
 qrcodegen = { group = "io.nayuki", name = "qrcodegen", version.ref = "qrcodegen" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 json-schema-validator = { group = "com.networknt", name = "json-schema-validator", version.ref = "jsonSchemaValidator" }
+kotlin-gradle-plugin = { group = "org.jetbrains.kotlin", name = "kotlin-gradle-plugin", version.ref = "kotlin" }
 
 [plugins]
 ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlintPlugin" }
 android-application = { id = "com.android.application", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

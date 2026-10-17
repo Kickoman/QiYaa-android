@@ -41,7 +41,7 @@ grep TELEMETRY app/build/generated/source/buildConfig/release/io/github/kickoman
 
 ```sh
 ./gradlew assembleRelease -PqiyaaVersion=v1.2.3     # нужны переменные подписи, см. ниже
-~/android-sdk/build-tools/35.0.0/aapt2 dump badging app/build/outputs/apk/release/app-release.apk | head -1
+~/android-sdk/build-tools/36.0.0/aapt2 dump badging app/build/outputs/apk/release/app-release.apk | head -1
 ```
 
 ## Ключ подписи
@@ -106,7 +106,7 @@ git push origin v0.1.0
 `.invalid` не резолвится никогда, а пустой хост сломал бы lint `AppLinkUrlError`. У каждого `<data>` один атрибут (`scheme`, `host`, `pathPrefix`): этого требует lint `IntentFilterUniqueDataAttributes`, а у нас `warningsAsErrors`. Схема только `https`: `usesCleartextTraffic="false"`. Проверить манифест собранного APK:
 
 ```sh
-~/android-sdk/build-tools/35.0.0/aapt2 dump xmltree app/build/outputs/apk/debug/app-debug.apk --file AndroidManifest.xml | grep -B2 -A8 autoVerify
+~/android-sdk/build-tools/36.0.0/aapt2 dump xmltree app/build/outputs/apk/debug/app-debug.apk --file AndroidManifest.xml | grep -B2 -A8 autoVerify
 ```
 
 Android проверяет домен при установке по `https://<хост>/.well-known/assetlinks.json`. Пока файла нет (на 2026-10-17 сервер отвечает 404) или в нём чужой отпечаток, ссылка не подтверждена: Android 12+ открывает браузер, то есть веб-гостя (рабочая замена, а не поломка), Android 8–11 предлагают выбор.
@@ -121,7 +121,7 @@ Android проверяет домен при установке по `https://<�
 
 ```sh
 curl -fLO https://github.com/Kickoman/QiYaa-android/releases/download/v0.5.9/QiYaa-0.5.9.apk
-~/android-sdk/build-tools/35.0.0/apksigner verify --print-certs QiYaa-0.5.9.apk \
+~/android-sdk/build-tools/36.0.0/apksigner verify --print-certs QiYaa-0.5.9.apk \
     | grep 'SHA-256 digest' | awk '{print $NF}' | tr a-f A-F | sed 's/../&:/g; s/:$//'
 ```
 

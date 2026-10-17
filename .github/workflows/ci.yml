@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       IS_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
-      BUILD_TOOLS: 35.0.0
+      BUILD_TOOLS: 36.0.0
     steps:
       - uses: actions/checkout@v4
         with:

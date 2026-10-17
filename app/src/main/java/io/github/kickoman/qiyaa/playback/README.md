@@ -181,7 +181,7 @@ class HeadShuffleOrder(val shuffle: HeadShuffle, random: Random, val staged: Hea
 **Traps:**
 - ExoPlayer сам повторяет сетевые ошибки загрузчика (около 3 попыток с паузой до 5 с) до `onPlayerError`, поэтому пауза наступает через несколько секунд после пропажи сети, а не сразу. Пока в буфере есть звук, трек доигрывает.
 - Ошибки `TrackResolver` приходят с общим кодом 2000 (`IO_UNSPECIFIED`): отличить сеть от битого трека можно только по причине, поэтому `yandex` бросает типизированные исключения.
-- `ERROR_CODE_DECODING_RESOURCES_RECLAIMED` в Media3 1.4.1 — `@UnstableApi`, поэтому таблица `audioFailure` помечена `@OptIn(UnstableApi::class)`. После обновления Media3 (Kickoman/QiYaa-android#22) коды надо сверить заново: новый код без строки в таблице даст `null`, то есть ничего в `audio`.
+- `ERROR_CODE_DECODING_RESOURCES_RECLAIMED` в Media3 1.4.1 — `@UnstableApi`, поэтому `PlaybackFailures` помечен `@OptIn(UnstableApi::class)` целиком: lint AGP 9 не видит `@OptIn` на свойстве с таблицей. После обновления Media3 (Kickoman/QiYaa-android#22) коды надо сверить заново: новый код без строки в таблице даст `null`, то есть ничего в `audio`.
 
 ## `MediaItems`, `TrackResolver`, кэш ссылок
 

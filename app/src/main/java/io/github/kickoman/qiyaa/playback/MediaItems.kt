@@ -2,6 +2,7 @@ package io.github.kickoman.qiyaa.playback
 
 import android.net.Uri
 import android.os.Bundle
+import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import io.github.kickoman.qiyaa.yandex.Track
@@ -15,7 +16,7 @@ object MediaItems {
     private const val EXTRA_COVER_URL = "cover"
     private const val EXTRA_TITLE = "title"
 
-    fun uriFor(track: Track): Uri = Uri.parse("$SCHEME://track/${track.id}")
+    fun uriFor(track: Track): Uri = "$SCHEME://track/${track.id}".toUri()
 
     fun trackIdOf(uri: Uri): String? = if (uri.scheme == SCHEME) uri.lastPathSegment else null
 
@@ -33,7 +34,7 @@ object MediaItems {
             MediaMetadata.Builder()
                 .setTitle(track.title)
                 .setArtist(track.artistLine)
-                .setArtworkUri(track.coverUrl?.let { Uri.parse(it) })
+                .setArtworkUri(track.coverUrl?.toUri())
                 .setExtras(extras)
                 .build()
         return MediaItem.Builder()
