@@ -150,6 +150,17 @@ class CrashReportTest {
     }
 
     @Test
+    fun `a frame over 200 characters is cut to 200 and keeps its line`() {
+        assertEquals("x".repeat(200) + ":12", EventCodec.frame("x".repeat(300) + ":12"))
+        assertEquals("x".repeat(200) + ":0", EventCodec.frame("x".repeat(201)))
+        val thrown =
+            IllegalStateException().apply {
+                stackTrace = arrayOf(StackTraceElement("a".repeat(400), "run", null, 7))
+            }
+        assertEquals(listOf("a".repeat(200) + ":7"), CrashReport.of(thrown, SESSION, "0.6.0", 1).frames)
+    }
+
+    @Test
     fun `the text round-trips and keeps the order of frames`() {
         val report =
             CrashReport(SESSION, "0.6.0", "TERMINATE", listOf("a.B.m:1", "c.D.n:0"), 42, "java.lang.Error")

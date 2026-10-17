@@ -7,13 +7,12 @@ import io.github.kickoman.qiyaa.support.TelemetryHarness.Companion.string
 import io.github.kickoman.qiyaa.support.TelemetryHarness.Companion.types
 import java.io.File
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.yield
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -207,30 +206,60 @@ class TelemetrySessionTest {
     }
 
     @Test
-    fun `TEL-02 a quick off and on leaves nothing of the old session behind`() = runTest {
-        online.value = false
-        val toggles = MutableSharedFlow<Boolean>(replay = 1, extraBufferCapacity = 4)
-        toggles.tryEmit(true)
-        val session = session(toggles)
-        runCurrent()
-        val old = session.reporter!!.session
-        session.recordError(ErrorArea.API, "network")
-        onScreen.value = true
-        advanceTimeBy(60_000)
-        runCurrent()
-        assertTrue(telemetry.files().any { it.startsWith(old) })
+    fun `TEL-02 an off and on the setting coalesces into on keep the session, which never went off`() =
+        runTest {
+            online.value = false
+            val session = session()
+            runCurrent()
+            val old = session.reporter!!.session
+            session.recordError(ErrorArea.API, "network")
+            onScreen.value = true
+            advanceTimeBy(60_000)
+            runCurrent()
+            val files = telemetry.files()
+            assertTrue(files.toString(), files.any { it.startsWith(old) })
 
-        toggles.tryEmit(false)
-        toggles.tryEmit(true)
-        runCurrent()
+            enabled.value = false
+            enabled.value = true
+            runCurrent()
 
-        assertTrue(telemetry.files().toString(), telemetry.files().none { it.startsWith(old) })
-        online.value = true
-        runCurrent()
-        val body = posted.single()
-        assertFalse(body, body.contains(old))
-        assertEquals(listOf("start"), types(body))
-    }
+            assertEquals(old, session.reporter!!.session)
+            assertEquals(files, telemetry.files())
+            assertTrue(Thread.getDefaultUncaughtExceptionHandler() is CrashHandler)
+            online.value = true
+            runCurrent()
+            assertEquals(
+                listOf("start" to old, "error" to old),
+                events(posted.single()).map { it.string("type") to it.string("session") },
+            )
+        }
+
+    @Test
+    fun `TEL-02 an on while the off is forgetting waits for it, and nothing of the old session is left`() =
+        runTest {
+            online.value = false
+            val session = session()
+            runCurrent()
+            val old = session.reporter!!.session
+            session.recordError(ErrorArea.API, "network")
+            onScreen.value = true
+            advanceTimeBy(60_000)
+            runCurrent()
+
+            enabled.value = false
+            yield()
+            assertNull(session.reporter)
+            assertTrue(telemetry.files().toString(), telemetry.files().any { it.startsWith(old) })
+            enabled.value = true
+            runCurrent()
+
+            assertTrue(telemetry.files().toString(), telemetry.files().none { it.startsWith(old) })
+            online.value = true
+            runCurrent()
+            val body = posted.single()
+            assertFalse(body, body.contains(old))
+            assertEquals(listOf("start"), types(body))
+        }
 
     @Test
     fun `TEL-02 off at the start deletes what earlier runs left and starts nothing`() = runTest {
@@ -268,14 +297,13 @@ class TelemetrySessionTest {
     }
 
     private fun TestScope.session(
-        toggles: Flow<Boolean> = enabled,
         beginning: suspend () -> Beginning = { Beginning(StartFields(), MACHINE) },
         log: (String) -> Unit = {},
     ): TelemetrySession {
         val clock = { testScheduler.currentTime }
         telemetry = TelemetryHarness(this, File(folder.root, "telemetry"), ::post, clock)
         return TelemetrySession(
-            enabled = toggles,
+            enabled = enabled,
             onScreen = onScreen,
             playing = playing,
             online = online,

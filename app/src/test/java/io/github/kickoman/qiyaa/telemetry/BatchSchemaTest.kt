@@ -163,6 +163,7 @@ class BatchSchemaTest {
             errors = TelemetrySchema.errors(body)
             assertTrue("$name: $body", "crash" in types(body))
             assertTrue("$name: $body", "start" in types(body))
+            inputs.cutFrame?.let { assertTrue("$name: $body", it in crashFrames(body)) }
         }
         return errors
     }
@@ -212,12 +213,16 @@ class BatchSchemaTest {
             "exception long" to crash("exception=" + "a".repeat(200)),
             "exception digit first" to crash("exception=1abc"),
             "frame of the desktop" to crash("frame=QiYaa+0x4f2a10"),
-            "frame long" to crash("frame=" + "x".repeat(300) + ":12"),
+            "frame long" to
+                crash("frame=" + "x".repeat(300) + ":12").copy(cutFrame = "x".repeat(200) + ":12"),
             "frame Cyrillic" to crash("frame=Кино.play:3"),
             "frame big line" to crash("frame=a.b:123456789"),
             "frame without a place" to crash("frame=:5"),
             "crash of a hostile throwable" to
-                good.copy(crash = CrashReport.of(thrown, EARLIER, "0.6.0", 3).text()),
+                good.copy(
+                    crash = CrashReport.of(thrown, EARLIER, "0.6.0", 3).text(),
+                    cutFrame = "a".repeat(200) + ":1",
+                ),
             "kind with spaces" to good.copy(kind = "HTTP 502"),
             "kind a jam refusal text" to good.copy(kind = "Room 7k3m9q2x full"),
             "kind empty" to good.copy(kind = ""),
@@ -231,6 +236,12 @@ class BatchSchemaTest {
             "feature slash" to good.copy(feature = "a/b"),
         )
     }
+
+    private fun crashFrames(body: String): List<String> = events(body)
+        .single { it.string("type") == "crash" }
+        .getValue("frames")
+        .jsonArray
+        .map { it.jsonPrimitive.content }
 
     private fun example(name: String): List<JsonObject> =
         Json.parseToJsonElement(TelemetrySchema.example(name).readText())
@@ -246,6 +257,7 @@ class BatchSchemaTest {
         val kind: String = "http",
         val httpStatus: Int? = 502,
         val feature: String = "spectrum",
+        val cutFrame: String? = null,
     )
 
     private companion object {

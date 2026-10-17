@@ -5,12 +5,12 @@
 Чистая JVM, не импортирует ни Android, ни другие пакеты приложения, и адреса сервера в коде нет: его даёт `BuildConfig` через корень (TEL-10).
 
 ```bash
-grep -lnE '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiyaa/telemetry/*.kt                      # ничего не печатает
-grep -lnE 'qiyaa\.(yandex|audio|data|jam|queue|playback|ui)\.' app/src/main/java/io/github/kickoman/qiyaa/telemetry/*.kt  # ничего не печатает
-grep -nE 'https?://' app/src/main/java/io/github/kickoman/qiyaa/telemetry/*.kt                                        # ничего не печатает
+grep -rlnE --include='*.kt' '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiyaa/telemetry/                      # ничего не печатает
+grep -rlnE --include='*.kt' 'qiyaa\.(yandex|audio|data|jam|queue|playback|ui)\.' app/src/main/java/io/github/kickoman/qiyaa/telemetry/  # ничего не печатает
+grep -rnE --include='*.kt' 'https?://' app/src/main/java/io/github/kickoman/qiyaa/telemetry/                                         # ничего не печатает
 ```
 
-Греп идёт по `*.kt`: в этом README есть пример кадра `io.github.kickoman.qiyaa.queue.…`, и `grep -r` по папке нашёл бы его.
+Греп обходит папку с подпапками, но читает только `*.kt` (`--include`): в этом README есть пример кадра `io.github.kickoman.qiyaa.queue.…`, и греп по всем файлам нашёл бы его.
 
 Ещё один инвариант, который не проверить grep'ом: файлы пакет читает и пишет только внутри `withContext(io)` и в обработчике падения. Ни один публичный метод `Reporter` и `TelemetrySession`, который зовут с главного потока, не трогает диск и сеть.
 
@@ -85,7 +85,7 @@ object EventCodec {
 | счётчики | в пределах 0–100 000 000 |
 | `session` | не UUID v4 — событие не кодируется |
 
-`BatchSchemaTest` подставляет недопустимые значения в каждое из этих полей по очереди и проверяет пачку валидатором `com.networknt:json-schema-validator` (только в тестах) по схеме спеки.
+`BatchSchemaTest` подставляет недопустимые значения в каждое из этих полей по очереди и проверяет пачку валидатором `com.networknt:json-schema-validator` (только в тестах) по схеме спеки. Валидатор ловит только недопустимое, а выброшенный кадр пачку не портит, поэтому обрезку кадра до 200 с `:N` тесты проверяют отдельно: `EventCodec.frame` напрямую (`CrashReportTest`) и длинный кадр в отправленном `crash` (`BatchSchemaTest`).
 
 ## `CrashReport`, `CrashHandler`
 
@@ -250,7 +250,8 @@ class TelemetrySession(enabled: Flow<Boolean>, onScreen: Flow<Boolean>, playing:
 Отправка — `scope.launch { reporter.send() }`. Минуты считаются от начала каждого периода использования; вне использования таймера нет, и закэшированный процесс не просыпается.
 
 **Traps:**
-- `enabled` обрабатывается `collect`, а не `collectLatest`: быстрые «выкл» и «вкл» идут по порядку, и `forget()` старого запуска всегда заканчивается до того, как новый `begin` посмотрит в папку. Иначе файлы забытого запуска ушли бы как «прошлый запуск».
+- `enabled` обрабатывается `collect`, а не `collectLatest`: если подписка увидела «выкл», то «вкл», пришедшее во время `forget()`, ждёт его конца, и `forget()` старого запуска всегда заканчивается до того, как новый `begin` посмотрит в папку. Иначе файлы забытого запуска ушли бы как «прошлый запуск».
+- «Выкл» и сразу «вкл» подписка может не увидеть вовсе. `enabled` в приложении — `StateFlow` настройки, а он отдаёт подписчику только последнее значение: если оба переключения успели, пока подписка занята, для неё значение так и осталось `true`. Занята она в `beginning()` на `io` (сразу после включения или запуска приложения: ожидание `connect`, `commit()` первого старта, причины выхода) — миллисекунды, и запуску, которому от роду столько же. Такой запуск продолжается со своими файлами и очередью, и это принятое поведение, а не ошибка: выключатель в итоге не выключался. «Вкл» и сразу «выкл» во время `forget()` сливаются так же и ничего не меняют: запуск уже забыт. Отдельный буферизованный поток каждого переключения мимо `StateFlow` настройки ради этого окна не заведён. Тесты — на `MutableStateFlow`, как в приложении: `TEL-02 an off and on the setting coalesces into on keep the session…` и `TEL-02 an on while the off is forgetting waits for it…`.
 - Подписка запускается `UNDISPATCHED`: если первое значение `enabled` — `true` (`StateFlow` настройки), обработчик падения стоит уже к возврату из `start()`, до остальной сборки графа.
 - `beginning()` с исключением не роняет приложение: строка в `log`, и этот `Reporter` так и не начнётся (события копятся в памяти, ничего не уходит).
 

@@ -106,13 +106,13 @@ Writing rules for READMEs:
   the JVM without Robolectric:
 
   ```bash
-  grep -lnE '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiyaa/{yandex,audio,queue,jam,telemetry}/*.kt   # must print nothing
-  grep -ln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/{yandex,audio,data,queue,playback}/*.kt               # must print nothing
-  grep -lnE 'qiyaa\.(yandex|audio|data|jam|queue|playback|ui)\.' app/src/main/java/io/github/kickoman/qiyaa/telemetry/*.kt  # must print nothing
+  grep -rlnE --include='*.kt' '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiyaa/{yandex,audio,queue,jam,telemetry}/   # must print nothing
+  grep -rln --include='*.kt' 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/{yandex,audio,data,queue,playback}/                 # must print nothing
+  grep -rlnE --include='*.kt' 'qiyaa\.(yandex|audio|data|jam|queue|playback|ui)\.' app/src/main/java/io/github/kickoman/qiyaa/telemetry/   # must print nothing
   ```
 
-  The greps read `*.kt` only: the packages have no subfolders, and a README may quote a class
-  name (`telemetry/README.md` shows a crash frame `io.github.kickoman.qiyaa.queue.…`).
+  The greps walk each package with its subfolders but read `*.kt` files only: a README may quote
+  a class name (`telemetry/README.md` shows a crash frame `io.github.kickoman.qiyaa.queue.…`).
 
   Android entry points (`MainActivity`, `PlaybackService`) reach the graph
   through `Context.appGraph`; that is the only upward reference allowed.
