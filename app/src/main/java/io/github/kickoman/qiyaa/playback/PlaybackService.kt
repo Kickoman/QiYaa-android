@@ -10,9 +10,6 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DataSource
-import androidx.media3.datasource.ResolvingDataSource
-import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioSink
@@ -83,14 +80,8 @@ class PlaybackService : MediaSessionService() {
             }
         val links = graph.trackLinks
         val bitrate = CurrentBitrate(graph.audioBus::setBitrate)
-        val httpDataSource = OkHttpDataSource.Factory(graph.httpClient).setUserAgent(USER_AGENT)
         val dataSource =
-            ExpiredLinkDataSource.Factory(
-                DataSource.Factory {
-                    ResolvingDataSource(httpDataSource.createDataSource(), TrackResolver(links, bitrate))
-                },
-                links,
-            )
+            PlaybackDataSources(graph.httpClient, links, bitrate, graph.playbackCache, graph.readInterrupts)
         val audioAttributes =
             AudioAttributes.Builder().setUsage(
                 C.USAGE_MEDIA,
@@ -125,6 +116,7 @@ class PlaybackService : MediaSessionService() {
             object : Player.Listener {
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                     currentTrackId.value = mediaItem?.mediaId
+                    graph.playbackCache.keepFor(player)
                 }
             },
         )
@@ -170,6 +162,7 @@ class PlaybackService : MediaSessionService() {
             it.player.release()
             it.release()
         }
+        appGraph.playbackCache.clear()
         session = null
         engine = null
         super.onDestroy()
@@ -237,9 +230,5 @@ class PlaybackService : MediaSessionService() {
                 ),
             )
         }
-    }
-
-    companion object {
-        const val USER_AGENT = "QiYaa/Android"
     }
 }
