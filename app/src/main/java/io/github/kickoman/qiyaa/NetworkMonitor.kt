@@ -36,8 +36,18 @@ class NetworkMonitor(context: Context, scope: CoroutineScope) {
         }.distinctUntilChanged()
             .stateIn(scope, SharingStarted.Eagerly, isConnected())
 
-    /** Mobile data or a metered Wi-Fi: QUAL-07 takes the mobile choice then. */
-    fun isMetered(): Boolean = connectivityManager.isActiveNetworkMetered
+    val metered: StateFlow<Boolean> =
+        callbackFlow {
+            val callback =
+                object : ConnectivityManager.NetworkCallback() {
+                    override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                        trySend(connectivityManager.isActiveNetworkMetered)
+                    }
+                }
+            connectivityManager.registerDefaultNetworkCallback(callback)
+            awaitClose { connectivityManager.unregisterNetworkCallback(callback) }
+        }.distinctUntilChanged()
+            .stateIn(scope, SharingStarted.Eagerly, connectivityManager.isActiveNetworkMetered)
 
     private fun isConnected(): Boolean {
         val network = connectivityManager.activeNetwork ?: return false

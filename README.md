@@ -61,7 +61,7 @@ Release-APK (R8, Media3 1.11) перед первым тегом проверя�
 | `playback/` | ExoPlayer + MediaSession, адаптер Media3 для очереди, разрешение ссылок, аудиопроцессоры | [playback/README.md](app/src/main/java/io/github/kickoman/qiyaa/playback/README.md) |
 | `ui/` | Compose: экраны, view model, тема | [ui/README.md](app/src/main/java/io/github/kickoman/qiyaa/ui/README.md) |
 | `telemetry/` | Анонимная статистика и отчёты о падениях: события и их кодек, отчёт о падении, файлы запусков, отправка, расписание и выключатель. Чистая JVM, импортирует его только корень | [telemetry/README.md](app/src/main/java/io/github/kickoman/qiyaa/telemetry/README.md) |
-| корень | `AppGraph` (ручной граф зависимостей, один на процесс), `QiYaaApp`, `NetworkMonitor` (есть ли сеть, питает `yandex/Session`; лимитная ли она — для качества звука), `AppLocale` (язык интерфейса — свой, не системный), `AppTelemetry` и `TelemetryCodes` (сигналы платформы и события модулей → `telemetry/`; описаны в его README) | — |
+| корень | `AppGraph` (ручной граф зависимостей, один на процесс; `qualityInEffect` — действующее качество звука, поток), `QiYaaApp`, `NetworkMonitor` (есть ли сеть, питает `yandex/Session`; лимитная ли она — поток `metered` для качества звука), `AppLocale` (язык интерфейса — свой, не системный), `AppTelemetry` и `TelemetryCodes` (сигналы платформы и события модулей → `telemetry/`; описаны в его README) | — |
 | `app/src/test/` | JVM-тесты | [test/README.md](app/src/test/README.md) |
 | `spec/` | Подмодуль [Kickoman/QiYaa-spec](https://github.com/Kickoman/QiYaa-spec): сценарии плеера, фикстуры API, эталоны DSP и таблица паритета, общие с десктопом. Меняется сначала там, потом здесь (`CLAUDE.md`) | [spec/README.md](spec/README.md) |
 
