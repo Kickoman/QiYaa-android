@@ -18,6 +18,12 @@ class TrackUrlCache(
                 size > capacity
         }
 
+    private val asked =
+        object : LinkedHashMap<String, Quality>(capacity, LOAD_FACTOR, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Quality>): Boolean =
+                size > capacity
+        }
+
     /** [continuing]: the file is read on from the middle, so it keeps its quality (QUAL-08). */
     suspend fun get(trackId: String, continuing: Boolean = false): ResolvedUrl {
         val now = clock()
@@ -25,6 +31,7 @@ class TrackUrlCache(
         synchronized(entries) {
             val cached = entries[trackId]
             wanted = if (continuing && cached != null) cached.quality else quality()
+            asked[trackId] = wanted
             if (cached != null &&
                 cached.quality == wanted &&
                 now - cached.signedAtMs < ttlMs
@@ -35,6 +42,13 @@ class TrackUrlCache(
         val link = resolve(trackId, wanted)
         synchronized(entries) { entries[trackId] = Entry(link, wanted, now) }
         return link
+    }
+
+    fun askedInOtherQuality(trackId: String): Boolean {
+        synchronized(entries) {
+            val last = asked[trackId] ?: return false
+            return last != quality()
+        }
     }
 
     /** The link already signed for [trackId] and still fresh, without signing one: for the jam's listeners. */
