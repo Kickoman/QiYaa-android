@@ -84,7 +84,7 @@ class YandexApi(
                     ),
                 )
             }
-            it.body?.string().orEmpty()
+            it.body.string()
         }
     }
 
@@ -145,7 +145,7 @@ class YandexApi(
             try {
                 client.newCall(call).execute().use { response ->
                     response.code to
-                        response.body?.string().orEmpty()
+                        response.body.string()
                 }
             } catch (failed: IOException) {
                 throw reported(NetworkException("GET", FileInfo.PATH, failed))
@@ -208,7 +208,7 @@ class YandexApi(
         val (status, body, reason) =
             try {
                 client.newCall(request).execute().use { response ->
-                    Triple(response.code, response.body?.string().orEmpty(), response.message)
+                    Triple(response.code, response.body.string(), response.message)
                 }
             } catch (failed: IOException) {
                 throw reported(NetworkException(method, path, failed))
