@@ -11,6 +11,7 @@ class PlaybackDataSources(
     private val client: Call.Factory,
     private val links: TrackUrlCache,
     private val bitrate: CurrentBitrate,
+    private val cache: PlaybackCache,
     private val interrupts: ReadInterrupts,
 ) : DataSource.Factory {
     override fun createDataSource(): DataSource {
@@ -18,7 +19,8 @@ class PlaybackDataSources(
         val calls = CallTracker(client, watch)
         val http = OkHttpDataSource.Factory(calls).setUserAgent(USER_AGENT).createDataSource()
         val network = InterruptibleDataSource(http, calls, watch)
-        return ExpiredLinkDataSource(ResolvingDataSource(network, TrackResolver(links, bitrate)), links)
+        val signed = ExpiredLinkDataSource(ResolvingDataSource(network, TrackResolver(links, bitrate)), links)
+        return cache.dataSource(signed)
     }
 
     companion object {

@@ -80,7 +80,8 @@ class PlaybackService : MediaSessionService() {
             }
         val links = graph.trackLinks
         val bitrate = CurrentBitrate(graph.audioBus::setBitrate)
-        val dataSource = PlaybackDataSources(graph.httpClient, links, bitrate, graph.readInterrupts)
+        val dataSource =
+            PlaybackDataSources(graph.httpClient, links, bitrate, graph.playbackCache, graph.readInterrupts)
         val audioAttributes =
             AudioAttributes.Builder().setUsage(
                 C.USAGE_MEDIA,
@@ -115,6 +116,7 @@ class PlaybackService : MediaSessionService() {
             object : Player.Listener {
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                     currentTrackId.value = mediaItem?.mediaId
+                    graph.playbackCache.keepFor(player)
                 }
             },
         )
@@ -160,6 +162,7 @@ class PlaybackService : MediaSessionService() {
             it.player.release()
             it.release()
         }
+        appGraph.playbackCache.clear()
         session = null
         engine = null
         super.onDestroy()

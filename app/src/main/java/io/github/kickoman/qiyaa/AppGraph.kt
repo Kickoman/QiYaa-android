@@ -20,6 +20,7 @@ import io.github.kickoman.qiyaa.playback.JamCatalog
 import io.github.kickoman.qiyaa.playback.JamHost
 import io.github.kickoman.qiyaa.playback.JamHostConfig
 import io.github.kickoman.qiyaa.playback.OkHttpJamTransport
+import io.github.kickoman.qiyaa.playback.PlaybackCache
 import io.github.kickoman.qiyaa.playback.ReadInterrupts
 import io.github.kickoman.qiyaa.playback.TrackUrlCache
 import io.github.kickoman.qiyaa.queue.LibraryMusicSource
@@ -32,6 +33,7 @@ import io.github.kickoman.qiyaa.yandex.Quality
 import io.github.kickoman.qiyaa.yandex.Session
 import io.github.kickoman.qiyaa.yandex.Track
 import io.github.kickoman.qiyaa.yandex.YandexApi
+import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
@@ -133,6 +135,13 @@ class AppGraph(val context: Context) {
     val readInterrupts =
         ReadInterrupts(
             schedule = daemonScheduler("QiYaa:ReadInterrupts"),
+            log = { message -> Log.d(LOG_TAG, message) },
+        )
+
+    val playbackCache =
+        PlaybackCache(
+            folder = { File(context.cacheDir, PlaybackCache.FOLDER) },
+            removals = Executors.newSingleThreadExecutor { task -> daemon(task, "QiYaa:PlaybackCache") },
             log = { message -> Log.d(LOG_TAG, message) },
         )
 
