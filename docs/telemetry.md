@@ -88,11 +88,12 @@ APK есть, но не стартует (`BuildConfig.TELEMETRY = false`). CI �
 ## Как прочитать кадры release-сборки
 
 С Kickoman/QiYaa-android#22 release-сборки минифицирует R8, и каждый релиз публикует свой
-`QiYaa-<версия>-mapping.txt`. Кадры приложения и библиотек (`io.github…`, Media3, корутины, OkHttp,
-Kotlin) приходят тогда как `<класс R8>.<метод R8>:<pc>`: при `minSdk 26` ART даёт вместо строки
-смещение инструкции, и mapping переводит его обратно. Кадры `java.*` и `android.*` читаются как есть,
-`exceptionType` — тоже (`app/proguard-rules.pro` держит имена всех `Throwable`). До #22 release не
-минифицирован, кадры читаются без mapping.
+`QiYaa-<версия>-mapping.txt` ([release.md](release.md#расшифровать-стек)). Кадры приложения и
+библиотек (`io.github…`, Media3, корутины, OkHttp, Kotlin) приходят тогда как
+`<класс R8>.<метод R8>:<позиция>`: R8 убирает таблицы строк, и при `minSdk 26` ART даёт вместо
+строки смещение инструкции плюс один, а mapping переводит его обратно. Кадры `java.*` и `android.*`
+читаются как есть, `exceptionType` — тоже (`app/proguard-rules.pro` держит имена всех `Throwable`).
+До #22 release не минифицирован, кадры читаются без mapping.
 
 Из строки `app_crash` на сервере нужны `version`, `exception_type` и `frames` (кадры через пробел):
 
@@ -106,7 +107,9 @@ curl -fLO "https://github.com/Kickoman/QiYaa-android/releases/download/v$VERSION
 ```
 
 `sed` превращает каждый кадр `c.m:N` в строку стека `\tat c.m(SourceFile:N)` под строкой с типом
-исключения, `retrace` (R8, из cmdline-tools Android SDK) переводит их по mapping этой версии. Формат
-строк и разбор `retrace` проверены на синтетическом mapping (2026-10-17); на настоящей
-минифицированной сборке рецепт ещё не проверялся — это проверка на телефоне после #22 и деплоя
-сервера (Kickoman/QiYaa-android#91).
+исключения, `retrace` (R8, из cmdline-tools Android SDK) переводит их по mapping этой версии.
+Проверено 2026-10-18 на mapping настоящей минифицированной сборки (R8 9.3.28, формат 2.2, `retrace`
+8.2.33 из cmdline-tools 12.0): кадры `sk2.u:60 sk2.u:11 java.lang.reflect.Method.invoke:0`, взятые
+из таблицы позиций dex этой сборки, дали `QueueState.isWave` (встроен) и `QueueController.next`
+с настоящими строками, а `java.*` остался как есть. Кадров из падения на устройстве ещё не было:
+отчёт с телефона и сервер, который принимает Android, — проверка Kickoman/QiYaa-android#91.
