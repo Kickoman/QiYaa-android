@@ -2,13 +2,11 @@ package io.github.kickoman.qiyaa.playback
 
 import android.content.Context
 import android.os.Bundle
-import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.CommandButton
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionCommands
 import io.github.kickoman.qiyaa.R
 
-@UnstableApi
 object NotificationButtons {
     const val ACTION_LIKE = "io.github.kickoman.qiyaa.LIKE"
     const val ACTION_DISLIKE = "io.github.kickoman.qiyaa.DISLIKE"

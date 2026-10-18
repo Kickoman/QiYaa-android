@@ -123,7 +123,7 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
         commands += "remove $index"
         val removedCurrent = index == currentIndex
         val following = if (removedCurrent) followingInOrder(index) else null
-        val ends = removedCurrent && index == tracks.lastIndex
+        val ends = removedCurrent && following == null
         tracks.removeAt(index)
         shuffle = shuffle.removed(index, index + 1)
         if (index < currentIndex) currentIndex--

@@ -18,7 +18,7 @@ class VisualizerTapProcessor(private val audioBus: AudioBus) : BaseAudioProcesso
     }
 
     override fun queueInput(inputBuffer: ByteBuffer) {
-        // With an empty input, replaceOutputBuffer(0) hands back the shared EMPTY_BUFFER (Media3 1.4).
+        // With an empty input, replaceOutputBuffer(0) hands back the shared EMPTY_BUFFER (Media3 1.4–1.11).
         if (!inputBuffer.hasRemaining()) return
         val channels = inputAudioFormat.channelCount
         val byteCount = inputBuffer.remaining()
@@ -32,7 +32,7 @@ class VisualizerTapProcessor(private val audioBus: AudioBus) : BaseAudioProcesso
         output.flip()
     }
 
-    override fun onFlush() {
+    override fun onFlush(streamMetadata: AudioProcessor.StreamMetadata) {
         audioBus.visualizerTap.clear()
     }
 }

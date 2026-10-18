@@ -46,16 +46,54 @@ class HeadShuffleOrderTest {
     }
 
     @Test
-    fun `setMediaItems over a playlist gets exactly the staged pass, as ExoPlayer clones the order`() {
+    fun `remove all then insert as many gets the staged pass, as the old setMediaItems did`() {
         val installed = HeadShuffleOrder.staging(HeadShuffle(listOf(1, 0), 3), 3, pass, Random(0))
         assertEquals(3, installed.length)
         assertEquals(listOf(3, 1, 0, 2, 4, 5), walk(installed.cloneAndRemove(0, 3).cloneAndInsert(0, 6)))
     }
 
     @Test
-    fun `setMediaItems on an empty player gets the staged pass with its first insert`() {
+    fun `the first insert into an empty order gets the staged pass, as the old setMediaItems did`() {
         val installed = HeadShuffleOrder.staging(HeadShuffle.EMPTY, 0, pass, Random(0))
         assertEquals(listOf(3, 1, 0, 2, 4, 5), walk(installed.cloneAndInsert(0, 6)))
+    }
+
+    @Test
+    fun `setMediaItems gets exactly the staged pass through cloneAndSet, whatever the start index`() {
+        val installed = HeadShuffleOrder.staging(HeadShuffle(listOf(1, 0), 3), 3, pass, Random(0))
+        assertEquals(listOf(3, 1, 0, 2, 4, 5), walk(installed.cloneAndSet(6, C.INDEX_UNSET)))
+        assertEquals(listOf(3, 1, 0, 2, 4, 5), walk(installed.cloneAndSet(6, 4)))
+    }
+
+    @Test
+    fun `setMediaItems or a first insert on an empty player gets the staged pass through cloneAndSet`() {
+        val installed = HeadShuffleOrder.staging(HeadShuffle.EMPTY, 0, pass, Random(0))
+        assertEquals(listOf(3, 1, 0, 2, 4, 5), walk(installed.cloneAndSet(6, C.INDEX_UNSET)))
+    }
+
+    @Test
+    fun `the staged pass survives one cloneAndSet, and a second of the same length gives a fresh pass`() {
+        val installed = HeadShuffleOrder.staging(HeadShuffle(listOf(1, 0), 3), 3, pass, Random(5))
+        val first = installed.cloneAndSet(6, C.INDEX_UNSET) as HeadShuffleOrder
+        assertEquals(pass, first.shuffle)
+        assertNull(first.staged)
+        val second = first.cloneAndSet(6, C.INDEX_UNSET) as HeadShuffleOrder
+        assertEquals(freshPass(6, seed = 5), second.shuffle)
+        assertEquals(6, second.shuffle.head.size)
+        assertNull(second.staged)
+    }
+
+    @Test
+    fun `cloneAndSet takes neither a staged pass of another length nor a staged insert`() {
+        val installed = HeadShuffleOrder.staging(HeadShuffle.EMPTY, 0, pass, Random(3))
+        val other = installed.cloneAndSet(3, C.INDEX_UNSET) as HeadShuffleOrder
+        assertEquals(freshPass(3, seed = 3), other.shuffle)
+        assertNull(other.staged)
+        val copy = HeadShuffle(listOf(2, 0, 1), 3)
+        val inserting = HeadShuffleOrder.staging(copy, 3, copy.insertedAfter(1, 1), Random(4), at = 1)
+        val set = inserting.cloneAndSet(4, C.INDEX_UNSET) as HeadShuffleOrder
+        assertEquals(freshPass(4, seed = 4), set.shuffle)
+        assertNull(set.staged)
     }
 
     @Test
@@ -139,6 +177,11 @@ class HeadShuffleOrderTest {
         assertEquals(copy.insertedAfter(3, 2), HeadShuffleOrder.afterSplice(copy, 3, 7, 2))
         assertEquals(HeadShuffle(emptyList(), 4), HeadShuffleOrder.afterSplice(copy, 2, 3, 2))
         assertEquals(HeadShuffle(listOf(0, 1), 2), HeadShuffleOrder.afterSplice(HeadShuffle.EMPTY, 0, 0, 2))
+    }
+
+    private fun freshPass(count: Int, seed: Int): HeadShuffle {
+        val empty = HeadShuffleOrder(HeadShuffle.EMPTY, Random(seed))
+        return (empty.cloneAndInsert(0, count) as HeadShuffleOrder).shuffle
     }
 
     private fun walk(order: ShuffleOrder): List<Int> =

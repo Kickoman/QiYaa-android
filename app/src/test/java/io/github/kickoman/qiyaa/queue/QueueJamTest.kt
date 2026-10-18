@@ -1555,7 +1555,7 @@ class QueueJamTest {
         }
 
     @Test
-    fun `HOST-36 D8 TR-03 removing the current last row, where ExoPlayer ends, seeks the target`() = runTest {
+    fun `HOST-36 D8 TR-03 removing the current last row, shuffled first, lands on the target`() = runTest {
         val h = QueueHarness.likes(this, "a", "b", "c", "d", continueWithVibe = false)
         h.engine.seekTo(3)
         h.controller.setShuffle(true)
@@ -1563,7 +1563,7 @@ class QueueJamTest {
         assertEquals(listOf(3, 0, 1, 2), h.engine.playOrder())
         h.engine.commands.clear()
         h.controller.removeIndices(setOf(3))
-        assertEquals(listOf("remove 3", "seek 0"), h.engine.commands.withoutPauseAtEnd())
+        assertEquals(listOf("remove 3"), h.engine.commands.withoutPauseAtEnd())
         assertEquals("a", h.currentId())
         assertFalse(h.engine.isEnded)
         assertTrue(h.engine.playWhenReady)
@@ -1571,7 +1571,7 @@ class QueueJamTest {
     }
 
     @Test
-    fun `HOST-36 TR-03 in a jam removing the current last row, where ExoPlayer ends, reports the target`() =
+    fun `HOST-36 TR-03 in a jam removing the current last row, shuffled first, reports the target`() =
         runTest {
             val h = QueueHarness.likes(this, "a", "b", "c", "d", continueWithVibe = false)
             h.engine.seekTo(3)
@@ -1580,12 +1580,39 @@ class QueueJamTest {
             val jam = h.startJam()
             h.engine.commands.clear()
             h.controller.removeIndices(setOf(3))
-            assertEquals(listOf("pause", "remove 3", "seek 0"), h.engine.commands.withoutPauseAtEnd())
+            assertEquals(listOf("pause", "remove 3"), h.engine.commands.withoutPauseAtEnd())
             assertEquals("a", h.currentId())
             assertFalse(h.engine.isEnded)
             assertEquals(base("a", next = "b").copy(paused = true), jam.playbacks.last())
             h.engine.startPlaying()
             assertEquals(base("a", next = "b"), jam.playbacks.last())
+        }
+
+    @Test
+    fun `HOST-36 TR-04 removing the current middle row, shuffled last, stops on the new order's last row`() =
+        runTest {
+            val h = QueueHarness.likes(this, "a", "b", "c", "d", continueWithVibe = false)
+            h.engine.seekTo(3)
+            h.controller.setShuffle(true)
+            h.engine.startPlaying()
+            assertEquals(listOf(3, 0, 1, 2), h.engine.playOrder())
+            assertEquals(listOf("a", "b", "c"), h.playOn(3))
+            h.engine.commands.clear()
+            h.controller.removeIndices(setOf(2))
+            assertEquals(listOf("a", "b", "d"), h.engine.ids())
+            assertEquals(listOf(2, 0, 1), h.engine.playOrder())
+            assertEquals(
+                listOf("remove 2", "seek 1", "pause", "seek to 0"),
+                h.engine.commands.withoutPauseAtEnd(),
+            )
+            assertEquals("b", h.currentId())
+            assertFalse(h.engine.isEnded)
+            assertFalse(h.engine.playWhenReady)
+            assertFalse(h.engine.playing)
+            h.controller.next()
+            assertEquals("b", h.currentId())
+            runCurrent()
+            assertEquals(listOf("d", "a", "b", "c"), h.source.reports.map { it.first })
         }
 
     @Test
