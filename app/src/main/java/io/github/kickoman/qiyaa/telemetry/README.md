@@ -126,7 +126,7 @@ frame=…
 - Обработчик один на процесс. Новый `Reporter` ставит свой только после `forget()` старого (`TelemetrySession` делает это по порядку); иначе прежний писал бы отчёт за забытый запуск.
 - Без вызова прежнего обработчика приложение после исключения зависло бы, а не упало. Тест `the previous handler runs even when the report cannot be written` это держит.
 - Обработчик пишет синхронно на потоке падения, в том числе на главном: это единственная запись на диск вне `io`, и она — одна небольшая.
-- Release-сборки минифицирует R8 (Kickoman/QiYaa-android#22): кадры приложения и библиотек придут как `<класс R8>.<метод R8>:<pc>`, их переводит `mapping.txt` этого релиза (рецепт — в `docs/telemetry.md` и `spec/telemetry/README.md`). Чтобы `exceptionType` читался без этого, `app/proguard-rules.pro` держит имена всех наследников `Throwable` (`-keepnames class * extends java.lang.Throwable`). Пока `isMinifyEnabled = false`, правило ни на что не влияет.
+- Release-сборки минифицирует R8 (Kickoman/QiYaa-android#22): кадры приложения и библиотек придут как `<класс R8>.<метод R8>:<позиция>`, их переводит `mapping.txt` этого релиза (рецепт — в `docs/telemetry.md` и `spec/telemetry/README.md`). Чтобы `exceptionType` читался без этого, `app/proguard-rules.pro` держит имена всех наследников `Throwable` (`-keepnames class * extends java.lang.Throwable`). Правило только запрещает переименование: R8 по-прежнему выкидывает и оптимизирует эти классы, а имена сохраняет у 114 классов приложения и библиотек, с телеметрией и без (R8 Configuration Analyzer, `./gradlew :app:analyzeReleaseR8Config`, 2026-10-18).
 
 ## `TelemetryStore`
 
@@ -337,7 +337,7 @@ object TelemetryCodes {
 - `ANDROID_ID` читается только на `io` и только в `beginning`; `@SuppressLint("HardwareIds")` с причиной в той же строке.
 - Процесс без активностей (сервис поднят кнопкой гарнитуры) в использовании, только пока играет.
 - `noBackupFilesDir` при первом обращении создаёт папку `no_backup` — один `mkdir` на главном потоке при сборке графа; сама папка `telemetry` создаётся уже на `io` или в обработчике падения.
-- `BuildConfig.TELEMETRY` — `boolean`-константа: без флага `AppGraph.telemetry` всегда `null`, и R8 (после Kickoman/QiYaa-android#22) может выбросить весь пакет.
+- `BuildConfig.TELEMETRY` — `boolean`-константа: без флага `AppGraph.telemetry` всегда `null`, и R8 выбрасывает весь пакет вместе с `AppTelemetry` и `TelemetryCodes` (release без флага, 2026-10-18: в dex от телеметрии осталось только поле `Settings.telemetryEnabled`), а resource shrinking — строки `telemetry_title` и `telemetry_note`.
 
 ## Not here
 
