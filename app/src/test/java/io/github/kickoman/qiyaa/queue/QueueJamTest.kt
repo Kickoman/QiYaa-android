@@ -728,7 +728,7 @@ class QueueJamTest {
         }
 
     @Test
-    fun `HOST-10 HOST-12 TR-03 with shuffle the items play right after the current track, then the pass`() =
+    fun `HOST-10 HOST-12 TR-03 SHUF-01 with shuffle the items play after the current track, then the pass`() =
         runTest {
             val h = QueueHarness.likes(this, "a", "b", "c", "d", "e", continueWithVibe = false)
             h.engine.seekTo(2)
@@ -1524,7 +1524,7 @@ class QueueJamTest {
         }
 
     @Test
-    fun `HOST-12 TR-03 shuffle switched on while an item waits leads the new pass with it, then the head`() =
+    fun `HOST-12 TR-03 SHUF-03 shuffle switched on while an item waits leads the new pass with it`() =
         runTest {
             val h = QueueHarness.likes(this, "a", "b", "c", "d", continueWithVibe = false)
             h.engine.seekTo(1)

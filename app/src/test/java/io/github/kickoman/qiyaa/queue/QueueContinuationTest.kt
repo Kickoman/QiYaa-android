@@ -651,7 +651,7 @@ class QueueContinuationTest {
         }
 
     @Test
-    fun `CONT-09 shuffle orders the head only, and the vibe follows in its own order`() = runTest {
+    fun `CONT-09 SHUF-01 shuffle orders the head only, and the vibe follows in its own order`() = runTest {
         val harness = head(this, "a", "b", "c", "d")
         harness.source.onStartWave = { WaveBatch("V1", "B1", tracks("v1", "v2", "v3")) }
         harness.controller.setShuffle(true)
@@ -671,7 +671,7 @@ class QueueContinuationTest {
     }
 
     @Test
-    fun `CONT-09 shuffle on starts a pass with the current track, each head track plays before the vibe`() =
+    fun `CONT-09 SHUF-01 SHUF-03 shuffle on starts a pass with the current track, the head plays first`() =
         runTest {
             val harness = head(this, "a", "b", "c", "d")
             harness.source.onStartWave = { WaveBatch("V1", "B1", tracks("v1")) }
@@ -686,7 +686,7 @@ class QueueContinuationTest {
         }
 
     @Test
-    fun `CONT-09 shuffle switched on again while on keeps the pass`() = runTest {
+    fun `CONT-09 SHUF-03 shuffle switched on again while on keeps the pass`() = runTest {
         val harness = head(this, "a", "b", "c", "d")
         harness.source.onStartWave = { CompletableDeferred<WaveBatch>().await() }
         harness.controller.setShuffle(true)
@@ -715,7 +715,7 @@ class QueueContinuationTest {
     }
 
     @Test
-    fun `CONT-04 CONT-09 a reply that comes mid-pass goes behind the head, and the pass stays as it was`() =
+    fun `CONT-04 CONT-09 SHUF-01 a reply that comes mid-pass goes behind the head, the pass stays`() =
         runTest {
             val harness = head(this, "a", "b", "c", "d", "e")
             val reply = CompletableDeferred<WaveBatch>()
@@ -863,7 +863,7 @@ class QueueContinuationTest {
         }
 
     @Test
-    fun `CONT-10 CONT-09 with shuffle, repeat wraps the head's pass, and vibe tracks wait behind it`() =
+    fun `CONT-10 SHUF-01 SHUF-02 with shuffle, repeat wraps the pass, vibe tracks wait behind it`() =
         runTest {
             val harness = head(this, "a", "b", "c")
             harness.source.onStartWave = { WaveBatch("V1", "B1", tracks("v1")) }

@@ -96,7 +96,7 @@ class QueuePersistenceTest {
     }
 
     @Test
-    fun `with shuffle on, a restored queue starts a new pass from the restored track`() = runTest {
+    fun `SHUF-01 with shuffle on, a restored queue starts a new pass from the restored track`() = runTest {
         val first = QueueHarness(this)
         first.controller.loadSource("Liked") { tracks("a", "b", "c", "d", "e") }
         runCurrent()

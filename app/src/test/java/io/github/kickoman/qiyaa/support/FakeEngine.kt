@@ -15,6 +15,7 @@ import io.github.kickoman.qiyaa.yandex.Track
 class FakeEngine(private val controller: QueueController) : PlayerEngine {
     val tracks = ArrayList<Track>()
     val commands = ArrayList<String>()
+    val leads = ArrayList<List<Int>>()
     var playWhenReady = false
         private set
     var playing = false
@@ -78,6 +79,7 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
         commands += "set ${tracks.map { it.id }} play=$playWhenReady$start"
         this.tracks.clear()
         this.tracks += tracks
+        leads += lead
         shuffle = pass(head, lead)
         currentIndex = startIndex
         positionMs = startPositionMs
@@ -87,6 +89,7 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
     }
 
     override fun shuffleHead(head: List<Int>, lead: List<Int>) {
+        leads += lead
         shuffle = pass(head, lead)
     }
 

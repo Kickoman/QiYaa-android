@@ -95,7 +95,7 @@ class QueueTransportTest {
     }
 
     @Test
-    fun `TR-03 shuffle switched on starts a pass with the current track, and every track plays once`() =
+    fun `TR-03 SHUF-01 SHUF-03 shuffle switched on starts a pass with the current track, each plays once`() =
         runTest {
             val harness = loaded(this, "a", "b", "c", "d")
             harness.engine.seekTo(2)
@@ -111,7 +111,7 @@ class QueueTransportTest {
         }
 
     @Test
-    fun `TR-03 with shuffle on, a new queue's pass starts with its first track`() = runTest {
+    fun `TR-03 SHUF-01 with shuffle on, a new queue's pass starts with its first track`() = runTest {
         val harness = QueueHarness(this)
         harness.controller.setShuffle(true)
         harness.controller.loadSource("Liked") { tracks("a", "b", "c") }
