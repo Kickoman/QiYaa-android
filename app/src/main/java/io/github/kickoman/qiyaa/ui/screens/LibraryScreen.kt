@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -380,9 +381,15 @@ private fun <T> ChoiceRow(label: String?, current: T, choices: List<Pair<T, Int>
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (label != null) QiText(label, sans(14.sp, 500), Modifier.weight(1f), color = Qi.colors.text)
-        for ((choice, text) in choices) {
-            PillToggle(stringResource(text).uppercase(), current == choice) {
-                if (current != choice) onPick(choice)
+        FlowRow(
+            if (label == null) Modifier.weight(1f) else Modifier,
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            for ((choice, text) in choices) {
+                PillToggle(stringResource(text).uppercase(), current == choice) {
+                    if (current != choice) onPick(choice)
+                }
             }
         }
     }

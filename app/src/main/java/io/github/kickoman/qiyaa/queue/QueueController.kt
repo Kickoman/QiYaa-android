@@ -465,21 +465,27 @@ class QueueController(
 
     fun setShuffle(on: Boolean) {
         val nextBefore = nextTrack()
+        val idleBefore = nothingToPlay()
         val wasOn = shuffleInEffect()
         shuffleRule.onUserChanged(on, modesLocked())
         if (!wasOn && shuffleInEffect()) startShufflePass()
         applyModes()
         save()
-        if (nextTrack() != nextBefore) reportJam()
+        reportNewNext(nextBefore, idleBefore)
     }
 
     fun setShuffleAlgorithm(algorithm: ShuffleAlgorithm) {
         if (this.algorithm == algorithm) return
         val nextBefore = nextTrack()
+        val idleBefore = nothingToPlay()
         this.algorithm = algorithm
         if (shuffleInEffect()) startShufflePass()
         applyModes()
-        if (nextTrack() != nextBefore) reportJam()
+        reportNewNext(nextBefore, idleBefore)
+    }
+
+    private fun reportNewNext(nextBefore: Track?, idleBefore: Boolean) {
+        if (nextTrack() != nextBefore && !(idleBefore && nothingToPlay())) reportJam()
     }
 
     private fun drawsRandomly(entries: List<QueueEntry> = mutableState.value.entries): Boolean =

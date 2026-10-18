@@ -1671,6 +1671,48 @@ class QueueJamTest {
     }
 
     @Test
+    fun `LISTEN-03 SHUF-09 stopped at the end, SHF and the algorithm send no idle again`() = runTest {
+        val h = QueueHarness.likes(this, "a", "b", "c", continueWithVibe = false)
+        h.engine.seekTo(2)
+        h.engine.startPlaying()
+        val jam = h.startJam()
+        h.engine.finishTrack()
+        assertTrue(h.engine.isEnded)
+        assertEquals(idle, jam.playbacks.last())
+        val reports = jam.playbacks.size
+        h.controller.setShuffle(true)
+        h.controller.setShuffleAlgorithm(ShuffleAlgorithm.RANDOM_TRACK)
+        h.controller.setShuffleAlgorithm(ShuffleAlgorithm.WITHOUT_REPEATS)
+        h.controller.setShuffle(false)
+        assertEquals(reports, jam.playbacks.size)
+    }
+
+    @Test
+    fun `LISTEN-03 SHUF-09 waiting for more at the end, SHF reports the pass's next, and off reports idle`() =
+        runTest {
+            val h = QueueHarness(this, continueWithVibe = true)
+            h.source.onStartWave = { CompletableDeferred<WaveBatch>().await() }
+            h.controller.loadSource("Liked") { tracks("a", "b", "c") }
+            runCurrent()
+            h.engine.seekTo(2)
+            h.engine.startPlaying()
+            val jam = h.startJam()
+            h.state(seeds = listOf("genre:jam"), seedsVersion = 1)
+            runCurrent()
+            h.controller.next()
+            runCurrent()
+            assertEquals(QueueEvent.LoadingMore, h.events.last())
+            assertFalse(h.engine.isEnded)
+            assertEquals(idle, jam.playbacks.last())
+            h.controller.setShuffle(true)
+            assertEquals(base("c", next = "a"), jam.playbacks.last())
+            val reports = jam.playbacks.size
+            h.controller.setShuffle(false)
+            assertEquals(reports + 1, jam.playbacks.size)
+            assertEquals(idle, jam.playbacks.last())
+        }
+
+    @Test
     fun `HOST-21 HOST-08 a pick into an empty player holds its first row, an item then plays first`() =
         runTest {
             val h = QueueHarness(this)
