@@ -9,6 +9,7 @@ import io.github.kickoman.qiyaa.yandex.Track
 
 object MediaItems {
     const val SCHEME = "qiyaa"
+    const val PARAM_REVISION = "r"
     private const val EXTRA_ID = "id"
     private const val EXTRA_ALBUM_ID = "albumId"
     private const val EXTRA_DURATION_MS = "durationMs"
@@ -16,7 +17,16 @@ object MediaItems {
     private const val EXTRA_COVER_URL = "cover"
     private const val EXTRA_TITLE = "title"
 
-    fun uriFor(track: Track): Uri = "$SCHEME://track/${track.id}".toUri()
+    fun uriText(trackId: String, revision: Int = 0): String {
+        require(revision >= 0) { "The revision of track $trackId is $revision" }
+        val plain = "$SCHEME://track/$trackId"
+        return if (revision == 0) plain else "$plain?$PARAM_REVISION=$revision"
+    }
+
+    fun uriFor(track: Track): Uri = uriText(track.id).toUri()
+
+    fun revised(item: MediaItem, trackId: String, revision: Int): MediaItem =
+        item.buildUpon().setUri(uriText(trackId, revision)).build()
 
     fun trackIdOf(uri: Uri): String? = if (uri.scheme == SCHEME) uri.lastPathSegment else null
 

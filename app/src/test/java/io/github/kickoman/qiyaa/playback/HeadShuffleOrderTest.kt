@@ -179,6 +179,60 @@ class HeadShuffleOrderTest {
         assertEquals(HeadShuffle(listOf(0, 1), 2), HeadShuffleOrder.afterSplice(HeadShuffle.EMPTY, 0, 0, 2))
     }
 
+    @Test
+    fun `QUAL-05 replaceMediaItem as ExoPlayer clones it, insert then remove, gives back the same order`() {
+        for (installed in listOf(pass, HeadShuffle(emptyList(), 4))) {
+            for (index in 0 until installed.length) {
+                val replacing = HeadShuffleOrder.replacing(installed, installed.length, index, Random(0))
+                assertEquals(installed, replacing.shuffle)
+                val replaced = replacing.cloneAndInsert(index + 1, 1).cloneAndRemove(index, index + 1)
+                assertEquals("$installed at $index", installed, (replaced as HeadShuffleOrder).shuffle)
+                assertEquals(installed.order, walk(replaced))
+            }
+        }
+    }
+
+    @Test
+    fun `QUAL-05 the order after a replacement carries no staging`() {
+        val replacing = HeadShuffleOrder.replacing(pass, pass.length, 1, Random(0))
+        assertEquals(pass.insertedAfter(2, 1), replacing.staged)
+        assertEquals(2, replacing.stagedAt)
+        val inserted = replacing.cloneAndInsert(2, 1) as HeadShuffleOrder
+        assertNull(inserted.staged)
+        assertNull((inserted.cloneAndRemove(1, 2) as HeadShuffleOrder).staged)
+    }
+
+    @Test
+    fun `QUAL-05 between ExoPlayer's two clones the old next track still follows the current one`() {
+        val walk = pass.order
+        for ((position, current) in walk.withIndex()) {
+            val next = walk.getOrNull(position + 1) ?: walk.first()
+            val replacing = HeadShuffleOrder.replacing(pass, pass.length, next, Random(0))
+            val inserted = replacing.cloneAndInsert(next + 1, 1)
+            val shifted = if (current > next) current + 1 else current
+            val following = inserted.getNextIndex(shifted).takeIf { it != C.INDEX_UNSET }
+                ?: inserted.firstIndex
+            assertEquals("after $current", next, following)
+            assertEquals("after $current", next + 1, inserted.getNextIndex(next))
+        }
+    }
+
+    @Test
+    fun `QUAL-05 cloneAndSet never takes the order staged for a replacement`() {
+        val replacing = HeadShuffleOrder.replacing(pass, pass.length, 0, Random(2))
+        val set = replacing.cloneAndSet(pass.length + 1, C.INDEX_UNSET) as HeadShuffleOrder
+        assertEquals(freshPass(pass.length + 1, seed = 2), set.shuffle)
+        assertNull(set.staged)
+    }
+
+    @Test
+    fun `QUAL-05 a replacement over a playlist changed from outside takes the player's length`() {
+        val replacing = HeadShuffleOrder.replacing(HeadShuffle(listOf(2, 0, 1), 3), 2, 0, Random(0))
+        assertEquals(2, replacing.length)
+        val replaced = replacing.cloneAndInsert(1, 1).cloneAndRemove(0, 1) as HeadShuffleOrder
+        assertEquals(HeadShuffle(emptyList(), 2), replaced.shuffle)
+    }
+
     private fun freshPass(count: Int, seed: Int): HeadShuffle {
         val empty = HeadShuffleOrder(HeadShuffle.EMPTY, Random(seed))
         return (empty.cloneAndInsert(0, count) as HeadShuffleOrder).shuffle

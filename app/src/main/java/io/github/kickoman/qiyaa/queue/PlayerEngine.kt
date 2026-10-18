@@ -34,6 +34,8 @@ interface PlayerEngine {
 
     fun removeAt(index: Int)
 
+    fun reload(index: Int)
+
     fun clear()
 
     fun seekTo(index: Int)
