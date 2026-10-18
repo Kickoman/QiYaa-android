@@ -111,6 +111,65 @@ class QueueShuffleTest {
         assertEquals(emptyList<QueueEvent>(), h.events)
     }
 
+    @Test
+    fun `SHUF-02 Previous on the first vibe track goes to the head track that was current last`() = runTest {
+        val h = head(this, "a", "b", "c", "d", flag = true)
+        h.source.onStartWave = { WaveBatch("V1", "B1", tracks("v1", "v2")) }
+        h.controller.setShuffle(true)
+        h.engine.shuffleOrder = listOf(0, 3, 1, 2)
+        h.engine.startPlaying()
+        h.engine.finishTrack()
+        h.engine.finishTrack()
+        runCurrent()
+        assertEquals(listOf("a", "b", "c", "d", "v1", "v2"), h.engine.ids())
+        h.engine.seekTo(4)
+        h.controller.previous()
+        assertEquals(1, h.engine.currentIndex)
+        assertEquals("seek 1", h.engine.commands.last())
+        h.controller.next()
+        assertEquals(2, h.engine.currentIndex)
+        h.controller.next()
+        assertEquals(4, h.engine.currentIndex)
+    }
+
+    @Test
+    fun `SHUF-02 the head mark follows removed head rows, a removed mark moves to the head track before`() =
+        runTest {
+            val h = head(this, "a", "b", "c", "d", "e", flag = true)
+            h.source.onStartWave = { WaveBatch("V1", "B1", tracks("v1", "v2")) }
+            h.controller.setShuffle(true)
+            h.engine.shuffleOrder = listOf(0, 3, 2, 1, 4)
+            h.engine.startPlaying()
+            repeat(3) { h.engine.finishTrack() }
+            runCurrent()
+            assertEquals(listOf("a", "b", "c", "d", "e", "v1", "v2"), h.engine.ids())
+            h.engine.seekTo(2)
+            h.engine.seekTo(5)
+            h.controller.removeIndices(setOf(0))
+            h.controller.previous()
+            assertEquals("c", h.currentId())
+            h.engine.seekTo(4)
+            h.controller.removeIndices(setOf(1))
+            h.controller.previous()
+            assertEquals("b", h.currentId())
+        }
+
+    @Test
+    fun `TR-01 with shuffle off, Previous on the first vibe track plays the row before, not the head mark`() =
+        runTest {
+            val h = head(this, "a", "b", "c", "d", flag = true)
+            h.source.onStartWave = { WaveBatch("V1", "B1", tracks("v1", "v2")) }
+            h.engine.startPlaying()
+            h.engine.finishTrack()
+            h.engine.finishTrack()
+            runCurrent()
+            assertEquals(listOf("a", "b", "c", "d", "v1", "v2"), h.engine.ids())
+            h.engine.seekTo(1)
+            h.engine.seekTo(4)
+            h.controller.previous()
+            assertEquals(3, h.engine.currentIndex)
+        }
+
     private fun head(scope: TestScope, vararg ids: String, flag: Boolean = false): QueueHarness {
         val harness = QueueHarness(scope, continueWithVibe = flag)
         harness.source.onMoreWave = { _, _ -> CompletableDeferred<WaveBatch>().await() }
@@ -120,4 +179,6 @@ class QueueShuffleTest {
         harness.engine.commands.clear()
         return harness
     }
+
+    private fun QueueHarness.currentId(): String = engine.tracks[engine.currentIndex].id
 }

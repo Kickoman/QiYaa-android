@@ -103,6 +103,7 @@ class QueueController(
     private var asking = false
     private var stoppedAtEnd = false
     private var inHead = false
+    private var headMark = -1
     private var waveSeedsVersion: Int? = null
     private var radioStartedPending: WaveContext? = null
     private var holding = false
@@ -230,12 +231,24 @@ class QueueController(
             return
         }
         val head = wrappingHead(current)
+        val shuffled = shuffledPrevious(current)
         when {
             current.positionMs > RESTART_AFTER_MS -> current.seekToPosition(0)
+            shuffled != null -> wrapTo(shuffled, current)
             current.currentIndex == head.firstOrNull() -> wrapTo(head.last(), current)
             current.hasPrevious() -> current.skipToPrevious()
             else -> restart(current)
         }
+    }
+
+    private fun shuffledPrevious(current: PlayerEngine): Int? {
+        if (!shuffleInEffect() || current.itemCount == 0) return null
+        val entries = mutableState.value.entries
+        val index = current.currentIndex
+        val firstOfContinuation = entries.getOrNull(index)?.part == EntryPart.CONTINUATION &&
+            entries.getOrNull(index - 1)?.part == EntryPart.HEAD
+        if (!firstOfContinuation) return null
+        return headOf(entries).getOrNull(headMark) ?: (index - 1)
     }
 
     fun onPausedAtEnd() {
@@ -355,7 +368,7 @@ class QueueController(
         if (track != null) {
             stoppedAtEnd = false
             stopWaiting()
-            noteCursor(mutableState.value.entries.getOrNull(current.currentIndex))
+            noteCursor(current.currentIndex)
             gatherWaiting(current)
             dropStaleTail()
         }
@@ -369,13 +382,22 @@ class QueueController(
         }
     }
 
-    private fun noteCursor(entry: QueueEntry?) {
-        when (entry?.part) {
-            EntryPart.HEAD -> inHead = true
+    private fun noteCursor(index: Int) {
+        val entries = mutableState.value.entries
+        when (entries.getOrNull(index)?.part) {
+            EntryPart.HEAD -> {
+                inHead = true
+                headMark = headOrdinal(entries, index)
+            }
+
             EntryPart.CONTINUATION -> inHead = false
+
             else -> Unit
         }
     }
+
+    private fun headOrdinal(entries: List<QueueEntry>, index: Int): Int =
+        (0 until index).count { entries[it].part == EntryPart.HEAD }
 
     private fun gatherWaiting(current: PlayerEngine) {
         val entries = mutableState.value.entries
@@ -421,10 +443,12 @@ class QueueController(
 
     private fun modesLocked(): Boolean = mutableState.value.isWave
 
+    private fun shuffleInEffect(): Boolean = shuffleRule.playerModeFor(modesLocked())
+
     fun setShuffle(on: Boolean) {
-        val wasOn = shuffleRule.playerModeFor(modesLocked())
+        val wasOn = shuffleInEffect()
         shuffleRule.onUserChanged(on, modesLocked())
-        if (!wasOn && shuffleRule.playerModeFor(modesLocked())) startShufflePass()
+        if (!wasOn && shuffleInEffect()) startShufflePass()
         applyModes()
         save()
     }
@@ -453,7 +477,7 @@ class QueueController(
     private fun applyModes() {
         publishModes()
         val current = engine ?: return
-        current.shuffleEnabled = shuffleRule.playerModeFor(modesLocked())
+        current.shuffleEnabled = shuffleInEffect()
         val continued = mutableState.value.entries.any { it.part == EntryPart.CONTINUATION }
         current.repeatEnabled = repeatHoldsHead() && !continued
         current.pauseAtEndOfCurrent = walkNext(current) != naturalNext(current)
@@ -678,6 +702,7 @@ class QueueController(
                 continueWithVibe = continueWithVibeByDefault(),
             )
         inHead = playable.any { it.part == EntryPart.HEAD }
+        headMark = -1
         applyModes()
         if (current == null) {
             restorePoint = RestorePoint(0, 0, playWhenReady = autoplay)
@@ -725,6 +750,7 @@ class QueueController(
         }
         val playable = entries.filter { it.track.available }
         inHead = playable.any { it.part == EntryPart.HEAD }
+        headMark = -1
         if (cursor < 0) holding = playable.isNotEmpty()
         if (playable.isNotEmpty()) {
             mutableState.update { it.copy(entries = it.entries + playable) }
@@ -733,7 +759,7 @@ class QueueController(
             movingCursor = false
         }
         val rows = mutableState.value.entries
-        if (current != null && current.itemCount > 0 && shuffleRule.playerModeFor(modesLocked())) {
+        if (current != null && current.itemCount > 0 && shuffleInEffect()) {
             current.shuffleHead(headOf(rows), leadAt(rows, current.currentIndex))
         }
         if (current == null) {
@@ -785,6 +811,7 @@ class QueueController(
         waveSessionId = null
         waveStationId = ""
         inHead = false
+        headMark = -1
         mutableState.value = QueueState(continueWithVibe = continueWithVibeByDefault())
         publishModes()
         save()
@@ -965,6 +992,11 @@ class QueueController(
                 QueueEntry(track, part, wave, item, snapshot.seedsVersions.getOrNull(i))
             }
         inHead = inHeadAt(entries, snapshot.index)
+        headMark = if (entries.getOrNull(snapshot.index)?.part == EntryPart.HEAD) {
+            headOrdinal(entries, snapshot.index)
+        } else {
+            -1
+        }
         holding = entries.getOrNull(snapshot.index)?.isWaiting == true
         mutableState.value =
             QueueState(
@@ -1258,7 +1290,7 @@ class QueueController(
         movingCursor = true
         current.seekTo(index)
         movingCursor = false
-        if (shuffleRule.playerModeFor(modesLocked())) startShufflePass()
+        if (shuffleInEffect()) startShufflePass()
     }
 
     private fun cursorIndex(current: PlayerEngine?): Int {
@@ -1333,6 +1365,9 @@ class QueueController(
     }
 
     private fun removeEntry(current: PlayerEngine?, index: Int) {
+        val entries = mutableState.value.entries
+        val removesHead = entries.getOrNull(index)?.part == EntryPart.HEAD
+        if (removesHead && headOrdinal(entries, index) <= headMark) headMark--
         mutableState.update { state ->
             state.copy(
                 entries = state.entries.filterIndexed { i, _ -> i != index },
