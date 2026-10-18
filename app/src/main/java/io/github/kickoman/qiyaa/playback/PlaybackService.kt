@@ -37,6 +37,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 
 @UnstableApi
@@ -104,6 +105,9 @@ class PlaybackService : MediaSessionService() {
             Media3Engine(player, graph.queue, onAudioFailure = { graph.telemetry?.audioFailed(it) })
                 .also { it.attach() }
         graph.jamHost.onServiceStarted()
+        serviceScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            graph.qualityInEffect.drop(1).collect { graph.queue.onFilesChanged(links::askedInOtherQuality) }
+        }
 
         val builder =
             MediaSession.Builder(this, QueueForwardingPlayer(player, graph.queue))

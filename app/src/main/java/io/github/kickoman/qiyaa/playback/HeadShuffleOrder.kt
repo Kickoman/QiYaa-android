@@ -73,5 +73,10 @@ class HeadShuffleOrder(
             val current = fitted(copy, itemCount)
             return if (index >= itemCount) current else current.removed(index, index + 1)
         }
+
+        fun replacing(installed: HeadShuffle, itemCount: Int, index: Int, random: Random): HeadShuffleOrder {
+            val current = fitted(installed, itemCount)
+            return staging(current, itemCount, current.insertedAfter(index + 1, 1), random, at = index + 1)
+        }
     }
 }

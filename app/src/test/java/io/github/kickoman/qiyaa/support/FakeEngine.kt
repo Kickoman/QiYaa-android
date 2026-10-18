@@ -138,6 +138,13 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
         }
     }
 
+    override fun reload(index: Int) {
+        commands += "reload $index"
+        check(index in tracks.indices && index != currentIndex) {
+            "Cannot reload $index: the playlist has ${tracks.size} items and $currentIndex is current"
+        }
+    }
+
     private fun followingInOrder(index: Int): Int? {
         val order = playOrder()
         val next = order.getOrNull(order.indexOf(index) + 1) ?: order.firstOrNull()?.takeIf { repeatEnabled }

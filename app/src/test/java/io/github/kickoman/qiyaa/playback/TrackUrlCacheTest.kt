@@ -3,8 +3,13 @@ package io.github.kickoman.qiyaa.playback
 import io.github.kickoman.qiyaa.yandex.Quality
 import io.github.kickoman.qiyaa.yandex.ResolvedUrl
 import java.io.IOException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 
@@ -118,5 +123,63 @@ class TrackUrlCacheTest {
         cache.get("1")
         quality = Quality.STANDARD
         assertEquals("https://storage/1/1", cache.peek("1"))
+    }
+
+    @Test
+    fun `QUAL-05 a track asked in the quality in effect is in another quality once the choice changes`() =
+        runBlocking {
+            cache.get("1")
+            assertFalse(cache.askedInOtherQuality("1"))
+            quality = Quality.ECONOMY
+            assertTrue(cache.askedInOtherQuality("1"))
+            quality = Quality.STANDARD
+            assertFalse(cache.askedInOtherQuality("1"))
+        }
+
+    @Test
+    fun `QUAL-05 a link still being signed counts with the quality it was asked in`() = runBlocking {
+        val reply = CompletableDeferred<ResolvedUrl>()
+        val slow = TrackUrlCache(clock = { now }, quality = { quality }) { _, _ -> reply.await() }
+        val signing = launch(start = CoroutineStart.UNDISPATCHED) { slow.get("1") }
+        quality = Quality.ECONOMY
+        assertTrue(slow.askedInOtherQuality("1"))
+        reply.complete(ResolvedUrl("https://storage/1", 320))
+        signing.join()
+        assertTrue(slow.askedInOtherQuality("1"))
+    }
+
+    @Test
+    fun `QUAL-05 a track never asked for is in no other quality`() {
+        quality = Quality.ECONOMY
+        assertFalse(cache.askedInOtherQuality("1"))
+    }
+
+    @Test
+    fun `QUAL-05 a cached link counts as asked, also after a failed signing in another quality`() =
+        runBlocking {
+            var offline = false
+            val flaky =
+                TrackUrlCache(clock = { now }, quality = { quality }) { id, asked ->
+                    if (offline) throw IOException("offline")
+                    ResolvedUrl("https://storage/$id/$asked", 320)
+                }
+            flaky.get("1")
+            quality = Quality.ECONOMY
+            offline = true
+            assertTrue(runCatching { flaky.get("1") }.isFailure)
+            quality = Quality.STANDARD
+            assertTrue(flaky.askedInOtherQuality("1"))
+            assertEquals("https://storage/1/STANDARD", flaky.get("1").url)
+            assertFalse(flaky.askedInOtherQuality("1"))
+        }
+
+    @Test
+    fun `QUAL-05 QUAL-08 a file read on from the middle counts with the quality of its file`() = runBlocking {
+        cache.get("1")
+        quality = Quality.ECONOMY
+        cache.get("1", continuing = true)
+        assertTrue(cache.askedInOtherQuality("1"))
+        cache.get("1")
+        assertFalse(cache.askedInOtherQuality("1"))
     }
 }

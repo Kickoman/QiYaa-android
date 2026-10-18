@@ -254,6 +254,16 @@ class QueueController(
         current.play()
     }
 
+    fun onFilesChanged(outdated: (trackId: String) -> Boolean) {
+        val current = engine ?: return
+        if (current.itemCount == 0 || current.isEnded) return
+        val next = naturalNext(current)?.takeIf { it != current.currentIndex } ?: return
+        val tracks = mutableState.value.tracks
+        val nextId = tracks.getOrNull(next)?.id ?: return
+        if (nextId == tracks.getOrNull(current.currentIndex)?.id) return
+        if (outdated(nextId)) current.reload(next)
+    }
+
     private fun skipForward(current: PlayerEngine, target: Int) {
         if (target == naturalNext(current)) current.skipToNext() else wrapTo(target, current)
     }

@@ -54,7 +54,7 @@
 | `telemetry/machine` | string, UUID, из которого считается `machine`, — только если у телефона нет `ANDROID_ID` (`telemetry/README.md`, `MachineId`) | нет | `telemetryMachine` (не поток), `setTelemetryMachine` |
 | `telemetry/firstStart` | string, дата первого запуска телеметрии `yyyy-MM-dd` (`LocalDate.toString()`) | нет | `markTelemetryFirstStart()` |
 
-Ключи и умолчания те же, что в десктопном QiYaa, где они применимы (`playback/quality` там единственный: у ПК нет мобильной сети; `playback/continueWithVibe` там есть только в `settings.ini`, здесь — блок в библиотеке). Какое из двух качеств действует, решает `AppGraph` по `NetworkMonitor.isMetered()`; `data` про сеть не знает. `jam/server`
+Ключи и умолчания те же, что в десктопном QiYaa, где они применимы (`playback/quality` там единственный: у ПК нет мобильной сети; `playback/continueWithVibe` там есть только в `settings.ini`, здесь — блок в библиотеке). Какое из двух качеств действует, решает `AppGraph` по `NetworkMonitor.metered` (`AppGraph.qualityInEffect`, `playback/README.md`, кэш ссылок); `data` про сеть не знает. `jam/server`
 обрезается по краям при записи; ключ `jam/hostKey` из 0.2.3 (ключи хозяина отменены) `Settings` удаляет при создании; адрес по умолчанию передаёт `AppGraph` в конструктор, потому что
 `data` не видит `BuildConfig`. `setEq(settings, presetName)` пишет четыре ключа одной транзакцией. Строка полос с числом элементов ≠ 10 или с нечисловыми значениями читается как плоский EQ.
 

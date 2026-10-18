@@ -34,6 +34,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 
@@ -90,21 +94,31 @@ class AppGraph(val context: Context) {
             continueWithVibeByDefault = { settings.continueWithVibe.value },
         )
 
+    val qualityInEffect: StateFlow<Quality> =
+        combine(
+            settings.quality,
+            settings.qualityMetered,
+            networkMonitor.metered,
+        ) { unmetered, metered, onMetered -> qualityFor(unmetered, metered, onMetered) }
+            .stateIn(
+                applicationScope,
+                SharingStarted.Eagerly,
+                qualityFor(
+                    settings.quality.value,
+                    settings.qualityMetered.value,
+                    networkMonitor.metered.value,
+                ),
+            )
+
     /** Signed track links, shared by the player and the jam host's listeners (LISTEN-02). */
     val trackLinks =
-        TrackUrlCache(clock = SystemClock::elapsedRealtime, quality = ::qualityInEffect) { id, quality ->
+        TrackUrlCache(
+            clock = SystemClock::elapsedRealtime,
+            quality = { qualityInEffect.value },
+        ) { id, quality ->
             Log.d(LOG_TAG, "Signing the link of track $id ($quality)")
             api.resolveTrackUrl(id, quality)
         }
-
-    /** QUAL-07: the choice of the network in use. */
-    private fun qualityInEffect(): Quality {
-        val choice = if (networkMonitor.isMetered()) settings.qualityMetered.value else settings.quality.value
-        return when (choice) {
-            AudioQuality.STANDARD -> Quality.STANDARD
-            AudioQuality.ECONOMY -> Quality.ECONOMY
-        }
-    }
 
     val jamHost =
         JamHost(
@@ -145,6 +159,12 @@ class AppGraph(val context: Context) {
     companion object {
         const val HTTP_TIMEOUT_SECONDS = 20L
         const val LOG_TAG = "QiYaa"
+
+        private fun qualityFor(unmetered: AudioQuality, metered: AudioQuality, onMetered: Boolean): Quality =
+            when (if (onMetered) metered else unmetered) {
+                AudioQuality.STANDARD -> Quality.STANDARD
+                AudioQuality.ECONOMY -> Quality.ECONOMY
+            }
 
         private fun JamFile.asJamStore(): JamStore = object : JamStore {
             override fun read(): String? = this@asJamStore.read()

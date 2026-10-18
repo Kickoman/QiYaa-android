@@ -23,6 +23,7 @@ class Media3Engine(
     private val onAudioFailure: (AudioFailure) -> Unit = {},
 ) : PlayerEngine {
     private var order = HeadShuffle.EMPTY
+    private var revision = 0
 
     private val listener =
         object : Player.Listener {
@@ -165,6 +166,18 @@ class Media3Engine(
     override fun removeAt(index: Int) {
         order = HeadShuffleOrder.afterRemove(order, player.mediaItemCount, index)
         player.removeMediaItem(index)
+    }
+
+    override fun reload(index: Int) {
+        val count = player.mediaItemCount
+        if (index !in 0 until count || index == player.currentMediaItemIndex) return
+        val item = player.getMediaItemAt(index)
+        val trackId = item.localConfiguration?.uri?.let(MediaItems::trackIdOf) ?: return
+        order = HeadShuffleOrder.fitted(order, count)
+        player.setShuffleOrder(HeadShuffleOrder.replacing(order, count, index, random))
+        revision++
+        Log.d(LOG_TAG, "Reloading track $trackId at $index as revision $revision")
+        player.replaceMediaItem(index, MediaItems.revised(item, trackId, revision))
     }
 
     override fun clear() {
