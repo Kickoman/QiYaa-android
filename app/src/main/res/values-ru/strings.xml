@@ -309,6 +309,10 @@
     <string name="quality_note">Экономия: HE-AAC 64 kbps, втрое меньше трафика. Со следующего трека.</string>
     <string name="toggle_on">Да</string>
     <string name="toggle_off">Нет</string>
+    <string name="shuffle_title">СЛУЧАЙНЫЙ ПОРЯДОК</string>
+    <string name="shuffle_without_repeats">Без повторов</string>
+    <string name="shuffle_random_track">Случайный трек</string>
+    <string name="shuffle_note">Без повторов: каждый трек — один раз, в случайном порядке. Случайный трек: любой, кроме текущего, так что трек может прозвучать снова. Действует, пока включён SHF.</string>
     <string name="vibe_continue_title">ПРОДОЛЖАТЬ ВОЛНОЙ</string>
     <string name="vibe_continue_new_queues">Новые очереди</string>
     <string name="vibe_continue_note">Когда лайки, плейлист, альбом, исполнитель или поиск заканчиваются, дальше играет волна по тому, что звучало. В плейлисте это переключается для текущей очереди.</string>

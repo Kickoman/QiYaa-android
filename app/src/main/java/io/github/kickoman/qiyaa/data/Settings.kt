@@ -78,6 +78,10 @@ class Settings(context: Context, defaultJamServer: String = "") {
     /** On mobile data and other metered networks (QUAL-07). */
     val qualityMetered: StateFlow<AudioQuality> = mutableQualityMetered.asStateFlow()
 
+    private val mutableShuffleAlgorithm =
+        MutableStateFlow(ShuffleChoice.fromKey(preferences.getString(KEY_SHUFFLE_ALGORITHM, null)))
+    val shuffleAlgorithm: StateFlow<ShuffleChoice> = mutableShuffleAlgorithm.asStateFlow()
+
     private val mutableContinueWithVibe =
         MutableStateFlow(preferences.getBoolean(KEY_CONTINUE_WITH_VIBE, true))
     val continueWithVibe: StateFlow<Boolean> = mutableContinueWithVibe.asStateFlow()
@@ -154,6 +158,11 @@ class Settings(context: Context, defaultJamServer: String = "") {
         preferences.edit { putString(KEY_QUALITY_METERED, quality.key) }
     }
 
+    fun setShuffleAlgorithm(choice: ShuffleChoice) {
+        mutableShuffleAlgorithm.value = choice
+        preferences.edit { putString(KEY_SHUFFLE_ALGORITHM, choice.key) }
+    }
+
     fun setContinueWithVibe(value: Boolean) {
         mutableContinueWithVibe.value = value
         preferences.edit { putBoolean(KEY_CONTINUE_WITH_VIBE, value) }
@@ -214,6 +223,7 @@ class Settings(context: Context, defaultJamServer: String = "") {
         const val KEY_QUALITY = "playback/quality"
         const val KEY_QUALITY_METERED = "playback/qualityMetered"
         const val KEY_CONTINUE_WITH_VIBE = "playback/continueWithVibe"
+        const val KEY_SHUFFLE_ALGORITHM = "shuffle/algorithm"
         const val KEY_TELEMETRY_ENABLED = "telemetry/enabled"
         const val KEY_TELEMETRY_MACHINE = "telemetry/machine"
         const val KEY_TELEMETRY_FIRST_START = "telemetry/firstStart"

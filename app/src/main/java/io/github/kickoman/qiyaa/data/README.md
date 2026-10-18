@@ -4,8 +4,9 @@
 
 | Файл | Содержит |
 |---|---|
-| `Settings.kt` | `Settings` — громкость, баланс, визуализатор, EQ, тема, язык, качество звука, «продолжать волной», телеметрия |
+| `Settings.kt` | `Settings` — громкость, баланс, визуализатор, EQ, тема, язык, качество звука, «продолжать волной», алгоритм shuffle, телеметрия |
 | `AudioQuality.kt` | `AudioQuality` — стандарт / экономия (`spec/player/quality.md`) |
+| `ShuffleChoice.kt` | `ShuffleChoice` — алгоритм shuffle: без повторов / случайный трек (SHUF-09, SHUF-10, `spec/player/shuffle.md`) |
 | `AppLanguage.kt` | `AppLanguage` — языки интерфейса: белорусский (по умолчанию), русский, английский |
 | `TokenStore.kt` | `TokenStore` — токен |
 | `QueueFile.kt` | `QueueFile` — сохранённая очередь, файл `queue.json` |
@@ -50,11 +51,12 @@
 | `playback/quality` | string (`AudioQuality.key`: `standard`, `economy`), качество на Wi-Fi и другой безлимитной сети | `standard` (и любое другое значение) | `quality` |
 | `playback/qualityMetered` | string, то же на мобильной и другой лимитной сети (QUAL-07) | `standard` (и любое другое значение) | `qualityMetered` |
 | `playback/continueWithVibe` | bool, новые очереди без своего продолжения идут дальше волной по истории (CONT-01, `spec/player/continuation.md`) | `true` | `continueWithVibe` |
+| `shuffle/algorithm` | string (`ShuffleChoice.key`: `without-repeats`, `random`), алгоритм shuffle (SHUF-09, SHUF-10); блок «Случайный порядок» в библиотеке | `without-repeats` (и любое другое значение) | `shuffleAlgorithm` |
 | `telemetry/enabled` | bool, отправлять ли статистику (TEL-02, `docs/telemetry.md`); переключатель внизу библиотеки | `true` | `telemetryEnabled` |
 | `telemetry/machine` | string, UUID, из которого считается `machine`, — только если у телефона нет `ANDROID_ID` (`telemetry/README.md`, `MachineId`) | нет | `telemetryMachine` (не поток), `setTelemetryMachine` |
 | `telemetry/firstStart` | string, дата первого запуска телеметрии `yyyy-MM-dd` (`LocalDate.toString()`) | нет | `markTelemetryFirstStart()` |
 
-Ключи и умолчания те же, что в десктопном QiYaa, где они применимы (`playback/quality` там единственный: у ПК нет мобильной сети; `playback/continueWithVibe` там есть только в `settings.ini`, здесь — блок в библиотеке). Какое из двух качеств действует, решает `AppGraph` по `NetworkMonitor.metered` (`AppGraph.qualityInEffect`, `playback/README.md`, кэш ссылок); `data` про сеть не знает. `jam/server`
+Ключи и умолчания те же, что в десктопном QiYaa, где они применимы (`playback/quality` там единственный: у ПК нет мобильной сети; `playback/continueWithVibe` там есть только в `settings.ini`, здесь — блок в библиотеке; `shuffle/algorithm` у десктопа — меню «Шафл», `application.cpp` в `8cfe9f3`, строки 226–240). Какое из двух качеств действует, решает `AppGraph` по `NetworkMonitor.metered` (`AppGraph.qualityInEffect`, `playback/README.md`, кэш ссылок); `data` про сеть не знает. `jam/server`
 обрезается по краям при записи; ключ `jam/hostKey` из 0.2.3 (ключи хозяина отменены) `Settings` удаляет при создании; адрес по умолчанию передаёт `AppGraph` в конструктор, потому что
 `data` не видит `BuildConfig`. `setEq(settings, presetName)` пишет четыре ключа одной транзакцией. Строка полос с числом элементов ≠ 10 или с нечисловыми значениями читается как плоский EQ.
 
@@ -96,9 +98,9 @@ class JamFile(context: Context, name: String = HOST) {
 он не уходит ни в облачную копию, ни на новое устройство; `jam.json` при переносе на Android 12+ уезжает
 («Резервное копирование» выше).
 
-## `AccentTheme`, `VisualizerMode`, `AudioQuality`
+## `AccentTheme`, `VisualizerMode`, `AudioQuality`, `ShuffleChoice`
 
-Все три enum хранятся по явному значению (`key`, `storedValue`), а не по `ordinal`; `AccentTheme` и `VisualizerMode` умеют `next()` по кругу. Неизвестное сохранённое значение — `AccentTheme.DEFAULT` (`AMBER`), `VisualizerMode.SPECTRUM` и `AudioQuality.STANDARD` (так `lossless` из будущей версии прочитается как стандарт). `AudioQuality` — выбор пользователя; в `yandex.Quality` его переводит `AppGraph`, потому что `data` не зависит от `yandex`. Подписи тем — в `ui` (`AccentTheme.labelId()` → `R.string.theme_*`).
+Все четыре enum хранятся по явному значению (`key`, `storedValue`), а не по `ordinal`; `AccentTheme` и `VisualizerMode` умеют `next()` по кругу. Неизвестное сохранённое значение — `AccentTheme.DEFAULT` (`AMBER`), `VisualizerMode.SPECTRUM`, `AudioQuality.STANDARD` (так `lossless` из будущей версии прочитается как стандарт) и `ShuffleChoice.WITHOUT_REPEATS` (SHUF-10). `ShuffleChoice` — выбор пользователя; в `queue.ShuffleAlgorithm` его переводит `AppGraph` (`data` и `queue` друг друга не импортируют): он подписан на `shuffleAlgorithm` на главном потоке и отдаёт каждое значение `QueueController.setShuffleAlgorithm`, первое — синхронно, ещё в `QiYaaApp.onCreate`. Выбор — настройка приложения, а не часть сохранённой очереди (`queue/README.md`, «Алгоритм shuffle»). `AudioQuality` — выбор пользователя; в `yandex.Quality` его переводит `AppGraph`, потому что `data` не зависит от `yandex`. Подписи тем — в `ui` (`AccentTheme.labelId()` → `R.string.theme_*`).
 
 ## Not here
 
