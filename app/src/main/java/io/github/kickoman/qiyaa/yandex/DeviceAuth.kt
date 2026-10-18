@@ -99,7 +99,7 @@ class DeviceAuth(
             val request = Request.Builder().url(baseUrl + path).post(body.build()).build()
             val (status, text) =
                 try {
-                    client.newCall(request).execute().use { it.code to it.body?.string().orEmpty() }
+                    client.newCall(request).execute().use { it.code to it.body.string() }
                 } catch (failed: IOException) {
                     throw NetworkException("POST", path, failed)
                 }

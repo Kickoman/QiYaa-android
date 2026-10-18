@@ -1,6 +1,6 @@
 # `app/src/test/` — JVM-тесты
 
-JUnit 4 без эмулятора: `./gradlew testDebugUnitTest`. Сетевые классы тестируются против `MockWebServer` на общих фикстурах из `spec/`, DSP — синтезированными сигналами. Имена тестов — предложения о поведении в обратных кавычках.
+JUnit 4 без эмулятора: `./gradlew testDebugUnitTest`. Сетевые классы тестируются против `MockWebServer` на общих фикстурах из `spec/`, DSP — синтезированными сигналами. `MockWebServer` — прежний артефакт `com.squareup.okhttp3:mockwebserver` (пакет `okhttp3.mockwebserver`), который OkHttp 5 по-прежнему публикует в той же версии, что `okhttp`. Имена тестов — предложения о поведении в обратных кавычках.
 
 ## Общие фикстуры (`spec/`)
 
