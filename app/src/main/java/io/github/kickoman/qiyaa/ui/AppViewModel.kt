@@ -9,6 +9,7 @@ import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.appGraph
 import io.github.kickoman.qiyaa.data.AppLanguage
 import io.github.kickoman.qiyaa.data.AudioQuality
+import io.github.kickoman.qiyaa.data.ShuffleChoice
 import io.github.kickoman.qiyaa.jam.GuestPhase
 import io.github.kickoman.qiyaa.jam.JamLink
 import io.github.kickoman.qiyaa.playback.JamHostPhase
@@ -275,6 +276,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun setQualityMetered(quality: AudioQuality) = settings.setQualityMetered(quality)
 
     fun setContinueWithVibe(on: Boolean) = settings.setContinueWithVibe(on)
+
+    fun setShuffleAlgorithm(choice: ShuffleChoice) = settings.setShuffleAlgorithm(choice)
 
     fun setTelemetryEnabled(on: Boolean) = settings.setTelemetryEnabled(on)
 

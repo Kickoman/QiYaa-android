@@ -96,7 +96,7 @@ class QueuePersistenceTest {
     }
 
     @Test
-    fun `with shuffle on, a restored queue starts a new pass from the restored track`() = runTest {
+    fun `SHUF-01 with shuffle on, a restored queue starts a new pass from the restored track`() = runTest {
         val first = QueueHarness(this)
         first.controller.loadSource("Liked") { tracks("a", "b", "c", "d", "e") }
         runCurrent()
@@ -305,5 +305,29 @@ class QueuePersistenceTest {
             assertTrue(second.engine.shuffleEnabled)
             assertEquals(listOf(1, 0, 2, 3, 4, 5), second.engine.playOrder())
             assertEquals(emptyList<String>(), second.source.calls)
+        }
+
+    @Test
+    fun `SHUF-02 with shuffle on, Previous on a restored first vibe track goes to the row before`() =
+        runTest {
+            val first = QueueHarness(this, continueWithVibe = true)
+            first.source.onStartWave = { WaveBatch("V1", "B1", tracks("v1", "v2")) }
+            first.controller.loadSource("Liked") { tracks("a", "b", "c") }
+            runCurrent()
+            first.controller.setShuffle(true)
+            first.engine.startPlaying()
+            first.engine.finishTrack()
+            runCurrent()
+            assertEquals(listOf("a", "b", "c", "v1", "v2"), first.engine.ids())
+            first.engine.seekTo(3)
+            first.engine.stopPlaying()
+            runCurrent()
+
+            val second = QueueHarness(this, store = FakeQueueStore(first.store.text), continueWithVibe = true)
+            second.source.onStartWave = { CompletableDeferred<WaveBatch>().await() }
+            second.engine.shuffleOrder = listOf(2, 0, 1)
+            assertEquals(listOf(2, 0, 1, 3, 4), second.engine.playOrder())
+            second.controller.previous()
+            assertEquals(2, second.engine.currentIndex)
         }
 }

@@ -10,6 +10,7 @@ import io.github.kickoman.qiyaa.data.AudioQuality
 import io.github.kickoman.qiyaa.data.JamFile
 import io.github.kickoman.qiyaa.data.QueueFile
 import io.github.kickoman.qiyaa.data.Settings
+import io.github.kickoman.qiyaa.data.ShuffleChoice
 import io.github.kickoman.qiyaa.data.TokenStore
 import io.github.kickoman.qiyaa.jam.JamGuest
 import io.github.kickoman.qiyaa.jam.JamGuestStore
@@ -23,6 +24,7 @@ import io.github.kickoman.qiyaa.playback.TrackUrlCache
 import io.github.kickoman.qiyaa.queue.LibraryMusicSource
 import io.github.kickoman.qiyaa.queue.QueueController
 import io.github.kickoman.qiyaa.queue.QueueStore
+import io.github.kickoman.qiyaa.queue.ShuffleAlgorithm
 import io.github.kickoman.qiyaa.yandex.DeviceAuth
 import io.github.kickoman.qiyaa.yandex.Library
 import io.github.kickoman.qiyaa.yandex.Quality
@@ -83,16 +85,22 @@ class AppGraph(val context: Context) {
                 settings.balance.collect(bus::setBalance)
             }
         }
+    private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
     val queue =
         QueueController(
             source = LibraryMusicSource(library),
             connectivity = networkMonitor.available,
-            scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+            scope = mainScope,
             io = Dispatchers.IO,
             store = QueueFile(context).asQueueStore(),
             logFailure = { stage, failed -> Log.w(LOG_TAG, "Queue $stage failed", failed) },
             continueWithVibeByDefault = { settings.continueWithVibe.value },
-        )
+        ).also { controller ->
+            mainScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                settings.shuffleAlgorithm.collect { controller.setShuffleAlgorithm(algorithmOf(it)) }
+            }
+        }
 
     val qualityInEffect: StateFlow<Quality> =
         combine(
@@ -165,6 +173,11 @@ class AppGraph(val context: Context) {
                 AudioQuality.STANDARD -> Quality.STANDARD
                 AudioQuality.ECONOMY -> Quality.ECONOMY
             }
+
+        private fun algorithmOf(choice: ShuffleChoice): ShuffleAlgorithm = when (choice) {
+            ShuffleChoice.WITHOUT_REPEATS -> ShuffleAlgorithm.WITHOUT_REPEATS
+            ShuffleChoice.RANDOM_TRACK -> ShuffleAlgorithm.RANDOM_TRACK
+        }
 
         private fun JamFile.asJamStore(): JamStore = object : JamStore {
             override fun read(): String? = this@asJamStore.read()

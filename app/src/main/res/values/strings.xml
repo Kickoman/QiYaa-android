@@ -323,6 +323,10 @@
     <string name="quality_note">Economy: HE-AAC 64 kbps, a third of the data. From the next track on.</string>
     <string name="toggle_on">On</string>
     <string name="toggle_off">Off</string>
+    <string name="shuffle_title">SHUFFLE</string>
+    <string name="shuffle_without_repeats">Without repeats</string>
+    <string name="shuffle_random_track">Random track</string>
+    <string name="shuffle_note">Without repeats: each track once, in a random order. Random track: any track but the current one, so a track may come again. Applies while SHF is on.</string>
     <string name="vibe_continue_title">CONTINUE WITH A VIBE</string>
     <string name="vibe_continue_new_queues">New queues</string>
     <string name="vibe_continue_note">When likes, a playlist, an album, an artist or a search runs out, a vibe from what played follows. The playlist switches it for the queue that plays.</string>

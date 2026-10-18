@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -37,6 +38,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.data.AppLanguage
 import io.github.kickoman.qiyaa.data.AudioQuality
+import io.github.kickoman.qiyaa.data.ShuffleChoice
 import io.github.kickoman.qiyaa.jam.ParticipantKind
 import io.github.kickoman.qiyaa.playback.JamHostPhase
 import io.github.kickoman.qiyaa.playback.JamHostState
@@ -82,6 +84,7 @@ fun LibraryScreen(
     val quality by viewModel.settings.quality.collectAsStateWithLifecycle()
     val qualityMetered by viewModel.settings.qualityMetered.collectAsStateWithLifecycle()
     val continueWithVibe by viewModel.settings.continueWithVibe.collectAsStateWithLifecycle()
+    val shuffleAlgorithm by viewModel.settings.shuffleAlgorithm.collectAsStateWithLifecycle()
     val telemetryEnabled by viewModel.settings.telemetryEnabled.collectAsStateWithLifecycle()
     val track = playerUi.current
 
@@ -262,6 +265,20 @@ fun LibraryScreen(
         }
 
         QiText(
+            stringResource(R.string.shuffle_title),
+            LabelStyle,
+            Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 2.dp),
+            color = colors.dim,
+        )
+        ChoiceRow(null, shuffleAlgorithm, SHUFFLE_CHOICES, viewModel::setShuffleAlgorithm)
+        QiText(
+            stringResource(R.string.shuffle_note),
+            HintStyle,
+            Modifier.padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 6.dp),
+            color = colors.dim,
+        )
+
+        QiText(
             stringResource(R.string.vibe_continue_title),
             LabelStyle,
             Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 2.dp),
@@ -293,8 +310,13 @@ fun LibraryScreen(
             Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 2.dp),
             color = colors.dim,
         )
-        QualityRow(stringResource(R.string.quality_wifi), quality, viewModel::setQuality)
-        QualityRow(stringResource(R.string.quality_mobile), qualityMetered, viewModel::setQualityMetered)
+        ChoiceRow(stringResource(R.string.quality_wifi), quality, QUALITY_CHOICES, viewModel::setQuality)
+        ChoiceRow(
+            stringResource(R.string.quality_mobile),
+            qualityMetered,
+            QUALITY_CHOICES,
+            viewModel::setQualityMetered,
+        )
         QiText(
             stringResource(R.string.quality_note),
             HintStyle,
@@ -341,20 +363,33 @@ fun LibraryScreen(
     }
 }
 
+private val QUALITY_CHOICES = listOf(
+    AudioQuality.STANDARD to R.string.quality_standard,
+    AudioQuality.ECONOMY to R.string.quality_economy,
+)
+
+private val SHUFFLE_CHOICES = listOf(
+    ShuffleChoice.WITHOUT_REPEATS to R.string.shuffle_without_repeats,
+    ShuffleChoice.RANDOM_TRACK to R.string.shuffle_random_track,
+)
+
 @Composable
-private fun QualityRow(network: String, current: AudioQuality, onPick: (AudioQuality) -> Unit) {
+private fun <T> ChoiceRow(label: String?, current: T, choices: List<Pair<T, Int>>, onPick: (T) -> Unit) {
     Row(
         Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        QiText(network, sans(14.sp, 500), Modifier.weight(1f), color = Qi.colors.text)
-        for ((choice, label) in listOf(
-            AudioQuality.STANDARD to R.string.quality_standard,
-            AudioQuality.ECONOMY to R.string.quality_economy,
-        )) {
-            PillToggle(stringResource(label).uppercase(), current == choice) {
-                if (current != choice) onPick(choice)
+        if (label != null) QiText(label, sans(14.sp, 500), Modifier.weight(1f), color = Qi.colors.text)
+        FlowRow(
+            if (label == null) Modifier.weight(1f) else Modifier,
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            for ((choice, text) in choices) {
+                PillToggle(stringResource(text).uppercase(), current == choice) {
+                    if (current != choice) onPick(choice)
+                }
             }
         }
     }

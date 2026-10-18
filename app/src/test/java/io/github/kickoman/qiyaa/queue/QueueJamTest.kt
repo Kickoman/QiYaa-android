@@ -728,7 +728,7 @@ class QueueJamTest {
         }
 
     @Test
-    fun `HOST-10 HOST-12 TR-03 with shuffle the items play right after the current track, then the pass`() =
+    fun `HOST-10 HOST-12 TR-03 SHUF-01 with shuffle the items play after the current track, then the pass`() =
         runTest {
             val h = QueueHarness.likes(this, "a", "b", "c", "d", "e", continueWithVibe = false)
             h.engine.seekTo(2)
@@ -1524,7 +1524,7 @@ class QueueJamTest {
         }
 
     @Test
-    fun `HOST-12 TR-03 shuffle switched on while an item waits leads the new pass with it, then the head`() =
+    fun `HOST-12 TR-03 SHUF-03 shuffle switched on while an item waits leads the new pass with it`() =
         runTest {
             val h = QueueHarness.likes(this, "a", "b", "c", "d", continueWithVibe = false)
             h.engine.seekTo(1)
@@ -1589,7 +1589,7 @@ class QueueJamTest {
         }
 
     @Test
-    fun `HOST-36 TR-04 removing the current middle row, shuffled last, stops on the new order's last row`() =
+    fun `HOST-36 TR-04 SHUF-04 removing the middle row, shuffled last, stops, then Next starts a new pass`() =
         runTest {
             val h = QueueHarness.likes(this, "a", "b", "c", "d", continueWithVibe = false)
             h.engine.seekTo(3)
@@ -1600,7 +1600,7 @@ class QueueJamTest {
             h.engine.commands.clear()
             h.controller.removeIndices(setOf(2))
             assertEquals(listOf("a", "b", "d"), h.engine.ids())
-            assertEquals(listOf(2, 0, 1), h.engine.playOrder())
+            assertEquals(listOf(1, 0, 2), h.engine.playOrder())
             assertEquals(
                 listOf("remove 2", "seek 1", "pause", "seek to 0"),
                 h.engine.commands.withoutPauseAtEnd(),
@@ -1610,9 +1610,106 @@ class QueueJamTest {
             assertFalse(h.engine.playWhenReady)
             assertFalse(h.engine.playing)
             h.controller.next()
-            assertEquals("b", h.currentId())
+            assertEquals("a", h.currentId())
             runCurrent()
             assertEquals(listOf("d", "a", "b", "c"), h.source.reports.map { it.first })
+        }
+
+    @Test
+    fun `HOST-36 SHUF-04 in a jam removing a base head row starts a new pass, removing an item does not`() =
+        runTest {
+            val h = QueueHarness.likes(this, "a", "b", "c", "d", "e", continueWithVibe = false)
+            h.controller.setShuffle(true)
+            h.engine.shuffleOrder = listOf(0, 3, 1, 4, 2)
+            h.engine.startPlaying()
+            val jam = h.startJam()
+            h.state(item("i1", "X"))
+            assertEquals(listOf("a", "X", "b", "c", "d", "e"), h.engine.ids())
+            val leads = h.engine.leads.size
+            h.controller.removeIndices(setOf(1))
+            assertEquals(listOf(listOf("i1")), jam.removals)
+            assertEquals(leads, h.engine.leads.size)
+            h.controller.removeIndices(setOf(2))
+            assertEquals(listOf("a", "X", "c", "d", "e"), h.engine.ids())
+            assertEquals(listOf(0, 1), h.engine.leads.last())
+            assertEquals(listOf("X", "c", "d", "e"), h.playOn(4))
+        }
+
+    @Test
+    fun `HOST-12 SHUF-06 SHUF-08 with Random track the items play first, then draws, and no jam wave`() =
+        runTest {
+            val h = QueueHarness.likes(this, "a", "b")
+            h.controller.setShuffleAlgorithm(ShuffleAlgorithm.RANDOM_TRACK)
+            h.controller.setShuffle(true)
+            h.engine.startPlaying()
+            val jam = h.startJam()
+            h.state(item("i1", "X"), item("i2", "Y"), seeds = listOf("genre:jam"), seedsVersion = 1)
+            assertEquals(listOf("a", "X", "Y", "b"), h.engine.ids())
+            assertEquals(listOf(0, 1, 2, 3), h.engine.playOrder())
+            assertEquals(listOf("X", "Y", "b", "a", "b", "a"), h.playOn(6))
+            runCurrent()
+            assertEquals(emptyList<String>(), h.source.calls)
+            assertEquals(listOf("i1", "i2"), jam.started)
+        }
+
+    @Test
+    fun `LISTEN-03 SHUF-09 a new draw is reported at once with the new next track`() = runTest {
+        val h = QueueHarness.likes(this, "a", "b", "c", continueWithVibe = false)
+        h.controller.setShuffle(true)
+        h.engine.seekTo(2)
+        h.engine.startPlaying()
+        val jam = h.startJam()
+        assertEquals(base("c", next = null), jam.playbacks.last())
+        val reports = jam.playbacks.size
+        h.controller.setShuffleAlgorithm(ShuffleAlgorithm.RANDOM_TRACK)
+        val drawn = h.engine.tracks[h.engine.playOrder()[1]].id
+        assertEquals(reports + 1, jam.playbacks.size)
+        assertEquals(base("c", next = drawn), jam.playbacks.last())
+        h.controller.setShuffle(false)
+        assertEquals(reports + 2, jam.playbacks.size)
+        assertEquals(base("c", next = null), jam.playbacks.last())
+    }
+
+    @Test
+    fun `LISTEN-03 SHUF-09 stopped at the end, SHF and the algorithm send no idle again`() = runTest {
+        val h = QueueHarness.likes(this, "a", "b", "c", continueWithVibe = false)
+        h.engine.seekTo(2)
+        h.engine.startPlaying()
+        val jam = h.startJam()
+        h.engine.finishTrack()
+        assertTrue(h.engine.isEnded)
+        assertEquals(idle, jam.playbacks.last())
+        val reports = jam.playbacks.size
+        h.controller.setShuffle(true)
+        h.controller.setShuffleAlgorithm(ShuffleAlgorithm.RANDOM_TRACK)
+        h.controller.setShuffleAlgorithm(ShuffleAlgorithm.WITHOUT_REPEATS)
+        h.controller.setShuffle(false)
+        assertEquals(reports, jam.playbacks.size)
+    }
+
+    @Test
+    fun `LISTEN-03 SHUF-09 waiting for more at the end, SHF reports the pass's next, and off reports idle`() =
+        runTest {
+            val h = QueueHarness(this, continueWithVibe = true)
+            h.source.onStartWave = { CompletableDeferred<WaveBatch>().await() }
+            h.controller.loadSource("Liked") { tracks("a", "b", "c") }
+            runCurrent()
+            h.engine.seekTo(2)
+            h.engine.startPlaying()
+            val jam = h.startJam()
+            h.state(seeds = listOf("genre:jam"), seedsVersion = 1)
+            runCurrent()
+            h.controller.next()
+            runCurrent()
+            assertEquals(QueueEvent.LoadingMore, h.events.last())
+            assertFalse(h.engine.isEnded)
+            assertEquals(idle, jam.playbacks.last())
+            h.controller.setShuffle(true)
+            assertEquals(base("c", next = "a"), jam.playbacks.last())
+            val reports = jam.playbacks.size
+            h.controller.setShuffle(false)
+            assertEquals(reports + 1, jam.playbacks.size)
+            assertEquals(idle, jam.playbacks.last())
         }
 
     @Test

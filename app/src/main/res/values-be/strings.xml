@@ -309,6 +309,10 @@
     <string name="quality_note">Эканомія: HE-AAC 64 kbps, утрая менш трафіку. З наступнага трэка.</string>
     <string name="toggle_on">Так</string>
     <string name="toggle_off">Не</string>
+    <string name="shuffle_title">ВЫПАДКОВЫ ПАРАДАК</string>
+    <string name="shuffle_without_repeats">Без паўтораў</string>
+    <string name="shuffle_random_track">Выпадковы трэк</string>
+    <string name="shuffle_note">Без паўтораў: кожны трэк — адзін раз, у выпадковым парадку. Выпадковы трэк: любы, акрамя бягучага, таму трэк можа прагучаць зноў. Дзейнічае, пакуль уключаны SHF.</string>
     <string name="vibe_continue_title">ПРАЦЯГВАЦЬ ХВАЛЯЙ</string>
     <string name="vibe_continue_new_queues">Новыя чэргі</string>
     <string name="vibe_continue_note">Калі лайкі, плэйліст, альбом, выканаўца ці пошук заканчваюцца, далей грае хваля па тым, што гучала. У плэйлісце гэта пераключаецца для бягучай чаргі.</string>
