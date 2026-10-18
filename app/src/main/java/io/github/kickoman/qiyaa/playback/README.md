@@ -22,6 +22,10 @@ grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   #
 | `PlayLink.kt` | `PlayLink` — память одной игры: её чтение идёт в качестве её первой ссылки (QUAL-08); битрейт сообщает только первое открытие |
 | `TrackUrlCache.kt` | `TrackUrlCache` — подписанные ссылки по треку и качеству на 15 минут, до 64 штук; качество, в котором трек спросили последним (QUAL-05); последнее первое открытие трека (`peek`) |
 | `ExpiredLinkDataSource.kt` | `ExpiredLinkDataSource` — при 403/410 от хранилища сбрасывает отвергнутую ссылку и открывает поток заново |
+| `PlaybackDataSources.kt` | `PlaybackDataSources` — фабрика источников данных плеера: своя цепочка на каждую игру; User-Agent `QiYaa/Android` |
+| `InterruptibleDataSource.kt` | `InterruptibleDataSource` — `open` и `read` `OkHttpDataSource` под присмотром `ReadInterrupts`; чтение — со своим HTTP-вызовом |
+| `CallTracker.kt` | `CallTracker` — `Call.Factory` одной игры: запоминает последний HTTP-вызов и привязывает его к открытию, которое идёт |
+| `ReadInterrupts.kt` | `ReadInterrupts` — проверка раз в 100 мс, пока идёт чтение: HTTP-вызов отменённой загрузки, застрявшей в чтении, отменяется (TR-09) |
 | `LogTag.kt` | `LOG_TAG = "QiYaa"` — тег logcat пакета |
 | `CurrentBitrate.kt` | `CurrentBitrate` — битрейт по треку; в `AudioBus` попадает битрейт текущего трека |
 | `EqualizerProcessor.kt` | `EqualizerProcessor` — PCM16 → float → EQ → баланс → PCM16 |
@@ -35,11 +39,11 @@ grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   #
 
 ## Конвейер
 
-`QueueController.setQueue` → `Media3Engine.setTracks` → `MediaItems.toMediaItem` → ExoPlayer (10 мин позади, 50 с впереди) → `ExpiredLinkDataSource` → `ResolvingDataSource(TrackResolver → PlayLink → TrackUrlCache)`, своя цепочка на каждый период, → `OkHttpDataSource` → декодер → `DefaultAudioSink[EqualizerProcessor, VisualizerTapProcessor]` → `AudioTrack`. Ссылка на mp3 подписывается в момент открытия потока, поэтому очередь из 300 треков не делает 300 запросов заранее.
+`QueueController.setQueue` → `Media3Engine.setTracks` → `MediaItems.toMediaItem` → ExoPlayer (10 мин позади, 50 с впереди) → `PlaybackDataSources`, своя цепочка на каждый период: `ExpiredLinkDataSource` → `ResolvingDataSource(TrackResolver → PlayLink → TrackUrlCache)` → `InterruptibleDataSource` (`ReadInterrupts`) → `OkHttpDataSource` поверх `CallTracker` → декодер → `DefaultAudioSink[EqualizerProcessor, VisualizerTapProcessor]` → `AudioTrack`. Ссылка на mp3 подписывается в момент открытия потока, поэтому очередь из 300 треков не делает 300 запросов заранее.
 
 ## `PlaybackService`
 
-Собирает `ExoPlayer` с `DefaultRenderersFactory`, у которого `buildAudioSink` подменён на `DefaultAudioSink` с двумя процессорами и `enableFloatOutput = false` (процессоры принимают только `ENCODING_PCM_16BIT`); третий аргумент `buildAudioSink` уходит в `setEnableAudioOutputPlaybackParameters` как есть (до Media3 1.9 — `setEnableAudioTrackPlaybackParams`). Атрибуты `USAGE_MEDIA`/`AUDIO_CONTENT_TYPE_MUSIC` с `handleAudioFocus = true`, `handleAudioBecomingNoisy`, `WAKE_MODE_NETWORK`, User-Agent `QiYaa/Android`, `LoadControl` — `PlayerBuffer.loadControl()` («Перемотка и буфер» ниже). Громкость сервис берёт из `Settings.volume` и следит за ней сам (`serviceScope`, `AudioBus.volumeGain`), поэтому она применяется и без открытого экрана. Тап по уведомлению открывает launcher-intent пакета (сервис не знает про `ui/`). Иконка уведомления — `R.drawable.ic_notification`.
+Собирает `ExoPlayer` с `DefaultRenderersFactory`, у которого `buildAudioSink` подменён на `DefaultAudioSink` с двумя процессорами и `enableFloatOutput = false` (процессоры принимают только `ENCODING_PCM_16BIT`); третий аргумент `buildAudioSink` уходит в `setEnableAudioOutputPlaybackParameters` как есть (до Media3 1.9 — `setEnableAudioTrackPlaybackParams`). Атрибуты `USAGE_MEDIA`/`AUDIO_CONTENT_TYPE_MUSIC` с `handleAudioFocus = true`, `handleAudioBecomingNoisy`, `WAKE_MODE_NETWORK`, источники данных — `PlaybackDataSources(appGraph.httpClient, appGraph.trackLinks, bitrate, appGraph.readInterrupts)` (ниже), `LoadControl` — `PlayerBuffer.loadControl()` («Перемотка и буфер» ниже). Громкость сервис берёт из `Settings.volume` и следит за ней сам (`serviceScope`, `AudioBus.volumeGain`), поэтому она применяется и без открытого экрана. Тап по уведомлению открывает launcher-intent пакета (сервис не знает про `ui/`). Иконка уведомления — `R.drawable.ic_notification`.
 
 Сервис объявлен `exported="true"` с `tools:ignore="ExportedService"`: так требует Media3, чтобы система и гарнитуры могли привязаться к `MediaSessionService`. `onCreate` создаёт `Media3Engine(player, appGraph.queue, onAudioFailure = { appGraph.telemetry?.audioFailed(it) })` (ошибки звука уходят в телеметрию, `error audio/…`; в сборке без неё `telemetry` — `null`), подключает его и отдаёт сессии `QueueForwardingPlayer(player, appGraph.queue)`; сессия получает `SessionCallback` (кнопки лайка и дизлайка, «играть» после выгрузки процесса) и `CoverBitmapLoader` (ниже, «Обложка в уведомлении»); `onTaskRemoved` зовёт `pauseAllPlayersAndStopSelf()`, если ничего не играет (нет `playWhenReady` или очередь пуста); `onDestroy` отключает движок (контроллер запоминает, где остановились), освобождает плеер и сессию. Оба сообщают `appGraph.jamHost` (`onServiceStarted`/`onServiceStopped`), см. `JamHost`. После подключения движка `onCreate` следит за `appGraph.qualityInEffect`: каждое новое значение (`drop(1)`) — `QueueController.onFilesChanged(trackLinks::askedInOtherQuality)` на `serviceScope`, то есть на главном потоке, потоке ExoPlayer и контроллера (QUAL-05, «Traps (качество)» ниже). Подписка запускается `UNDISPATCHED`, как и подписка на громкость: `drop(1)` отбрасывает значение, которое действует сразу после `attach()`, ещё внутри `onCreate`, а не то, что будет к первому обороту главного цикла, так что смена качества в этот оборот (`attach()` уже мог запустить восстановленную очередь у самого конца трека) не теряется. Без сервиса плеера нет и подгружать нечего. `attachBaseContext` даёт сервису язык интерфейса (`AppLocale.wrap`), а смена языка во время работы перестраивает кнопки уведомления (см. `ui/README.md`, «Язык интерфейса»).
 
@@ -277,16 +281,7 @@ URI трека виртуальный (`MediaItems.SCHEME = "qiyaa"`):
 
 `uriText(id, revision = 0)` строит текст (`require(revision >= 0)`), `revised(item, id, revision)` — тот же `MediaItem` (`buildUpon`) с новым URI: `mediaId`, метаданные и `extras` те же. `trackIdOf(uri)` — `uri.lastPathSegment` при схеме `qiyaa`: путь `qiyaa://track/42?r=3` — `/42`, запрос в путь не входит, так что `TrackResolver` и `ExpiredLinkDataSource` ревизии не видят. URI с ревизией живёт только в плейлисте ExoPlayer: `QueueSnapshot` хранит треки, `onPlaybackResumption` строит обычные элементы, а кроме `trackIdOf` URI в приложении никто не читает. `mediaId = track.id`, поэтому `PlaybackService.currentTrackId`, ♥ и `CurrentBitrate` замены не замечают. В `MediaMetadata.extras` (`Bundle`) лежат `id`, `albumId`, `durationMs` (long), `artists` (string array list), `cover` (nullable string), `title`, чтобы `toTrack` восстанавливал `Track` из уведомления и после пересоздания процесса без сети. `artworkUri` = `coverUrl`.
 
-**Одна игра — один источник.** `PlaybackService` собирает источник данных так:
-
-```kotlin
-ExpiredLinkDataSource.Factory(
-    DataSource.Factory { ResolvingDataSource(http.createDataSource(), TrackResolver(links, bitrate)) },
-    links,
-)
-```
-
-Каждый вызов фабрики даёт новый `ResolvingDataSource` со своим `TrackResolver`, а у того свой `PlayLink`. Сверено по исходникам Media3 1.11.1 (на устройстве не проверялось, Kickoman/QiYaa-android#91):
+**Одна игра — один источник.** Источник данных собирает `PlaybackDataSources` («`PlaybackDataSources` — цепочка источников» ниже). Каждый вызов фабрики даёт новый `ResolvingDataSource` со своим `TrackResolver`, а у того свой `PlayLink`. Сверено по исходникам Media3 1.11.1 (на устройстве не проверялось, Kickoman/QiYaa-android#91):
 - ExoPlayer зовёт фабрику один раз на период: `ProgressiveMediaSource.createPeriod` (`ProgressiveMediaSource.java:416–417`). Все загрузки периода идут через этот источник: `startLoading` отдаёт его каждой `ExtractingLoadable` (`ProgressiveMediaPeriod.java:1059–1062`), а та оборачивает его в `StatsDataSource` (`:1273`). Первое открытие периода — всегда с начала файла: позицию загрузки период ставит, только когда уже подготовлен (`:1063–1078`).
 - Период — одна игра одной строки. Каждый круг повтора одной строки — новое окно с новым `windowSequenceNumber` (`MediaPeriodQueue.java:1221–1230`), то есть другой `MediaPeriodId`, и `enqueueNextMediaPeriodHolder` создаёт для него новый держатель (`:239–247`), а держатель — новый период (`MediaPeriodHolder.java:126`). Готовый держатель из пула предзагрузки берётся только при равном `MediaPeriodId` (`MediaPeriodHolder.java:489–492`), а пул пуст, пока `PreloadConfiguration` по умолчанию (`MediaPeriodQueue.java:266–270`, ловушка `Media3Engine`).
 - Новый период, то есть новая игра, начинается и на новой очереди (`setMediaItems`), на переходе к строке, после `reload` (выше) и на повторе после ошибки или «играть» после `Player.stop()`: ошибка и `stop()` сбрасывают очередь периодов (`ExoPlayerImplInternal.stopInternal` → `resetInternal(releaseMediaSourceList = true)` → `queue.clear()`, `ExoPlayerImplInternal.java:2041–2046`, `:2124`), а `prepare()` создаёт их заново. `Player.stop()` — это команда «стоп» контроллера сессии (`QueueForwardingPlayer` её не переопределяет, и она доходит до ExoPlayer) и `QueueController.clear` вне джема. «Стоп» экрана плеера — не он: `PlayerViewModel.stop` → `QueueController.stop` — пауза и перемотка в 0 (`seekToPosition(0)`), период остаётся, и «играть» после него продолжает ту же игру в её качестве, из удержанного позади или новым открытием через тот же `PlayLink`. Для `/play-audio` это всё же новый старт (`queue/README.md`, «Отметка `/play-audio`»).
@@ -393,9 +388,10 @@ object PlayerBuffer {
 
 **Перемотка, пока загрузка стоит (TR-09).** `ProgressiveMediaPeriod.seekToUs` (`ProgressiveMediaPeriod.java:583–627`) сначала пробует перемотку внутри буфера, если загрузка кончилась или идёт (`loadingFinished || loader.isLoading()`, `:603–607`); `isLoading()` истинно и тогда, когда загрузка висит в чтении или ждёт повтора. `SampleQueue.seekTo(цель, false)` (`SampleQueue.java:533–557`) отматывает к первому удержанному сэмплу и удаётся, если первый удержанный ≤ цель ≤ последний в очереди. Тогда зависшую загрузку никто не трогает, `seekToPeriodPosition` сбрасывает `isRebuffering` (`ExoPlayerImplInternal.java:1839`), и для `READY` хватает 1 с впереди (`shouldTransitionToReadyState`, `:2536–2578`).
 
-Иначе все очереди делают `discardToEnd()`, затем `loader.cancelLoading()` (`ProgressiveMediaPeriod.java:614–619`), а новая загрузка с байта по карте перемотки стартует только после `onLoadCanceled` (`:811–839`), то есть когда поток загрузки выйдет из старого `read`: новое `open` → `TrackResolver` (продолжение игры в её качестве, `PlayLink`, QUAL-08) → запрос диапазона. `Loader.LoadTask.cancel` прерывает поток загрузки (`Loader.java:420–428`), но `OkHttpDataSource.readInternal` — обычный `InputStream.read`; прерывается только `open` (`executeCall`: `enqueue` и `SettableFuture.get`).
-- HTTP/1.1: чтение из сокета прерывания не замечает и на молчащем соединении возвращается только по тайм-ауту чтения 20 с (`AppGraph.HTTP_TIMEOUT_SECONDS`).
-- HTTP/2: OkHttp ждёт данные потока в `Http2Stream.waitForIo`, который превращает прерывание в `InterruptedIOException` сразу. Тогда ждёт уже новый запрос: заголовков ответа — до тех же 20 с.
+Иначе все очереди делают `discardToEnd()`, затем `loader.cancelLoading()` (`ProgressiveMediaPeriod.java:614–619`), а новая загрузка с байта по карте перемотки стартует только после `onLoadCanceled` (`:811–839`), то есть когда поток загрузки выйдет из старого `read`: новое `open` → `TrackResolver` (продолжение игры в её качестве, `PlayLink`, QUAL-08) → запрос диапазона. `Loader.LoadTask.cancel` прерывает поток загрузки (`Loader.java:420–428`), но `OkHttpDataSource.readInternal` — обычный `InputStream.read`; сам по себе прерывается только `open` (`executeCall`: `enqueue` и `SettableFuture.get`).
+- HTTP/1.1: чтение из сокета прерывания не замечает. Его заканчивает `ReadInterrupts` (ниже): не позже чем через 100 мс проверка видит прерванный поток загрузки и отменяет HTTP-вызов этого чтения. Без неё чтение на молчащем соединении вернулось бы только по тайм-ауту чтения 20 с (`AppGraph.HTTP_TIMEOUT_SECONDS`).
+- HTTP/2: OkHttp ждёт данные потока в `Http2Stream.waitForIo`, который превращает прерывание в `InterruptedIOException` сразу.
+- Новый запрос ждёт сети: заголовков ответа — до тех же 20 с.
 - Хост экономии (`strm-*.strm.yandex.net`) отвечает по HTTP/2 (`curl --http2`, 2026-10-17). Отвечают ли по HTTP/2 хосты хранилища стандарта (`*.storage.yandex.net`), ещё не проверено (#91).
 
 | Перемотка, пока загрузка стоит | До `PlayerBuffer` | С `PlayerBuffer` |
@@ -417,9 +413,66 @@ object PlayerBuffer {
 - `prioritizeTimeOverSizeThresholds` должен остаться `true`, и своей цели по байтам быть не должно («Настройки» выше). Флаг ловит `PlayerBufferTest`.
 - Границу позади ExoPlayer читает один раз, когда собирается.
 - Перемотка мимо удержанного выбрасывает всё удержанное (`discardToEnd`) и качает заново от своей цели: назад за эту цель — снова сеть (gap A3, Kickoman/QiYaa-android#89).
-- Дисковый кэш (`SimpleCache` + `CacheDataSource`) на HTTP/1.1 такую перемотку быстрее не сделает: новая загрузка ждёт, пока старое чтение не вернётся по тайм-ауту. На HTTP/2 помог бы, но ему нужны ключ с качеством до подписи (QUAL-08), ссылки слушателей джема для треков из кэша (LISTEN-02) и место на диске (#89).
 - `SampleQueue.seekTo` отказывает, если цель раньше первого удержанного сэмпла. Исключение для цели до первого сэмпла (задержка кодера, `ProgressiveMediaPeriod.java:1152–1165`) работает, только если с начала файла ничего не выброшено и прошлая перемотка этого периода была в то же место. `lastSeekPositionUs` (`:171`) начинается с 0 и меняется только в `seekToUs` (`:593–594`; туда же идёт `selectTracks` при старте не с 0, `:378–379`, `:466–467`) и при перезапуске загрузки с 0 (`:737`, `:1117`), так что период, начатый с 0 без перемоток, считается перемотанным в 0. Поэтому у файла, первый сэмпл которого позже 0, перемотка в 0 идёт в сеть только после перемотки этого трека в другое место или если трек начат не с 0 (восстановленная позиция).
 - Lossless (в 5–10 раз больше mp3) — пересчитать таблицу памяти. Если на телефонах с кучей 128 МБ появятся `OutOfMemoryError`, уменьшить `BACK_BUFFER_MS` вдвое (формула выше).
+
+## `PlaybackDataSources` — цепочка источников
+
+```kotlin
+@UnstableApi
+class PlaybackDataSources(client: Call.Factory, links: TrackUrlCache, bitrate: CurrentBitrate, interrupts: ReadInterrupts) : DataSource.Factory {
+    override fun createDataSource(): DataSource   // своя цепочка на каждый вызов, то есть на каждую игру
+    companion object { const val USER_AGENT = "QiYaa/Android" }
+}
+```
+
+Фабрика, которую `PlaybackService` отдаёт в `DefaultMediaSourceFactory.setDataSourceFactory`. ExoPlayer зовёт её один раз на период (`ProgressiveMediaSource.java:416–417`), на потоке воспроизведения. Каждый вызов собирает цепочку заново, снаружи внутрь:
+
+| Слой | Что делает |
+|---|---|
+| `ExpiredLinkDataSource` | при 403/410 сбрасывает отвергнутую ссылку и открывает заново («`MediaItems`, `TrackResolver`, кэш ссылок» выше) |
+| `ResolvingDataSource(TrackResolver)` | `qiyaa://track/{id}` → подписанная ссылка в качестве игры (`PlayLink`, QUAL-08) |
+| `InterruptibleDataSource` | `open` и `read` под присмотром `ReadInterrupts.Watch` этой игры (ниже) |
+| `OkHttpDataSource` | HTTP через `CallTracker(client, watch)`; `client` — `AppGraph.httpClient` (тайм-ауты 20 с), User-Agent `QiYaa/Android` |
+
+`OkHttpDataSource.Factory(calls).setUserAgent(USER_AGENT).createDataSource()` — тоже на каждый вызов: конструктор `OkHttpDataSource` закрыт (1.11.1), а `CallTracker` у каждой игры свой.
+
+## `ReadInterrupts` — прерываемое чтение (TR-09)
+
+```kotlin
+class ReadInterrupts(schedule: (delayMs: Long, check: () -> Unit) -> Unit, log: (String) -> Unit = {}) {
+    fun watch(): Watch                                  // одна на источник данных, то есть на игру
+    inner class Watch {
+        fun <T> during(call: Call?, block: () -> T): T  // на прерванном потоке — InterruptedIOException сразу, без block
+        fun bind(call: Call)                             // вызов, сделанный внутри during на том же потоке; иначе ничего
+    }
+    companion object { const val CHECK_PERIOD_MS = 100L }
+}
+class CallTracker(client: Call.Factory, watch: ReadInterrupts.Watch) : Call.Factory {
+    override fun newCall(request: Request): Call       // запоминает вызов и зовёт watch.bind
+    fun takeLast(): Call?                              // последний вызов; забывает его
+}
+@UnstableApi
+class InterruptibleDataSource(upstream: DataSource, calls: CallTracker, watch: ReadInterrupts.Watch) : DataSource
+```
+
+**Зачем.** Перемотка мимо удержанного отменяет загрузку периода, и новая загрузка стартует только после того, как старая вернулась («Перемотка, пока загрузка стоит» выше). Отмена ставит флаг (`ExtractingLoadable.cancelLoad`, `ProgressiveMediaPeriod.java:1286–1288`) и прерывает поток загрузки (`Loader.java:424–427`); источник закрывается только в `finally` самой загрузки, на её потоке (`ProgressiveMediaPeriod.java:1351`). `OkHttpDataSource` 1.11.1 (сверено по исходникам) свой `Call` наружу не отдаёт: конструктор закрыт, `open` создаёт вызов (`OkHttpDataSource.java:270`) и ждёт ответа в `executeCall` — `enqueue` и `future.get()`, который прерывается и сам отменяет вызов (`:429–452`); `read` — обычное чтение потока тела (`:351–358`, `readInternal`, `:511`). На HTTP/1.1 такое чтение прерывания не замечает и на молчащем соединении возвращается только по тайм-ауту 20 с. `Call.cancel()` потокобезопасен и заканчивает его с другого потока: в OkHttp 5.5.0 он закрывает сокет соединения (на HTTP/2 — сбрасывает поток). Это и проверяет `StalledReadTest` на JVM.
+
+**Как.** `InterruptibleDataSource` стоит прямо над `OkHttpDataSource` и выполняет каждое `open` и `read` внутри `watch.during`. Запись на время чтения — одна на источник и переиспользуется: на каждое чтение — два захвата замка и одна лямбда.
+- `open` регистрируется с пустым вызовом. `OkHttpDataSource.open` создаёт ровно один вызов на том же потоке, и `CallTracker.newCall` кладёт его в запись под замком `ReadInterrupts` (`bind`). С этого момента открытие под присмотром: `skipFully` после ответа 200 на запрос диапазона (`:463–495`) и чтение тела ошибки (`:295–300`) отменяются так же, как `read`. До вызова прерывание отменяет открытие само (`future.get()`).
+- После удачного `open` — `calls.takeLast()`, то есть вызов этого открытия, и каждое `read` регистрируется с ним. Упавшее `open` вызов не берёт: мёртвый вызов остаётся в `CallTracker` до следующего `newCall`, а чтений без открытия не бывает. `close` вызов забывает.
+- Поток, прерванный ещё до `during`, получает `InterruptedIOException` сразу, без чтения.
+- Пока идёт хоть одно чтение, раз в `CHECK_PERIOD_MS` = 100 мс `check` под замком копирует поток и вызов каждой записи, потом смотрит `isInterrupted()` скопированного потока и отменяет скопированный вызов, если тот ещё не отменён. В logcat — `Canceled the HTTP call of a canceled load stuck in a read` (тег `QiYaa`, debug). Без чтений проверка не планируется (`ReadInterruptsTest`).
+- `AppGraph.readInterrupts` — одна на процесс; `schedule` — однопоточный демон `QiYaa:ReadInterrupts` (`ScheduledExecutorService`, поток появляется с первой задачей).
+
+Отменённое чтение кончается `IOException`: на HTTP/1.1 — `SocketException: Socket closed`, на HTTP/2 — `InterruptedIOException`. Задача загрузчика отменена, поэтому `Loader` зовёт `onLoadCanceled` (`Loader.java:466–469`, `:512–514`), и стартует новая загрузка. Итог: зависшее чтение отменённой загрузки кончается не позже чем через 0,1 с, а не через 20 с. Так же быстрее отпускает поток загрузки освобождённый период (смена трека, `player.release()`). Сверено по исходникам Media3 1.11.1 и на JVM с OkHttp 5.5.0; на устройстве не проверялось (Kickoman/QiYaa-android#91).
+
+**Traps:**
+- Всё держится на том, что Media3 прерывает поток загрузки при отмене (`Loader.java:420–428`). Если обновление Media3 перестанет его прерывать, тесты этого не заметят (`ReadInterruptsTest` и `StalledReadTest` прерывают поток сами), заметит только проверка на телефоне.
+- Флаг прерывания переживает отменённое чтение: ветка `catch (IOException)` (`Loader.java:466–469`) пропускает сброс флага (`:458–462`, `Thread.interrupted()` на `:461`). Следующая загрузка периода стартует чистой только потому, что исполнитель загрузчика — однопоточный пул (`Loader.java:236–240`, `Util.java:1007–1008`), а `ThreadPoolExecutor.runWorker` сбрасывает флаг перед каждой задачей. `InterruptibleDataSource` на прерванном потоке бросает сразу, так что исполнитель загрузки не из пула (`DefaultMediaSourceFactory.setDownloadExecutor`) ронял бы каждую загрузку после отмены.
+- Порядок в `check` — копия под замком, потом флаг, потом отмена копии. Запись одна на источник: если прочесть флаг, а запись потом, проверка могла бы отменить вызов следующей загрузки той же игры (старая вернулась сама, `onLoadCanceled` начал новую). В этом порядке устаревшая копия отменяет только вызов загрузки, которую уже отменили.
+- Вызов чтения — только из `takeLast()` после удачного `open`, вызов открытия — только из `newCall` на том же потоке. «Последний вызов игры», взятый в момент отмены, мог бы оказаться вызовом следующей загрузки. `takeLast` после `open` — вызов этого открытия, пока `OkHttpDataSource.open` делает ровно один `newCall` (1.11.1).
+- Опрос, а не событие. Без опроса можно так: свой исполнитель загрузки (`DefaultMediaSourceFactory.setDownloadExecutor(Supplier<ReleasableExecutor>)`, `DefaultMediaSourceFactory.java:520`; один на период, `ProgressiveMediaSource.java:438`, `ProgressiveMediaPeriod.java:238–241`), чей поток в `interrupt()` сразу отменяет вызов. Не сделано: опрос проще и стоит не больше 0,1 с.
 
 ## `TimedAudioSink`
 

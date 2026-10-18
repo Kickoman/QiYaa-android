@@ -20,6 +20,7 @@ import io.github.kickoman.qiyaa.playback.JamCatalog
 import io.github.kickoman.qiyaa.playback.JamHost
 import io.github.kickoman.qiyaa.playback.JamHostConfig
 import io.github.kickoman.qiyaa.playback.OkHttpJamTransport
+import io.github.kickoman.qiyaa.playback.ReadInterrupts
 import io.github.kickoman.qiyaa.playback.TrackUrlCache
 import io.github.kickoman.qiyaa.queue.LibraryMusicSource
 import io.github.kickoman.qiyaa.queue.QueueController
@@ -31,6 +32,7 @@ import io.github.kickoman.qiyaa.yandex.Quality
 import io.github.kickoman.qiyaa.yandex.Session
 import io.github.kickoman.qiyaa.yandex.Track
 import io.github.kickoman.qiyaa.yandex.YandexApi
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -128,6 +130,12 @@ class AppGraph(val context: Context) {
             api.resolveTrackUrl(id, quality)
         }
 
+    val readInterrupts =
+        ReadInterrupts(
+            schedule = daemonScheduler("QiYaa:ReadInterrupts"),
+            log = { message -> Log.d(LOG_TAG, message) },
+        )
+
     val jamHost =
         JamHost(
             transport = OkHttpJamTransport(httpClient),
@@ -196,6 +204,17 @@ class AppGraph(val context: Context) {
             override fun read(): String? = this@asQueueStore.read()
 
             override fun write(text: String) = this@asQueueStore.write(text)
+        }
+
+        private fun daemonScheduler(name: String): (Long, () -> Unit) -> Unit {
+            val executor = Executors.newSingleThreadScheduledExecutor { task -> daemon(task, name) }
+            return { delayMs, task -> executor.schedule(Runnable(task), delayMs, TimeUnit.MILLISECONDS) }
+        }
+
+        private fun daemon(task: Runnable, name: String): Thread {
+            val thread = Thread(task, name)
+            thread.isDaemon = true
+            return thread
         }
     }
 }

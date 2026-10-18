@@ -33,12 +33,6 @@ class ExpiredLinkDataSource(private val upstream: DataSource, private val links:
 
     override fun close() = upstream.close()
 
-    class Factory(private val upstream: DataSource.Factory, private val links: TrackUrlCache) :
-        DataSource.Factory {
-        override fun createDataSource(): DataSource =
-            ExpiredLinkDataSource(upstream.createDataSource(), links)
-    }
-
     companion object {
         val EXPIRED_LINK_STATUSES = setOf(403, 410)
     }
