@@ -173,14 +173,15 @@ class TrackUrlCacheTest {
         }
 
     @Test
-    fun `QUAL-05 QUAL-08 a file read on from the middle counts with the quality of its file`() = runBlocking {
-        cache.get("1")
-        quality = Quality.ECONOMY
-        cache.get("1", Quality.STANDARD)
-        assertTrue(cache.askedInOtherQuality("1"))
-        cache.get("1")
-        assertFalse(cache.askedInOtherQuality("1"))
-    }
+    fun `QUAL-05 QUAL-08 a read on from the middle leaves the track asked in its file's quality`() =
+        runBlocking {
+            cache.get("1")
+            quality = Quality.ECONOMY
+            cache.get("1", Quality.STANDARD)
+            assertTrue(cache.askedInOtherQuality("1"))
+            cache.get("1")
+            assertFalse(cache.askedInOtherQuality("1"))
+        }
 
     @Test
     fun `QUAL-08 two qualities of one track coexist, so a new start leaves the playing lap's link`() =
