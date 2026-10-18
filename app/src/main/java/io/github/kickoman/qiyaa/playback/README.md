@@ -271,7 +271,7 @@ object PlayerBuffer {
 }
 ```
 
-`PlaybackService.onCreate` отдаёт `PlayerBuffer.loadControl()` в `ExoPlayer.Builder.setLoadControl`. Всё ниже сверено по исходникам Media3 1.11.1 (`media3-exoplayer`, `media3-session`; `OkHttpDataSource` и OkHttp 5.5.0 — по байткоду из Gradle) и на устройстве не проверялось (Kickoman/QiYaa-android#91).
+`PlaybackService.onCreate` отдаёт `PlayerBuffer.loadControl()` в `ExoPlayer.Builder.setLoadControl`. Всё ниже сверено по исходникам Media3 1.11.1 (`media3-exoplayer`, `media3-session`; `OkHttpDataSource` и OkHttp 5.5.0 — по байткоду из Gradle) и на устройстве не проверялось (Kickoman/QiYaa-android#91). В спеке у Android TR-08 — `not checked` до проверки на телефоне, TR-09 — `no (gap A3)` (`spec/player/README.md`, «Known gaps»; Kickoman/QiYaa-android#89), а строка «Seeking» в `spec/parity.md` — `differs`.
 
 **Где лежат скачанные байты.** Только в памяти: закодированные сэмплы в `SampleQueue` периода (`ProgressiveMediaPeriod`), блоками `DefaultAllocator` по 64 КиБ в куче Java. Кэша на диске нет.
 - Впереди загрузка встаёт на 50 с (`DEFAULT_MIN_BUFFER_MS` = `DEFAULT_MAX_BUFFER_MS` = 50 000, `DefaultLoadControl.java:64`, `:76`) плюс не больше одного куска: период спрашивает `LoadControl` раз в 1 МиБ (`DEFAULT_LOADING_CHECK_INTERVAL_BYTES`, `ProgressiveMediaSource.java:321`), это около 26 с звука при 320 кбит/с и около 131 с при 64 кбит/с.
