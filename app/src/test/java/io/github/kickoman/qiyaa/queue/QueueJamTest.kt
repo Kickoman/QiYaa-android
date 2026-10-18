@@ -1589,7 +1589,7 @@ class QueueJamTest {
         }
 
     @Test
-    fun `HOST-36 TR-04 removing the current middle row, shuffled last, stops on the new order's last row`() =
+    fun `HOST-36 TR-04 SHUF-04 removing the middle row, shuffled last, stops, then Next starts a new pass`() =
         runTest {
             val h = QueueHarness.likes(this, "a", "b", "c", "d", continueWithVibe = false)
             h.engine.seekTo(3)
@@ -1600,7 +1600,7 @@ class QueueJamTest {
             h.engine.commands.clear()
             h.controller.removeIndices(setOf(2))
             assertEquals(listOf("a", "b", "d"), h.engine.ids())
-            assertEquals(listOf(2, 0, 1), h.engine.playOrder())
+            assertEquals(listOf(1, 0, 2), h.engine.playOrder())
             assertEquals(
                 listOf("remove 2", "seek 1", "pause", "seek to 0"),
                 h.engine.commands.withoutPauseAtEnd(),
@@ -1610,9 +1610,29 @@ class QueueJamTest {
             assertFalse(h.engine.playWhenReady)
             assertFalse(h.engine.playing)
             h.controller.next()
-            assertEquals("b", h.currentId())
+            assertEquals("a", h.currentId())
             runCurrent()
             assertEquals(listOf("d", "a", "b", "c"), h.source.reports.map { it.first })
+        }
+
+    @Test
+    fun `HOST-36 SHUF-04 in a jam removing a base head row starts a new pass, removing an item does not`() =
+        runTest {
+            val h = QueueHarness.likes(this, "a", "b", "c", "d", "e", continueWithVibe = false)
+            h.controller.setShuffle(true)
+            h.engine.shuffleOrder = listOf(0, 3, 1, 4, 2)
+            h.engine.startPlaying()
+            val jam = h.startJam()
+            h.state(item("i1", "X"))
+            assertEquals(listOf("a", "X", "b", "c", "d", "e"), h.engine.ids())
+            val leads = h.engine.leads.size
+            h.controller.removeIndices(setOf(1))
+            assertEquals(listOf(listOf("i1")), jam.removals)
+            assertEquals(leads, h.engine.leads.size)
+            h.controller.removeIndices(setOf(2))
+            assertEquals(listOf("a", "X", "c", "d", "e"), h.engine.ids())
+            assertEquals(listOf(0, 1), h.engine.leads.last())
+            assertEquals(listOf("X", "c", "d", "e"), h.playOn(4))
         }
 
     @Test

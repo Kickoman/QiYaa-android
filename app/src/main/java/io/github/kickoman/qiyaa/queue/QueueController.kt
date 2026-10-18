@@ -456,9 +456,12 @@ class QueueController(
     private fun startShufflePass() {
         val current = engine ?: return
         val entries = mutableState.value.entries
-        val lead = if (current.itemCount > 0) leadAt(entries, current.currentIndex) else emptyList()
+        val lead = if (current.itemCount > 0) passLead(entries, current.currentIndex) else emptyList()
         current.shuffleHead(headOf(entries), lead)
     }
+
+    private fun passLead(entries: List<QueueEntry>, index: Int): List<Int> =
+        leadAt(entries, index).ifEmpty { listOfNotNull(headOf(entries).getOrNull(headMark)) }
 
     private fun headOf(entries: List<QueueEntry>): List<Int> =
         entries.indices.filter { entries[it].part == EntryPart.HEAD }
@@ -828,12 +831,14 @@ class QueueController(
         val items = if (jam == null) emptyList() else chosen.filter { entries[it].isJamItem }.sorted()
         if (items.isNotEmpty()) jam?.listener?.onRemoveItems(items.mapNotNull { entries[it].item?.itemId })
         val removed = chosen - items.toSet()
+        val headRemoved = removed.any { entries[it].part == EntryPart.HEAD }
         val current = engine
         if (current != null && current.itemCount > 0 && current.currentIndex in removed) {
             removeCurrent(current, removed, leaving = chosen)
         } else {
             for (at in removed.sortedDescending()) removeEntry(current, at)
         }
+        if (headRemoved && shuffleInEffect()) startShufflePass()
         applyModes()
         save()
         reportJam()
