@@ -94,6 +94,7 @@ class PlaybackService : MediaSessionService() {
         val player =
             ExoPlayer.Builder(this, renderers)
                 .setMediaSourceFactory(DefaultMediaSourceFactory(this).setDataSourceFactory(dataSource))
+                .setLoadControl(PlayerBuffer.loadControl())
                 .setAudioAttributes(audioAttributes, true)
                 .setHandleAudioBecomingNoisy(true)
                 .setWakeMode(C.WAKE_MODE_NETWORK)
