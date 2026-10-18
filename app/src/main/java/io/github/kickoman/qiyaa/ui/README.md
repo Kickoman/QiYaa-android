@@ -306,6 +306,11 @@ class ListLoader<T>(scope: CoroutineScope, io: CoroutineContext, fetch: suspend 
 
 `VisualizerStrip`: 1024 кадра из `VisualizerTap`, которые кончаются на звучащем сейчас (`readPlaying(…, System.nanoTime())`, см. `audio/README.md`), кадр каждые 33 мс, только пока играет; спектр — 19 полос с пиками, осциллограф — последние 576 кадров (окно Winamp в 75 px). В режиме `OFF` цикл не запускается.
 
+Обложки — на экране плеера и в «Сейчас играет» гостя — грузит Coil 3 (`coil3.compose.AsyncImage`) со своим `ImageLoader` по умолчанию; HTTP ему даёт модуль `coil-network-okhttp`. Обложку уведомления и экрана блокировки грузит сам Media3 по `artworkUri` (`playback/README.md`), не Coil.
+
+**Traps (Coil):**
+- Без `coil-network-okhttp` у Coil 3 нет загрузчика `http(s)`, и обложки молча остаются пустыми: ни ошибки сборки, ни исключения. Модуль Coil находит сам через `ServiceLoader` (`META-INF/services`), регистрировать его в коде не нужно.
+
 ## Строки
 
 Все тексты — `res/values/strings.xml` (английский), `res/values-be/strings.xml` (белорусский) и `res/values-ru/strings.xml`; `queue_loaded`, `queue_stopped_after_failures` и `jam_guest_limit_hint` — `plurals` (у белорусского и русского формы `one`, `few`, `many`, `other`). «Волна» Яндекса по-английски — **vibe** («My Vibe», «Jam vibe», «Wheel of vibes»), не wave; ключи (`library_my_wave`…) остались прежними. Слова те же, что на ПК: таблица в `translations/README.md` репозитория QiYaa. `StringsTest` проверяет, что каждый текст переведён на оба языка с теми же подстановками, формы plurals и что ни один английский текст не говорит «wave».
