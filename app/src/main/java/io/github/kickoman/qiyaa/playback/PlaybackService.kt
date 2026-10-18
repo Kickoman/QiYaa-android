@@ -63,7 +63,7 @@ class PlaybackService : MediaSessionService() {
                 override fun buildAudioSink(
                     context: Context,
                     enableFloatOutput: Boolean,
-                    enableAudioTrackPlaybackParams: Boolean,
+                    enableAudioOutputPlaybackParams: Boolean,
                 ): AudioSink = TimedAudioSink(
                     DefaultAudioSink.Builder(context)
                         .setAudioProcessors(
@@ -73,7 +73,7 @@ class PlaybackService : MediaSessionService() {
                             ),
                         )
                         .setEnableFloatOutput(false)
-                        .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                        .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParams)
                         .build(),
                     graph.audioBus.visualizerTap,
                 )
@@ -148,7 +148,8 @@ class PlaybackService : MediaSessionService() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         val player = session?.player
-        if (player == null || !player.playWhenReady || player.mediaItemCount == 0) stopSelf()
+        val playing = player != null && player.playWhenReady && player.mediaItemCount > 0
+        if (!playing) pauseAllPlayersAndStopSelf()
     }
 
     override fun onDestroy() {
@@ -174,7 +175,8 @@ class PlaybackService : MediaSessionService() {
             controller: MediaSession.ControllerInfo,
         ): MediaSession.ConnectionResult {
             val current = session.player.currentMediaItem?.mediaId
-            return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+            return MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller)
+                .setAvailablePlayerCommands(MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS)
                 .setAvailableSessionCommands(
                     NotificationButtons.withCustomCommands(
                         MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS,
@@ -206,6 +208,7 @@ class PlaybackService : MediaSessionService() {
         override fun onPlaybackResumption(
             mediaSession: MediaSession,
             controller: MediaSession.ControllerInfo,
+            isForPlayback: Boolean,
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
             val point =
                 queue.resumePoint()

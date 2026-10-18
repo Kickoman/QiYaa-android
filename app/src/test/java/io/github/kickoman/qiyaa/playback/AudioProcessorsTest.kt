@@ -18,7 +18,7 @@ class AudioProcessorsTest {
             for (processor in processors) {
                 val output = processor.configure(AudioProcessor.AudioFormat(48_000, 2, encoding))
                 assertEquals(AudioProcessor.AudioFormat.NOT_SET, output)
-                processor.flush()
+                processor.flush(AudioProcessor.StreamMetadata.DEFAULT)
                 assertFalse("${processor.javaClass.simpleName} active for $encoding", processor.isActive)
             }
         }
@@ -29,7 +29,7 @@ class AudioProcessorsTest {
         val format = AudioProcessor.AudioFormat(44_100, 2, C.ENCODING_PCM_16BIT)
         for (processor in processors) {
             assertEquals(format, processor.configure(format))
-            processor.flush()
+            processor.flush(AudioProcessor.StreamMetadata.DEFAULT)
             assertTrue(processor.isActive)
         }
         assertEquals(44_100, audioBus.sampleRate.value)

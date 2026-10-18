@@ -45,6 +45,12 @@ class HeadShuffleOrder(
 
     override fun cloneAndClear(): ShuffleOrder = HeadShuffleOrder(HeadShuffle.EMPTY, random)
 
+    override fun cloneAndSet(insertionCount: Int, startIndex: Int): ShuffleOrder {
+        val ready = staged?.takeIf { stagedAt == 0 && it.length == insertionCount }
+            ?: return cloneAndClear().cloneAndInsert(0, insertionCount)
+        return HeadShuffleOrder(ready, random)
+    }
+
     companion object {
         fun staging(
             installed: HeadShuffle,

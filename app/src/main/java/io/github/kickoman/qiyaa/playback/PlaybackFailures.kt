@@ -1,8 +1,6 @@
 package io.github.kickoman.qiyaa.playback
 
-import androidx.annotation.OptIn
 import androidx.media3.common.PlaybackException
-import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.HttpDataSource
 import io.github.kickoman.qiyaa.queue.FailureKind
 import io.github.kickoman.qiyaa.yandex.ErrorKind
@@ -10,7 +8,6 @@ import io.github.kickoman.qiyaa.yandex.HttpException
 
 enum class AudioFailure { INIT, DEVICE, UNDECODABLE }
 
-@OptIn(UnstableApi::class)
 object PlaybackFailures {
     private val NETWORK_CODES =
         setOf(
