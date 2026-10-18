@@ -99,6 +99,32 @@ class QueueForwardingPlayerTest {
             assertEquals(listOf("shuffle false", "repeat ${Player.REPEAT_MODE_OFF}"), heard)
         }
 
+    @Test
+    fun `playback resumption's playlist from the session reaches the player as is`() = runTest {
+        val player = FakePlayer()
+        val forwarding = QueueForwardingPlayer(player.proxy, QueueHarness(this, attached = false).controller)
+
+        forwarding.setMediaItems(listOf(MediaItem.Builder().setMediaId("a").build()), 0, 5_000L)
+
+        assertEquals(listOf("setMediaItems"), player.calls)
+    }
+
+    @Test
+    fun `a row picked by a session controller goes to the player, not to the queue`() = runTest {
+        val harness = QueueHarness(this)
+        harness.controller.loadSource("Liked") { tracks("a", "b", "c") }
+        runCurrent()
+        val before = harness.engine.commands.toList()
+        val player = FakePlayer()
+        val forwarding = QueueForwardingPlayer(player.proxy, harness.controller)
+
+        forwarding.seekTo(2, 0L)
+        forwarding.seekToDefaultPosition(1)
+
+        assertEquals(listOf("seekTo", "seekToDefaultPosition"), player.calls)
+        assertEquals(before, harness.engine.commands)
+    }
+
     private fun modeEvents(forwarding: Player): List<String> {
         val heard = ArrayList<String>()
         forwarding.addListener(
