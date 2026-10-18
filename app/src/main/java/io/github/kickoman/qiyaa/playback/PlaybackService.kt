@@ -186,7 +186,11 @@ class PlaybackService : MediaSessionService() {
         ): MediaSession.ConnectionResult {
             val current = session.player.currentMediaItem?.mediaId
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller)
-                .setAvailablePlayerCommands(MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS)
+                .setAvailablePlayerCommands(
+                    ControllerCommands.withoutPlaylistEdits(
+                        MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS,
+                    ),
+                )
                 .setAvailableSessionCommands(
                     NotificationButtons.withCustomCommands(
                         MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS,
