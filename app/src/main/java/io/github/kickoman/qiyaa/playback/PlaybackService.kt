@@ -23,6 +23,7 @@ import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionError
 import androidx.media3.session.SessionResult
+import coil3.SingletonImageLoader
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import io.github.kickoman.qiyaa.AppLocale
@@ -113,6 +114,7 @@ class PlaybackService : MediaSessionService() {
         val builder =
             MediaSession.Builder(this, QueueForwardingPlayer(player, graph.queue))
                 .setCallback(SessionCallback(this, graph.queue, graph.library))
+                .setBitmapLoader(CoverBitmapLoader(this, SingletonImageLoader.get(this), serviceScope))
         openAppIntent()?.let(builder::setSessionActivity)
         val built = builder.build()
         session = built
