@@ -46,7 +46,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil.compose.AsyncImage
+import coil3.compose.AsyncImage
 import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.jam.AddAction
 import io.github.kickoman.qiyaa.jam.GuestPhase
