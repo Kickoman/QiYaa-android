@@ -19,7 +19,7 @@ class ExpiredLinkDataSource(private val upstream: DataSource, private val links:
         } catch (failed: HttpDataSource.InvalidResponseCodeException) {
             if (trackId == null || failed.responseCode !in EXPIRED_LINK_STATUSES) throw failed
             upstream.close()
-            links.invalidate(trackId)
+            links.invalidate(trackId, failed.dataSpec.uri.toString())
             upstream.open(dataSpec)
         }
     }

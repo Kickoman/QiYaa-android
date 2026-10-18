@@ -46,23 +46,23 @@ class TrackUrlCacheTest {
     fun `a link older than its lifetime is signed again`() = runBlocking {
         cache.get("1")
         now = 1_000
-        assertEquals("https://storage/1/2", cache.get("1").url)
+        assertEquals("https://storage/1/2", cache.get("1").link.url)
         assertEquals(listOf("1", "1"), signed)
     }
 
     @Test
     fun `a link the storage rejected is signed again at once`() = runBlocking {
-        cache.get("1")
-        cache.invalidate("1")
+        val refused = cache.get("1").link.url
+        cache.invalidate("1", refused)
         cache.get("1")
         assertEquals(listOf("1", "1"), signed)
     }
 
     @Test
     fun `each track has its own link`() = runBlocking {
-        assertEquals("https://storage/1/1", cache.get("1").url)
-        assertEquals("https://storage/2/2", cache.get("2").url)
-        assertEquals("https://storage/1/1", cache.get("1").url)
+        assertEquals("https://storage/1/1", cache.get("1").link.url)
+        assertEquals("https://storage/2/2", cache.get("2").link.url)
+        assertEquals("https://storage/1/1", cache.get("1").link.url)
     }
 
     @Test
@@ -90,17 +90,17 @@ class TrackUrlCacheTest {
         } catch (ignored: IOException) {
             // The first signing fails on purpose.
         }
-        assertEquals("https://storage/x", failing.get("1").url)
+        assertEquals("https://storage/x", failing.get("1").link.url)
         assertEquals(2, calls)
     }
 
     @Test
     fun `a new start takes the quality in effect and a link of the other quality is not reused`() =
         runBlocking {
-            assertEquals(320, cache.get("1").bitrateKbps)
+            assertEquals(320, cache.get("1").link.bitrateKbps)
             quality = Quality.ECONOMY
-            assertEquals(64, cache.get("1").bitrateKbps)
-            assertEquals(64, cache.get("1").bitrateKbps)
+            assertEquals(64, cache.get("1").link.bitrateKbps)
+            assertEquals(64, cache.get("1").link.bitrateKbps)
             assertEquals(listOf("1", "1:ECONOMY"), signed)
         }
 
@@ -108,13 +108,12 @@ class TrackUrlCacheTest {
     fun `QUAL-08 a file read on from the middle keeps the quality it started with`() = runBlocking {
         cache.get("1")
         quality = Quality.ECONOMY
-        assertEquals("https://storage/1/1", cache.get("1", continuing = true).url)
+        assertEquals("https://storage/1/1", cache.get("1", Quality.STANDARD).link.url)
         now = 1_000
-        assertEquals(320, cache.get("1", continuing = true).bitrateKbps)
-        cache.invalidate("1")
-        assertEquals(320, cache.get("1", continuing = true).bitrateKbps)
+        assertEquals(320, cache.get("1", Quality.STANDARD).link.bitrateKbps)
+        cache.invalidate("1", "https://storage/1/2")
+        assertEquals(320, cache.get("1", Quality.STANDARD).link.bitrateKbps)
         assertEquals(listOf("1", "1", "1"), signed)
-        assertEquals(64, cache.get("2", continuing = true).bitrateKbps)
     }
 
     @Test
@@ -169,7 +168,7 @@ class TrackUrlCacheTest {
             assertTrue(runCatching { flaky.get("1") }.isFailure)
             quality = Quality.STANDARD
             assertTrue(flaky.askedInOtherQuality("1"))
-            assertEquals("https://storage/1/STANDARD", flaky.get("1").url)
+            assertEquals("https://storage/1/STANDARD", flaky.get("1").link.url)
             assertFalse(flaky.askedInOtherQuality("1"))
         }
 
@@ -177,9 +176,86 @@ class TrackUrlCacheTest {
     fun `QUAL-05 QUAL-08 a file read on from the middle counts with the quality of its file`() = runBlocking {
         cache.get("1")
         quality = Quality.ECONOMY
-        cache.get("1", continuing = true)
+        cache.get("1", Quality.STANDARD)
         assertTrue(cache.askedInOtherQuality("1"))
         cache.get("1")
         assertFalse(cache.askedInOtherQuality("1"))
     }
+
+    @Test
+    fun `QUAL-08 two qualities of one track coexist, so a new start leaves the playing lap's link`() =
+        runBlocking {
+            val playing = cache.get("1")
+            quality = Quality.ECONOMY
+            val next = cache.get("1")
+            assertEquals(signedLink("https://storage/1/1", 320, Quality.STANDARD), playing)
+            assertEquals(signedLink("https://storage/1/2", 64, Quality.ECONOMY), next)
+            assertEquals(playing, cache.get("1", Quality.STANDARD))
+            assertEquals(next, cache.get("1", Quality.ECONOMY))
+            assertEquals(listOf("1", "1:ECONOMY"), signed)
+        }
+
+    @Test
+    fun `invalidate drops only the refused link`() = runBlocking {
+        cache.get("1")
+        quality = Quality.ECONOMY
+        cache.get("1")
+        cache.invalidate("1", "https://storage/1/2")
+        assertEquals("https://storage/1/1", cache.get("1", Quality.STANDARD).link.url)
+        assertEquals("https://storage/1/3", cache.get("1", Quality.ECONOMY).link.url)
+        assertEquals(listOf("1", "1:ECONOMY", "1:ECONOMY"), signed)
+    }
+
+    @Test
+    fun `a refused link that the cache no longer holds invalidates nothing`() = runBlocking {
+        cache.get("1")
+        now = 1_000
+        cache.get("1")
+        cache.invalidate("1", "https://storage/1/1")
+        cache.invalidate("2", "https://storage/1/2")
+        assertEquals("https://storage/1/2", cache.get("1").link.url)
+        assertEquals(listOf("1", "1"), signed)
+    }
+
+    @Test
+    fun `peek gives the link of the track's latest first open, not of a read on from the middle`() =
+        runBlocking {
+            cache.get("1")
+            quality = Quality.ECONOMY
+            cache.get("1")
+            assertEquals("https://storage/1/2", cache.peek("1"))
+            cache.get("1", Quality.STANDARD)
+            assertEquals("https://storage/1/2", cache.peek("1"))
+            quality = Quality.STANDARD
+            cache.get("1")
+            assertEquals("https://storage/1/1", cache.peek("1"))
+            assertEquals(listOf("1", "1:ECONOMY"), signed)
+        }
+
+    @Test
+    fun `peek keeps the link in play while a new start's signing fails`() = runBlocking {
+        var offline = false
+        val flaky =
+            TrackUrlCache(clock = { now }, quality = { quality }) { id, asked ->
+                if (offline) throw IOException("offline")
+                ResolvedUrl("https://storage/$id/$asked", 320)
+            }
+        flaky.get("1")
+        quality = Quality.ECONOMY
+        offline = true
+        assertTrue(runCatching { flaky.get("1") }.isFailure)
+        assertEquals("https://storage/1/STANDARD", flaky.peek("1"))
+    }
+
+    @Test
+    fun `QUAL-05 QUAL-08 a read on from the middle does not count as asked`() = runBlocking {
+        cache.get("1")
+        quality = Quality.ECONOMY
+        cache.get("1")
+        cache.get("1", Quality.STANDARD)
+        assertFalse(cache.askedInOtherQuality("1"))
+    }
+
+    private fun signedLink(url: String, kbps: Int, quality: Quality) =
+        TrackUrlCache.SignedLink(ResolvedUrl(url, kbps), quality)
 }
