@@ -22,6 +22,15 @@ class HeadShuffleOrderTest {
     }
 
     @Test
+    fun `SHUF-05 a staged draw is the order's next of the current track, also behind waiting items`() {
+        val drawn = HeadShuffle.pass(listOf(0, 1, 2, 3, 4), 6, listOf(2, 5, 4), Random(0))
+        val order = HeadShuffleOrder(drawn, Random(0))
+        assertEquals(2, order.firstIndex)
+        assertEquals(5, order.getNextIndex(2))
+        assertEquals(4, order.getNextIndex(5))
+    }
+
+    @Test
     fun `an empty order has no first and no last index`() {
         val order = HeadShuffleOrder(HeadShuffle.EMPTY, Random(0))
         assertEquals(0, order.length)

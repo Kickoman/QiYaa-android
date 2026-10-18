@@ -1636,6 +1636,41 @@ class QueueJamTest {
         }
 
     @Test
+    fun `HOST-12 SHUF-06 SHUF-08 with Random track the items play first, then draws, and no jam wave`() =
+        runTest {
+            val h = QueueHarness.likes(this, "a", "b")
+            h.controller.setShuffleAlgorithm(ShuffleAlgorithm.RANDOM_TRACK)
+            h.controller.setShuffle(true)
+            h.engine.startPlaying()
+            val jam = h.startJam()
+            h.state(item("i1", "X"), item("i2", "Y"), seeds = listOf("genre:jam"), seedsVersion = 1)
+            assertEquals(listOf("a", "X", "Y", "b"), h.engine.ids())
+            assertEquals(listOf(0, 1, 2, 3), h.engine.playOrder())
+            assertEquals(listOf("X", "Y", "b", "a", "b", "a"), h.playOn(6))
+            runCurrent()
+            assertEquals(emptyList<String>(), h.source.calls)
+            assertEquals(listOf("i1", "i2"), jam.started)
+        }
+
+    @Test
+    fun `LISTEN-03 SHUF-09 a new draw is reported at once with the new next track`() = runTest {
+        val h = QueueHarness.likes(this, "a", "b", "c", continueWithVibe = false)
+        h.controller.setShuffle(true)
+        h.engine.seekTo(2)
+        h.engine.startPlaying()
+        val jam = h.startJam()
+        assertEquals(base("c", next = null), jam.playbacks.last())
+        val reports = jam.playbacks.size
+        h.controller.setShuffleAlgorithm(ShuffleAlgorithm.RANDOM_TRACK)
+        val drawn = h.engine.tracks[h.engine.playOrder()[1]].id
+        assertEquals(reports + 1, jam.playbacks.size)
+        assertEquals(base("c", next = drawn), jam.playbacks.last())
+        h.controller.setShuffle(false)
+        assertEquals(reports + 2, jam.playbacks.size)
+        assertEquals(base("c", next = null), jam.playbacks.last())
+    }
+
+    @Test
     fun `HOST-21 HOST-08 a pick into an empty player holds its first row, an item then plays first`() =
         runTest {
             val h = QueueHarness(this)
