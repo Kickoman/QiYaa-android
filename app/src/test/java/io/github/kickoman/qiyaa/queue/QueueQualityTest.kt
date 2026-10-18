@@ -95,12 +95,14 @@ class QueueQualityTest {
     }
 
     @Test
-    fun `QUAL-05 QUAL-08 a next row of the same track as the current one is not reloaded`() = runTest {
-        val h = playing(this, "a", "a", "b")
-        h.controller.onFilesChanged(::outdated)
-        assertEquals(emptyList<String>(), asked)
-        assertEquals(emptyList<String>(), h.engine.commands)
-    }
+    fun `QUAL-05 QUAL-08 a next row of the same track as the current one is reloaded like any other`() =
+        runTest {
+            val h = playing(this, "a", "a", "b")
+            h.controller.onFilesChanged(::outdated)
+            assertEquals(listOf("a"), asked)
+            assertEquals(listOf("reload 1"), h.engine.commands)
+            assertEquals(0, h.engine.currentIndex)
+        }
 
     @Test
     fun `QUAL-05 CONT-10 while the head wraps by a pause at the end, ExoPlayer's next is still reloaded`() =

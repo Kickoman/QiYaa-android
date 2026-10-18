@@ -7,12 +7,12 @@ import androidx.media3.datasource.ResolvingDataSource
 import kotlinx.coroutines.runBlocking
 
 @UnstableApi
-class TrackResolver(private val links: TrackUrlCache, private val bitrate: CurrentBitrate) :
-    ResolvingDataSource.Resolver {
+class TrackResolver(links: TrackUrlCache, bitrate: CurrentBitrate) : ResolvingDataSource.Resolver {
+    private val play = PlayLink(links, bitrate)
+
     override fun resolveDataSpec(dataSpec: DataSpec): DataSpec {
         val id = MediaItems.trackIdOf(dataSpec.uri) ?: return dataSpec
-        val resolved = runBlocking { links.get(id, continuing = dataSpec.position > 0) }
-        bitrate.onResolved(id, resolved.bitrateKbps)
-        return dataSpec.buildUpon().setUri(resolved.url.toUri()).build()
+        val url = runBlocking { play.url(id) }
+        return dataSpec.buildUpon().setUri(url.toUri()).build()
     }
 }

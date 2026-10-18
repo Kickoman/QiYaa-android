@@ -10,6 +10,7 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -85,7 +86,9 @@ class PlaybackService : MediaSessionService() {
         val httpDataSource = OkHttpDataSource.Factory(graph.httpClient).setUserAgent(USER_AGENT)
         val dataSource =
             ExpiredLinkDataSource.Factory(
-                ResolvingDataSource.Factory(httpDataSource, TrackResolver(links, bitrate)),
+                DataSource.Factory {
+                    ResolvingDataSource(httpDataSource.createDataSource(), TrackResolver(links, bitrate))
+                },
                 links,
             )
         val audioAttributes =

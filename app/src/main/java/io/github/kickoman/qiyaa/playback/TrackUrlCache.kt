@@ -10,38 +10,34 @@ class TrackUrlCache(
     private val capacity: Int = CAPACITY,
     private val resolve: suspend (String, Quality) -> ResolvedUrl,
 ) {
-    private class Entry(val link: ResolvedUrl, val quality: Quality, val signedAtMs: Long)
+    data class SignedLink(val link: ResolvedUrl, val quality: Quality)
 
-    private val entries =
-        object : LinkedHashMap<String, Entry>(capacity, LOAD_FACTOR, true) {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Entry>): Boolean =
-                size > capacity
-        }
+    private data class Key(val trackId: String, val quality: Quality)
 
-    private val asked =
-        object : LinkedHashMap<String, Quality>(capacity, LOAD_FACTOR, true) {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Quality>): Boolean =
-                size > capacity
-        }
+    private class Entry(val link: ResolvedUrl, val signedAtMs: Long)
 
-    /** [continuing]: the file is read on from the middle, so it keeps its quality (QUAL-08). */
-    suspend fun get(trackId: String, continuing: Boolean = false): ResolvedUrl {
+    private val entries = leastRecentlyUsed<Key, Entry>()
+    private val asked = leastRecentlyUsed<String, Quality>()
+    private val opened = leastRecentlyUsed<String, Quality>()
+
+    suspend fun get(trackId: String, quality: Quality? = null): SignedLink {
         val now = clock()
         val wanted: Quality
         synchronized(entries) {
-            val cached = entries[trackId]
-            wanted = if (continuing && cached != null) cached.quality else quality()
-            asked[trackId] = wanted
-            if (cached != null &&
-                cached.quality == wanted &&
-                now - cached.signedAtMs < ttlMs
-            ) {
-                return cached.link
+            wanted = quality ?: this.quality()
+            if (quality == null) asked[trackId] = wanted
+            val cached = entries[Key(trackId, wanted)]
+            if (cached != null && now - cached.signedAtMs < ttlMs) {
+                if (quality == null) opened[trackId] = wanted
+                return SignedLink(cached.link, wanted)
             }
         }
         val link = resolve(trackId, wanted)
-        synchronized(entries) { entries[trackId] = Entry(link, wanted, now) }
-        return link
+        synchronized(entries) {
+            entries[Key(trackId, wanted)] = Entry(link, now)
+            if (quality == null) opened[trackId] = wanted
+        }
+        return SignedLink(link, wanted)
     }
 
     fun askedInOtherQuality(trackId: String): Boolean {
@@ -51,23 +47,28 @@ class TrackUrlCache(
         }
     }
 
-    /** The link already signed for [trackId] and still fresh, without signing one: for the jam's listeners. */
     fun peek(trackId: String): String? {
         val now = clock()
         synchronized(entries) {
-            val cached = entries[trackId] ?: return null
+            val latest = opened[trackId] ?: return null
+            val cached = entries[Key(trackId, latest)] ?: return null
             return cached.link.url.takeIf { now - cached.signedAtMs < ttlMs }
         }
     }
 
-    /** The storage refused the link: the next [get] signs it again, in the same quality. */
-    fun invalidate(trackId: String) {
-        val expired = clock() - ttlMs
+    fun invalidate(trackId: String, url: String) {
         synchronized(entries) {
-            val cached = entries[trackId] ?: return
-            entries[trackId] = Entry(cached.link, cached.quality, expired)
+            for (signedIn in Quality.entries) {
+                val key = Key(trackId, signedIn)
+                if (entries[key]?.link?.url == url) entries.remove(key)
+            }
         }
     }
+
+    private fun <K, V> leastRecentlyUsed(): LinkedHashMap<K, V> =
+        object : LinkedHashMap<K, V>(capacity, LOAD_FACTOR, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<K, V>): Boolean = size > capacity
+        }
 
     companion object {
         const val TTL_MS = 15 * 60 * 1_000L

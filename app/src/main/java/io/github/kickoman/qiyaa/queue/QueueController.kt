@@ -258,9 +258,7 @@ class QueueController(
         val current = engine ?: return
         if (current.itemCount == 0 || current.isEnded) return
         val next = naturalNext(current)?.takeIf { it != current.currentIndex } ?: return
-        val tracks = mutableState.value.tracks
-        val nextId = tracks.getOrNull(next)?.id ?: return
-        if (nextId == tracks.getOrNull(current.currentIndex)?.id) return
+        val nextId = mutableState.value.tracks.getOrNull(next)?.id ?: return
         if (outdated(nextId)) current.reload(next)
     }
 
