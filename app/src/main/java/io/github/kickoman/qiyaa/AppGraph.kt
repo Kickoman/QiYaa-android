@@ -141,7 +141,7 @@ class AppGraph(val context: Context) {
     val playbackCache =
         PlaybackCache(
             folder = { File(context.cacheDir, PlaybackCache.FOLDER) },
-            removals = Executors.newSingleThreadExecutor { task -> daemon(task, "QiYaa:PlaybackCache") },
+            removals = daemonScheduler("QiYaa:PlaybackCache"),
             log = { message -> Log.d(LOG_TAG, message) },
         )
 

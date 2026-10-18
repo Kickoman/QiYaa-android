@@ -6,7 +6,6 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.FileDataSource
 import androidx.media3.datasource.TransferListener
-import androidx.media3.datasource.cache.Cache
 
 @UnstableApi
 class CacheFileDataSource(private val log: (String) -> Unit = {}) : DataSource {
@@ -16,16 +15,8 @@ class CacheFileDataSource(private val log: (String) -> Unit = {}) : DataSource {
         file.addTransferListener(transferListener)
 
     override fun open(dataSpec: DataSpec): Long {
-        val byte = dataSpec.uriPositionOffset + dataSpec.position
-        val length =
-            try {
-                file.open(dataSpec)
-            } catch (failed: FileDataSource.FileDataSourceException) {
-                throw Cache.CacheException(
-                    "The disk copy of ${dataSpec.key} at byte $byte did not open: $failed",
-                )
-            }
-        log("Reading ${dataSpec.key} from the disk at byte $byte")
+        val length = file.open(dataSpec)
+        log("Reading ${dataSpec.key} from the disk at byte ${dataSpec.uriPositionOffset + dataSpec.position}")
         return length
     }
 

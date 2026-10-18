@@ -12,12 +12,11 @@ import androidx.media3.datasource.cache.CacheKeyFactory
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import java.io.File
-import java.util.concurrent.Executor
 
 @OptIn(UnstableApi::class)
 class PlaybackCache(
     private val folder: () -> File,
-    private val removals: Executor,
+    private val removals: (delayMs: Long, task: () -> Unit) -> Unit,
     private val maxBytes: Long = MAX_BYTES,
     private val log: (String) -> Unit = {},
 ) {
@@ -32,15 +31,17 @@ class PlaybackCache(
                 plays.opened(key, dataSpec.uri.toString())
                 key
             }
-        return CacheDataSource(
-            cache,
-            upstream,
-            CacheFileDataSource(log),
-            CacheDataSink(cache, CacheDataSink.DEFAULT_FRAGMENT_SIZE),
-            CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR,
-            Events(key),
-            keyOfPlay,
-        )
+        val disk =
+            CacheDataSource(
+                cache,
+                upstream,
+                CacheFileDataSource(log),
+                CacheDataSink(cache, CacheDataSink.DEFAULT_FRAGMENT_SIZE),
+                CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR,
+                Events(key),
+                keyOfPlay,
+            )
+        return DiskErrorDataSource(disk, key, log)
     }
 
     fun keepFor(player: Player) {
@@ -49,19 +50,27 @@ class PlaybackCache(
         val keep = listOfNotNull(player.currentMediaItem, next).mapNotNull {
             it.localConfiguration?.uri?.toString()
         }
-        removals.execute { drop(keep) }
+        removals(0) { drop(keep) }
     }
 
     fun clear() {
         if (!holder.isInitialized()) return
-        removals.execute { drop(emptyList()) }
+        removals(0) { drop(emptyList()) }
     }
 
     private fun drop(keep: List<String>) {
         val cache = holder.value ?: return
         val dropped = plays.toDrop(cache.keys, keep)
+        if (dropped.isEmpty()) return
         dropped.forEach(cache::removeResource)
-        if (dropped.isNotEmpty()) log("Dropped ${dropped.size} plays from the disk")
+        log("Dropped ${dropped.size} plays from the disk")
+        removals(LATE_FRAGMENT_DELAY_MS) { dropLate(cache, dropped) }
+    }
+
+    private fun dropLate(cache: SimpleCache, dropped: Set<String>) {
+        val late = dropped.filter { key -> cache.getCachedSpans(key).isNotEmpty() }
+        late.forEach(cache::removeResource)
+        if (late.isNotEmpty()) log("Dropped the late fragments of ${late.size} plays from the disk")
     }
 
     private fun open(): SimpleCache? {
@@ -91,5 +100,6 @@ class PlaybackCache(
     companion object {
         const val FOLDER = "playback"
         const val MAX_BYTES = 512L * 1024 * 1024
+        const val LATE_FRAGMENT_DELAY_MS = 1_000L
     }
 }
