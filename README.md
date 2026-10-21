@@ -1,6 +1,6 @@
 # QiYaa for Android
 
-Android-порт [QiYaa](https://github.com/Kickoman/QiYaa) — плеера Яндекс Музыки в стиле Winamp. Интерфейс сделан по мобильной дизайн-системе «Winamp-inspired mobile music player» (Claude Design), а не по десктопным скинам: тёмные поверхности, один LED-акцент (green / amber / ice), IBM Plex Mono для показаний, IBM Plex Sans для контента.
+Android-порт [QiYaa](https://github.com/Kickoman/QiYaa) — плеера Яндекс Музыки в стиле Winamp; сайт — [qiyaa.kanstancin.net](https://qiyaa.kanstancin.net). Интерфейс сделан по мобильной дизайн-системе «Winamp-inspired mobile music player» (Claude Design), а не по десктопным скинам: тёмные поверхности, один LED-акцент (green / amber / ice), IBM Plex Mono для показаний, IBM Plex Sans для контента. Spotify, тексты песен и свои файлы пока есть только в версии для ПК; что где есть — в [таблице паритета](https://github.com/Kickoman/QiYaa-spec/blob/master/parity.md).
 
 | Экран | Что умеет |
 |---|---|
