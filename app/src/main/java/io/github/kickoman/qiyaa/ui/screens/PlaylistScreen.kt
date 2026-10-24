@@ -57,6 +57,7 @@ import io.github.kickoman.qiyaa.ui.theme.Qi
 import io.github.kickoman.qiyaa.ui.theme.ReadoutStyle
 import io.github.kickoman.qiyaa.ui.theme.mono
 import io.github.kickoman.qiyaa.ui.theme.sans
+import io.github.kickoman.qiyaa.yandex.webUrl
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -324,7 +325,9 @@ fun TrackActionsSheet(actions: TrackActions, viewModel: PlayerViewModel) {
                 stringResource(R.string.playlist_open),
                 onClick = {
                     viewModel.closeTrackActions()
-                    context.startActivity(Intent(Intent.ACTION_VIEW, track.webUrl.toUri()))
+                    track.webUrl?.let { url ->
+                        context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
+                    }
                 },
             ) {
                 PathIcon(IconPaths.OPEN_OUTSIDE, 22.dp, colors.muted, strokeWidth = IconPaths.OUTLINE)

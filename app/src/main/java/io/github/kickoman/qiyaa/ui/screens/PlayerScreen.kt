@@ -38,6 +38,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.audio.AudioBus
+import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.ui.PlayerViewModel
 import io.github.kickoman.qiyaa.ui.balanceLabel
 import io.github.kickoman.qiyaa.ui.components.HorizontalSlider
@@ -57,7 +58,6 @@ import io.github.kickoman.qiyaa.ui.theme.ReadoutStyle
 import io.github.kickoman.qiyaa.ui.theme.mono
 import io.github.kickoman.qiyaa.ui.timeLabel
 import io.github.kickoman.qiyaa.ui.visualizer.VisualizerStrip
-import io.github.kickoman.qiyaa.yandex.Track
 import kotlin.math.roundToInt
 
 private val QueueLabelStyle = mono(11.sp, 500, 1.sp)

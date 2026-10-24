@@ -1,6 +1,6 @@
 package io.github.kickoman.qiyaa.queue
 
-import io.github.kickoman.qiyaa.yandex.Track
+import io.github.kickoman.qiyaa.track.Track
 
 data class JamEntry(val itemId: String, val track: Track, val addedBy: String)
 

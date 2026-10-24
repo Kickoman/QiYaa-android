@@ -12,7 +12,7 @@ import io.github.kickoman.qiyaa.queue.HeadShuffle
 import io.github.kickoman.qiyaa.queue.PlayerEngine
 import io.github.kickoman.qiyaa.queue.QueueController
 import io.github.kickoman.qiyaa.queue.Transition
-import io.github.kickoman.qiyaa.yandex.Track
+import io.github.kickoman.qiyaa.track.Track
 import kotlin.random.Random
 
 @OptIn(UnstableApi::class)

@@ -37,7 +37,7 @@ grep -rln 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/playback/   #
 | `TimedAudioSink.kt` | `TimedAudioSink` — `ForwardingAudioSink`: метки времени входных буферов и звучащая позиция для `VisualizerTap` |
 | `OkHttpJamTransport.kt` | `OkHttpJamTransport` — `jam.JamTransport` на WebSocket OkHttp для хозяина и гостя (`AppGraph.jamGuest`): без тайм-аута чтения, свой ping раз в 20 с, одно `onClosed` на сокет; адрес, который не URL, — как неудачное соединение |
 | `JamHost.kt` | `JamHost`, `JamHostState`, `JamHostEvent`, `JamCatalog`, `JamHostConfig` — хозяин джема: сервер, режим джема очереди и запросы гостей |
-| `JamTracks.kt` | `JamTracks` — `yandex.Track` ↔ `jam.JamTrack` с пределами протокола |
+| `JamTracks.kt` | `JamTracks` — `track.Track` ↔ `jam.JamTrack` с пределами протокола |
 
 Зависит от `queue`, `jam`, `yandex`, `audio`, `data` и корневого `appGraph` (сервис — точка входа Android и получает граф через `Context.appGraph`).
 

@@ -1,10 +1,10 @@
 package io.github.kickoman.qiyaa.support
 
+import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.yandex.NamedRef
 import io.github.kickoman.qiyaa.yandex.PlaylistRef
 import io.github.kickoman.qiyaa.yandex.SearchResult
 import io.github.kickoman.qiyaa.yandex.Station
-import io.github.kickoman.qiyaa.yandex.Track
 import io.github.kickoman.qiyaa.yandex.TrackParsing
 import io.github.kickoman.qiyaa.yandex.WaveBatch
 import io.github.kickoman.qiyaa.yandex.WheelWave

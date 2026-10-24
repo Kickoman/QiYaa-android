@@ -6,8 +6,8 @@ import io.github.kickoman.qiyaa.queue.PlayOrder
 import io.github.kickoman.qiyaa.queue.PlayerEngine
 import io.github.kickoman.qiyaa.queue.QueueController
 import io.github.kickoman.qiyaa.queue.Transition
+import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.yandex.ErrorKind
-import io.github.kickoman.qiyaa.yandex.Track
 
 // Mirrors the parts of ExoPlayer the queue relies on: a playlist with a cursor, the end state,
 // a shuffle order, repeat of the whole queue, and listener callbacks fired synchronously after

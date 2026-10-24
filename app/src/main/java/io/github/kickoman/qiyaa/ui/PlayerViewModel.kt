@@ -19,7 +19,7 @@ import io.github.kickoman.qiyaa.audio.EqSettings
 import io.github.kickoman.qiyaa.data.AccentTheme
 import io.github.kickoman.qiyaa.playback.MediaItems
 import io.github.kickoman.qiyaa.playback.PlaybackService
-import io.github.kickoman.qiyaa.yandex.Track
+import io.github.kickoman.qiyaa.track.Track
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow

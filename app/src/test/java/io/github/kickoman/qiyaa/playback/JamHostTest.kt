@@ -52,8 +52,8 @@ import io.github.kickoman.qiyaa.support.FakeJamTransport
 import io.github.kickoman.qiyaa.support.FakeQueueStore
 import io.github.kickoman.qiyaa.support.QueueHarness
 import io.github.kickoman.qiyaa.support.Spec
+import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.yandex.HttpException
-import io.github.kickoman.qiyaa.yandex.Track
 import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.CoroutineStart

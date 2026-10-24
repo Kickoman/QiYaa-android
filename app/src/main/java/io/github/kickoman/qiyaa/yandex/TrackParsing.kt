@@ -1,5 +1,6 @@
 package io.github.kickoman.qiyaa.yandex
 
+import io.github.kickoman.qiyaa.track.Track
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject

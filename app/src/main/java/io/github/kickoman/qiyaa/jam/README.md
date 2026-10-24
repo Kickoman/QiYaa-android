@@ -34,7 +34,7 @@ grep -nE '\\\\[sSpPdDwWbB]' app/src/main/java/io/github/kickoman/qiyaa/jam/{JamC
 умолчанию. Имена Kotlin там, где слово занято: `settings` → `ChangeSettings`, `searchResult` →
 `SearchResult`, `snapshot` → `Snapshot`, `state` → `State`.
 
-- `JamTrack.coverUri` — шаблон Яндекса с `%%`, как в протоколе; это не `yandex/Track.coverUrl`.
+- `JamTrack.coverUri` — шаблон Яндекса с `%%`, как в протоколе; это не `track/Track.coverUrl`.
 - `JamTrack.source` — `null` (по умолчанию схемы, `yandex`), `YANDEX` или `HOST`: трек, который может
   сыграть только хозяин, например локальный файл десктопа (протокол, «Tracks»; HOST-37, LISTEN-14).
   `null` при кодировании пропадает (`explicitNulls = false`), так что трек каталога уходит без ключа

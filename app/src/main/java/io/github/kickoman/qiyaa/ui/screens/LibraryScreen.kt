@@ -42,6 +42,7 @@ import io.github.kickoman.qiyaa.data.ShuffleChoice
 import io.github.kickoman.qiyaa.jam.ParticipantKind
 import io.github.kickoman.qiyaa.playback.JamHostPhase
 import io.github.kickoman.qiyaa.playback.JamHostState
+import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.ui.AppViewModel
 import io.github.kickoman.qiyaa.ui.LibrarySection
 import io.github.kickoman.qiyaa.ui.ListState
@@ -61,8 +62,8 @@ import io.github.kickoman.qiyaa.ui.theme.LabelStyle
 import io.github.kickoman.qiyaa.ui.theme.Qi
 import io.github.kickoman.qiyaa.ui.theme.mono
 import io.github.kickoman.qiyaa.ui.theme.sans
-import io.github.kickoman.qiyaa.yandex.Track
 import io.github.kickoman.qiyaa.yandex.signedIn
+import io.github.kickoman.qiyaa.yandex.webUrl
 
 @Composable
 fun LibraryScreen(
@@ -425,7 +426,7 @@ private fun YandexSources(
             Modifier.weight(1f),
             height = 48.dp,
             onClick = {
-                track?.let { context.startActivity(Intent(Intent.ACTION_VIEW, it.webUrl.toUri())) }
+                track?.webUrl?.let { url -> context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri())) }
             },
         ) {
             PathIcon(IconPaths.OPEN_OUTSIDE, 22.dp, colors.muted, strokeWidth = IconPaths.OUTLINE)

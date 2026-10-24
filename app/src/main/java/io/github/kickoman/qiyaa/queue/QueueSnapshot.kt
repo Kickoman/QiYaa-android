@@ -1,6 +1,7 @@
 package io.github.kickoman.qiyaa.queue
 
-import io.github.kickoman.qiyaa.yandex.Track
+import io.github.kickoman.qiyaa.track.Track
+import io.github.kickoman.qiyaa.track.TrackSource
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
@@ -59,6 +60,7 @@ object QueueSnapshotCodec {
                             durationMs = track.durationMs,
                             available = track.available,
                             coverUrl = track.coverUrl,
+                            source = track.source.takeIf { it != TrackSource.YANDEX }?.key,
                             batchId = snapshot.batchIds.getOrElse(i) { "" },
                             part = part?.takeIf { it != defaultPart }?.key,
                             itemId = item?.itemId,
@@ -83,7 +85,8 @@ object QueueSnapshotCodec {
             }
         if (file.version != VERSION) return null
         val tracks = file.tracks.map {
-            Track(it.id, it.title, it.artists, it.albumId, it.durationMs, it.available, it.coverUrl)
+            val source = TrackSource.fromKey(it.source ?: TrackSource.YANDEX.key) ?: return null
+            Track(it.id, it.title, it.artists, it.albumId, it.durationMs, it.available, it.coverUrl, source)
         }
         val index = if (tracks.isEmpty()) 0 else file.index.coerceIn(0, tracks.lastIndex)
         val default = EntryPart.defaultFor(file.isWave)
@@ -139,6 +142,7 @@ object QueueSnapshotCodec {
         val durationMs: Long = 0,
         val available: Boolean = true,
         val coverUrl: String? = null,
+        val source: String? = null,
         val batchId: String = "",
         val part: String? = null,
         val itemId: String? = null,
