@@ -17,6 +17,7 @@ import io.github.kickoman.qiyaa.appGraph
 import io.github.kickoman.qiyaa.audio.EqPresets
 import io.github.kickoman.qiyaa.audio.EqSettings
 import io.github.kickoman.qiyaa.data.AccentTheme
+import io.github.kickoman.qiyaa.lyrics.LyricsView
 import io.github.kickoman.qiyaa.playback.MediaItems
 import io.github.kickoman.qiyaa.playback.PlaybackService
 import io.github.kickoman.qiyaa.track.Track
@@ -115,6 +116,27 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         current.seekTo(index, 0)
         if (current.playbackState == Player.STATE_IDLE) current.prepare()
         current.play()
+    }
+
+    val lyrics: StateFlow<LyricsView> = graph.lyricsFinder.view
+    val lyricsShown: StateFlow<Boolean> = graph.lyricsShown.asStateFlow()
+
+    fun showLyrics(on: Boolean) {
+        graph.lyricsShown.value = on
+    }
+
+    fun setLyricsOnScreen(on: Boolean) {
+        graph.lyricsOnScreen.value = on
+    }
+
+    fun searchLyricsThirdParty() = settings.setLyricsThirdParty(true)
+
+    fun seekTo(positionMs: Long) {
+        val current = controller ?: return
+        val state = mutableUi.value.playbackState
+        if (state == Player.STATE_IDLE || state == Player.STATE_ENDED) return
+        current.seekTo(positionMs)
+        mutableUi.update { it.copy(positionMs = positionMs) }
     }
 
     fun seekToFraction(fraction: Float) {
@@ -278,6 +300,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 durationMs = player.duration.takeIf { it > 0 } ?: knownDuration,
                 current = item?.let(MediaItems::toTrack),
             )
+        graph.lyricsTrack.value = mutableUi.value.current
         if (player.isPlaying) startTicker() else ticker?.cancel()
     }
 

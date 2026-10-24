@@ -86,6 +86,10 @@ class Settings(context: Context, defaultJamServer: String = "") {
         MutableStateFlow(preferences.getBoolean(KEY_CONTINUE_WITH_VIBE, true))
     val continueWithVibe: StateFlow<Boolean> = mutableContinueWithVibe.asStateFlow()
 
+    private val mutableLyricsThirdParty =
+        MutableStateFlow(preferences.getBoolean(KEY_LYRICS_THIRD_PARTY, false))
+    val lyricsThirdParty: StateFlow<Boolean> = mutableLyricsThirdParty.asStateFlow()
+
     private val mutableLocalPermissionAsked =
         MutableStateFlow(preferences.getBoolean(KEY_LOCAL_PERMISSION_ASKED, false))
     val localPermissionAsked: StateFlow<Boolean> = mutableLocalPermissionAsked.asStateFlow()
@@ -172,6 +176,11 @@ class Settings(context: Context, defaultJamServer: String = "") {
         preferences.edit { putBoolean(KEY_CONTINUE_WITH_VIBE, value) }
     }
 
+    fun setLyricsThirdParty(value: Boolean) {
+        mutableLyricsThirdParty.value = value
+        preferences.edit { putBoolean(KEY_LYRICS_THIRD_PARTY, value) }
+    }
+
     fun setLocalPermissionAsked() {
         mutableLocalPermissionAsked.value = true
         preferences.edit { putBoolean(KEY_LOCAL_PERMISSION_ASKED, true) }
@@ -232,6 +241,7 @@ class Settings(context: Context, defaultJamServer: String = "") {
         const val KEY_QUALITY = "playback/quality"
         const val KEY_QUALITY_METERED = "playback/qualityMetered"
         const val KEY_CONTINUE_WITH_VIBE = "playback/continueWithVibe"
+        const val KEY_LYRICS_THIRD_PARTY = "lyrics/thirdParty"
         const val KEY_SHUFFLE_ALGORITHM = "shuffle/algorithm"
         const val KEY_TELEMETRY_ENABLED = "telemetry/enabled"
         const val KEY_LOCAL_PERMISSION_ASKED = "local/permissionAsked"

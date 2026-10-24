@@ -15,7 +15,7 @@ import java.nio.charset.CodingErrorAction
 data class Uslt(val description: String, val text: String)
 
 object LocalLyricsFiles {
-    const val MAX_TAG_CHUNK_BYTES = 64 * 1024 * 1024
+    const val MAX_TAG_CHUNK_BYTES = 16 * 1024 * 1024
     private const val LRC = ".lrc"
     private const val READ_CHUNK = 8 * 1024
     private val FALLBACK: Charset = Charset.forName("windows-1251")

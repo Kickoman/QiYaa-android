@@ -361,4 +361,24 @@
     <string name="vibe_continue_off">This queue stops at its end</string>
     <string name="telemetry_title">SEND STATISTICS</string>
     <string name="telemetry_note">Anonymous: phone model, Android version, error categories, crash reports. Never titles, searches, names or the token.</string>
+    <string name="lyrics_show">Show the lyrics</string>
+    <string name="lyrics_back_to_cover">Back to the cover</string>
+    <string name="lyrics_nothing">Nothing is playing</string>
+    <string name="lyrics_loading">Looking for the lyrics…</string>
+    <string name="lyrics_missing">This track has no lyrics</string>
+    <string name="lyrics_instrumental">No words: an instrumental</string>
+    <string name="lyrics_failed">The lyrics could not be loaded</string>
+    <string name="lyrics_no_account">Lyrics of Yandex Music tracks come with a login</string>
+    <string name="lyrics_search_lrclib">Search in LRCLIB</string>
+    <string name="lyrics_from_yandex">Yandex Music</string>
+    <string name="lyrics_from_lrc">LRC file</string>
+    <string name="lyrics_from_tags">File tags</string>
+    <string name="lyrics_from_lrclib">LRCLIB</string>
+    <string name="lyrics_better">still looking…</string>
+    <string name="lyrics_title">LYRICS</string>
+    <string name="lyrics_lrclib_title">Lyrics from LRCLIB</string>
+    <string name="lyrics_lrclib_note">Off by default. LRCLIB is an open database of lyrics: it learns the title and the first artist of each track it is asked about, and the phone’s address.</string>
+    <string name="lyrics_lrclib_consent">LRCLIB, an open database of lyrics, will learn the title and the first artist of each track whose lyrics you open, and the phone’s address. Turn it on?</string>
+    <string name="lyrics_lrclib_accept">Turn on</string>
+    <string name="lyrics_lrclib_cancel">Cancel</string>
 </resources>

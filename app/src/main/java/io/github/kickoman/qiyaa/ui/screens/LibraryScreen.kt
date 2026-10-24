@@ -27,6 +27,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -213,6 +216,8 @@ fun LibraryScreen(
             Modifier.padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 6.dp),
             color = colors.dim,
         )
+
+        LyricsServiceBlock(viewModel)
 
         QiText(
             stringResource(R.string.quality_title),
@@ -583,4 +588,45 @@ private fun LocalFiles(viewModel: AppViewModel) {
             color = colors.muted,
         )
     }
+}
+
+@Composable
+private fun LyricsServiceBlock(viewModel: AppViewModel) {
+    val colors = Qi.colors
+    val thirdParty by viewModel.settings.lyricsThirdParty.collectAsStateWithLifecycle()
+    var consent by remember { mutableStateOf(false) }
+    if (consent) {
+        LrclibConsentDialog(
+            onAccept = {
+                consent = false
+                viewModel.setLyricsThirdParty(true)
+            },
+            onCancel = { consent = false },
+        )
+    }
+    QiText(
+        stringResource(R.string.lyrics_title),
+        LabelStyle,
+        Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 2.dp),
+        color = colors.dim,
+    )
+    Row(
+        Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        QiText(
+            stringResource(R.string.lyrics_lrclib_title),
+            sans(14.sp, 500),
+            Modifier.weight(1f),
+            color = colors.text,
+        )
+        OnOffPills(thirdParty) { on -> if (on) consent = true else viewModel.setLyricsThirdParty(false) }
+    }
+    QiText(
+        stringResource(R.string.lyrics_lrclib_note),
+        HintStyle,
+        Modifier.padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 6.dp),
+        color = colors.dim,
+    )
 }

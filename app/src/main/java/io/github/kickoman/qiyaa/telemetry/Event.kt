@@ -69,6 +69,8 @@ enum class FeatureName(val code: String) {
     LANGUAGE("language"),
     EQUALIZER("equalizer"),
     VIS("vis"),
+    LYRICS("lyrics"),
+    LYRICS_SERVICES("lyrics-services"),
 }
 
 data class StartFields(
@@ -106,4 +108,40 @@ data class Counts(
     val playMinutes: Long = 0,
     val jams: Long = 0,
     val errorsDropped: Long = 0,
+    val lyrics: LyricsCounts = LyricsCounts(),
 )
+
+enum class LyricsOutcome {
+    SOURCE_SYNCED,
+    THIRD_PARTY_SYNCED,
+    SOURCE_TEXT,
+    THIRD_PARTY_TEXT,
+    INSTRUMENTAL,
+    NONE,
+}
+
+data class LyricsCounts(
+    val sourceSynced: Long = 0,
+    val thirdPartySynced: Long = 0,
+    val sourceText: Long = 0,
+    val thirdPartyText: Long = 0,
+    val instrumental: Long = 0,
+    val none: Long = 0,
+    val thirdPartyFailed: Long = 0,
+) {
+    val lookups: Long get() = sourceSynced + thirdPartySynced + sourceText + thirdPartyText + instrumental +
+        none
+
+    fun counted(outcome: LyricsOutcome, failed: Boolean): LyricsCounts {
+        val shown =
+            when (outcome) {
+                LyricsOutcome.SOURCE_SYNCED -> copy(sourceSynced = sourceSynced + 1)
+                LyricsOutcome.THIRD_PARTY_SYNCED -> copy(thirdPartySynced = thirdPartySynced + 1)
+                LyricsOutcome.SOURCE_TEXT -> copy(sourceText = sourceText + 1)
+                LyricsOutcome.THIRD_PARTY_TEXT -> copy(thirdPartyText = thirdPartyText + 1)
+                LyricsOutcome.INSTRUMENTAL -> copy(instrumental = instrumental + 1)
+                LyricsOutcome.NONE -> copy(none = none + 1)
+            }
+        return if (failed) shown.copy(thirdPartyFailed = thirdPartyFailed + 1) else shown
+    }
+}

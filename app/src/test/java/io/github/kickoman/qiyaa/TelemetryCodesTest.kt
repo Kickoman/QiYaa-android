@@ -5,6 +5,7 @@ import io.github.kickoman.qiyaa.data.AccentTheme
 import io.github.kickoman.qiyaa.data.AppLanguage
 import io.github.kickoman.qiyaa.data.AudioQuality
 import io.github.kickoman.qiyaa.data.VisualizerMode
+import io.github.kickoman.qiyaa.lyrics.LyricsShown
 import io.github.kickoman.qiyaa.playback.AudioFailure
 import io.github.kickoman.qiyaa.playback.JamHostEvent
 import io.github.kickoman.qiyaa.queue.FailureKind
@@ -12,6 +13,7 @@ import io.github.kickoman.qiyaa.telemetry.ErrorArea
 import io.github.kickoman.qiyaa.telemetry.EventCodec
 import io.github.kickoman.qiyaa.telemetry.ExitInfo
 import io.github.kickoman.qiyaa.telemetry.ExitReason
+import io.github.kickoman.qiyaa.telemetry.LyricsOutcome
 import io.github.kickoman.qiyaa.telemetry.StartFields
 import io.github.kickoman.qiyaa.yandex.RequestFailure
 import org.junit.Assert.assertEquals
@@ -213,4 +215,10 @@ class TelemetryCodesTest {
     }
 
     private fun ended(why: JamHostEvent.Ended.Why) = JamHostEvent.Ended(why)
+
+    @Test
+    fun `TEL-17 every lyrics outcome of the finder has its count`() {
+        val outcomes = LyricsShown.entries.map(TelemetryCodes::lyricsOutcome)
+        assertEquals(LyricsOutcome.entries.toList(), outcomes)
+    }
 }

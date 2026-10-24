@@ -33,6 +33,7 @@ object IconPaths {
     const val OPEN_OUTSIDE =
         "M10 5H6C5.4 5 5 5.4 5 6V18C5 18.6 5.4 19 6 19H18C18.6 19 19 18.6 19 18V14" +
             "M13 5H19V11M19 5L11 13"
+    const val COVER = "M4 4H20V20H4ZM4 16L9 11L13 15L16 12L20 16"
     const val OUTLINE = 1.8f
 }
 

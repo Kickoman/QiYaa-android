@@ -17,7 +17,7 @@ grep -rnE --include='*.kt' 'https?://' app/src/main/java/io/github/kickoman/qiya
 | Файл | Содержит |
 |---|---|
 | `MachineId.kt` | `MachineId` — `machine` из `ANDROID_ID` или сохранённого UUID |
-| `Event.kt` | `Event` и его шесть видов, `ErrorArea`, `FeatureName`, `StartFields` (с перечислениями полей `start`), `Counts` |
+| `Event.kt` | `Event` и его шесть видов, `ErrorArea`, `FeatureName`, `StartFields` (с перечислениями полей `start`), `Counts`, `LyricsCounts`, `LyricsOutcome` |
 | `EventCodec.kt` | `EventCodec` — событие в JSON спеки, пачка, запасные значения для каждого свободного поля |
 | `CrashReport.kt` | `CrashReport` — отчёт о падении: из исключения, в текст `key=value` и обратно |
 | `CrashHandler.kt` | `CrashHandler` — `Thread.UncaughtExceptionHandler`, который пишет `CrashReport` и всегда зовёт прежний обработчик |
@@ -50,10 +50,15 @@ sealed interface Event { val at: Instant; val session: String; val version: Stri
     Start(fields: StartFields); Exit(counts: Counts); Crash(signal, frames, seconds, exceptionType?)
     UncleanExit(seconds); Error(area: ErrorArea, kind: String, httpStatus: Int? = null); Feature(name: FeatureName, value: String) }
 enum class ErrorArea(code) { PLAYBACK, AUDIO, API, LOGIN, JAM }          // skin и milkdrop у Android нет
-enum class FeatureName(code) { JAM, LANGUAGE, EQUALIZER, VIS }
+enum class FeatureName(code) { JAM, LANGUAGE, EQUALIZER, VIS, LYRICS, LYRICS_SERVICES }   // lyrics, lyrics-services
 data class StartFields(osVersion, sdk, device, kernel, arch, packaging: Packaging, locale, language: Language,
     dpr, theme: Theme, vis: Vis, equalizer, quality: Quality, qualityMetered: Quality, loggedIn, firstRun)
-data class Counts(seconds, tracks, playMinutes, jams, errorsDropped)
+data class Counts(seconds, tracks, playMinutes, jams, errorsDropped, lyrics: LyricsCounts = LyricsCounts())
+enum class LyricsOutcome { SOURCE_SYNCED, THIRD_PARTY_SYNCED, SOURCE_TEXT, THIRD_PARTY_TEXT, INSTRUMENTAL, NONE }
+data class LyricsCounts(sourceSynced, thirdPartySynced, sourceText, thirdPartyText, instrumental, none, thirdPartyFailed) {
+    val lookups: Long                                  // сумма шести исходов, как lyricsLookups спеки
+    fun counted(outcome: LyricsOutcome, failed: Boolean): LyricsCounts
+}
 
 object EventCodec {
     fun encode(event: Event): JsonObject?           // null: session не UUID v4 или значение feature вне шаблона
@@ -63,7 +68,7 @@ object EventCodec {
 }
 ```
 
-Поля и их имена — ровно `androidStart`, `androidExit`, `androidCrash`, `unclean_exit`, `error`, `feature` из `spec/telemetry/schemas/batch.schema.json`. Перечисления `StartFields` (`Packaging` `apk`/`debug`, `Language`, `Theme`, `Vis`, `Quality`) хранят код спеки, поэтому их значение всегда допустимо.
+Поля и их имена — ровно `androidStart`, `androidExit`, `androidCrash`, `unclean_exit`, `error`, `feature` из `spec/telemetry/schemas/batch.schema.json`. Счётчики текстов (`lyricsLookups`, `lyricsSourceSynced` … `lyricsThirdPartyFailed`, TEL-17, «Lyrics counts» спеки) `exit` несёт, только когда был хоть один поиск, и тогда все восемь (`dependentRequired` схемы); `lyricsThirdPartyFailed` без поиска ничего не значит и тоже не пишется. Перечисления `StartFields` (`Packaging` `apk`/`debug`, `Language`, `Theme`, `Vis`, `Quality`) хранят код спеки, поэтому их значение всегда допустимо.
 
 Один неверный элемент даёт 400, а 400 — это «выбросить пачку», вместе с отчётами о падениях. Поэтому `encode` сам приводит каждое свободное поле к схеме, а то, что привести нельзя, не кодирует:
 
@@ -146,7 +151,7 @@ class TelemetryStore(directory: File) {
 | Файл | Содержимое |
 |---|---|
 | `<session>.queue` | события, ждущие отправки, по одному JSON-объекту в строке, от старых к новым; события прошлых запусков тоже здесь |
-| `<session>.json` | маркер запуска: `{"version":"0.6.0","seconds":120,"tracks":3,"playMinutes":7,"jams":0,"errorsDropped":0}`; `seconds` — время в использовании, `playMinutes` — минуты воспроизведения |
+| `<session>.json` | маркер запуска: `{"version":"0.6.0","seconds":120,"tracks":3,"playMinutes":7,"jams":0,"errorsDropped":0,"lyricsSourceSynced":1,…,"lyricsThirdPartyFailed":0}`; `seconds` — время в использовании, `playMinutes` — минуты воспроизведения, ключи текстов — те же, что в `exit`, без `lyricsLookups` (это сумма) |
 | `<session>.crash` | отчёт о падении (`CrashReport.text()`) |
 
 `<session>` — UUID v4 строчными; `sessions()` видит только имена `^<uuid>\.(queue|json|crash)$` и сортирует запуски по самому старому времени изменения их файлов, при равенстве — по имени. Запись — во временный `<имя>.tmp` и переименование; `IOException` записи уходит вызывающему, чтение при ошибке даёт `null` или пустой список. Строка очереди, которая не JSON-объект, пропускается; маркер без `version` по шаблону — `null`. Блокировок между процессами нет: процесс приложения один.
@@ -200,7 +205,8 @@ class Reporter(version: String, store: TelemetryStore, post: suspend (String) ->
     suspend fun begin(start: StartFields, machine: String, exits: Map<String, ExitInfo>)
     fun recordError(area: ErrorArea, kind: String, httpStatus: Int? = null)
     fun recordFeature(name: FeatureName, value: String)
-    fun countTrack();  fun countJam();  fun setPlaying(on: Boolean);  fun setInUse(on: Boolean)
+    fun countTrack();  fun countJam();  fun countLyrics(outcome: LyricsOutcome, thirdPartyFailed: Boolean)
+    fun setPlaying(on: Boolean);  fun setInUse(on: Boolean)
     fun saveMarker()
     suspend fun send(): Answer?                     // null: ничего не отправлено
     suspend fun forget()
@@ -232,7 +238,7 @@ class TelemetrySession(enabled: Flow<Boolean>, onScreen: Flow<Boolean>, playing:
     beginning: suspend () -> Beginning, log: (String) -> Unit = {}) {
     val reporter: Reporter?
     fun start()
-    fun recordError(…);  fun recordFeature(…);  fun countTrack();  fun countJam()   // в текущий Reporter или никуда
+    fun recordError(…);  fun recordFeature(…);  fun countTrack();  fun countJam();  fun countLyrics(…)   // в текущий Reporter или никуда
 }
 ```
 
@@ -321,6 +327,9 @@ object TelemetryCodes {
 | `JamHostEvent.NotConnected` (хозяин убирает элементы без связи, HOST-36, HOST-25) | ничего: это подсказка на экране, среди видов ошибок `jam` спеки её нет |
 | `jamHost.state.phase` стал / перестал быть `ACTIVE` | `feature jam on` и `countJam()` / `feature jam off`; как у десктопа, до первого «вкл» «выкл» не шлётся |
 | `Settings.language`, `eq.enabled`, `visualizerMode` — смена после старта | `feature language be/ru/en`, `equalizer on/off`, `vis spectrum/oscilloscope/off` |
+| `AppGraph.lyricsShown` — текст вместо обложки и обратно, после старта | `feature lyrics on/off`; смена вкладки и фон — не `off` (флаг тот же), новый процесс снова с обложкой и без `off` |
+| `Settings.lyricsThirdParty` — смена после старта (в Library или «Искать в LRCLIB») | `feature lyrics-services on/off`; отменённое согласие ничего не меняет и не шлёт |
+| `lyrics.LyricsFinder.lookups` (TEL-17) | `countLyrics(TelemetryCodes.lyricsOutcome(shown), thirdPartyFailed)` — в маркер запуска, оттуда в `exit` следующего запуска |
 
 `TelemetryCodes`:
 - `arch`: `arm64-v8a` → `arm64`, `armeabi-v7a` → `arm`, `x86` → `i386` (как у десктопа), остальное как есть — его приводит `EventCodec.arch` (`x86_64`).

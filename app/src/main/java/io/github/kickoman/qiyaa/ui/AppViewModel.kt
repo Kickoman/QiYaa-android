@@ -345,6 +345,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setContinueWithVibe(on: Boolean) = settings.setContinueWithVibe(on)
 
+    fun setLyricsThirdParty(on: Boolean) = settings.setLyricsThirdParty(on)
+
     fun setShuffleAlgorithm(choice: ShuffleChoice) = settings.setShuffleAlgorithm(choice)
 
     fun setTelemetryEnabled(on: Boolean) = settings.setTelemetryEnabled(on)

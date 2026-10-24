@@ -349,4 +349,24 @@
     <string name="vibe_continue_off">Эта очередь остановится в конце</string>
     <string name="telemetry_title">ОТПРАВЛЯТЬ СТАТИСТИКУ</string>
     <string name="telemetry_note">Анонимно: модель телефона, версия Android, категории ошибок, отчёты о падениях. Никогда — названия, поиск, имена и токен.</string>
+    <string name="lyrics_show">Показать текст</string>
+    <string name="lyrics_back_to_cover">Назад к обложке</string>
+    <string name="lyrics_nothing">Ничего не играет</string>
+    <string name="lyrics_loading">Ищу текст…</string>
+    <string name="lyrics_missing">У этого трека нет текста</string>
+    <string name="lyrics_instrumental">Без слов: инструментал</string>
+    <string name="lyrics_failed">Текст не загрузился</string>
+    <string name="lyrics_no_account">Тексты треков Яндекс Музыки — после входа</string>
+    <string name="lyrics_search_lrclib">Искать в LRCLIB</string>
+    <string name="lyrics_from_yandex">Яндекс Музыка</string>
+    <string name="lyrics_from_lrc">Файл LRC</string>
+    <string name="lyrics_from_tags">Теги файла</string>
+    <string name="lyrics_from_lrclib">LRCLIB</string>
+    <string name="lyrics_better">ещё ищу…</string>
+    <string name="lyrics_title">ТЕКСТЫ</string>
+    <string name="lyrics_lrclib_title">Тексты из LRCLIB</string>
+    <string name="lyrics_lrclib_note">По умолчанию выключено. LRCLIB — открытая база текстов: она узнаёт название и первого исполнителя каждого трека, о котором её спрашивают, и адрес телефона.</string>
+    <string name="lyrics_lrclib_consent">LRCLIB, открытая база текстов, будет узнавать название и первого исполнителя каждого трека, текст которого вы откроете, и адрес телефона. Включить?</string>
+    <string name="lyrics_lrclib_accept">Включить</string>
+    <string name="lyrics_lrclib_cancel">Отмена</string>
 </resources>
