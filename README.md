@@ -60,6 +60,7 @@ Release-APK (R8, Media3 1.11) перед первым тегом проверя�
 | Пакет | Что делает | README |
 |---|---|---|
 | `track/` | Трек и его источник (`Track`, `TrackSource`): общая модель для источников, очереди, плеера и джема. Чистая JVM | [track/README.md](app/src/main/java/io/github/kickoman/qiyaa/track/README.md) |
+| `local/` | Свои файлы из медиатеки телефона: запрос к `MediaStore`, выборы (все треки, альбомы, исполнители, папки) в порядке ПК, сверка восстановленной очереди | [local/README.md](app/src/main/java/io/github/kickoman/qiyaa/local/README.md) |
 | `yandex/` | API Яндекс Музыки, OAuth по коду устройства, подпись mp3-ссылки, источники библиотеки. Чистая JVM | [yandex/README.md](app/src/main/java/io/github/kickoman/qiyaa/yandex/README.md) |
 | `audio/` | Эквалайзер, FFT, спектр, кольцо визуализатора, PCM16. Чистая JVM | [audio/README.md](app/src/main/java/io/github/kickoman/qiyaa/audio/README.md) |
 | `data/` | Настройки и токен в SharedPreferences, сохранённая очередь в файле | [data/README.md](app/src/main/java/io/github/kickoman/qiyaa/data/README.md) |
