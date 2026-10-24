@@ -2,7 +2,13 @@ package io.github.kickoman.qiyaa.lyrics
 
 import io.github.kickoman.qiyaa.support.Spec
 import io.github.kickoman.qiyaa.track.Track
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import okhttp3.Call
+import okhttp3.EventListener
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -107,6 +113,81 @@ class LrclibTest {
         server.enqueue(MockResponse().setBody(big))
         assertEquals(LyricsAnswer.Failed, ask(Track("1", "Song", listOf("Band"))))
         assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun `LYR-11 a reply over 2 MiB without a length is a failure too`() {
+        val big = "[" + "\"x\",".repeat((Lrclib.MAX_REPLY_BYTES / 4 + 1).toInt()) + "\"x\"]"
+        server.enqueue(MockResponse().setChunkedBody(big, 64 * 1024))
+        assertEquals(LyricsAnswer.Failed, ask(Track("1", "Song", listOf("Band"))))
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun `LYR-04 the retry waits its delay, and a dropped connection is not retried by OkHttp itself`() {
+        val slow =
+            Lrclib(OkHttpClient(), "1.2.3", server.url("/").toString().removeSuffix("/"), retryDelayMs = 300)
+        server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START))
+        server.enqueue(fixture("plain-only"))
+        val started = System.nanoTime()
+        val answer = runBlocking { slow.lyrics(Track("1", "Song", listOf("Band"))) }
+        assertTrue(answer is LyricsAnswer.Text)
+        assertTrue((System.nanoTime() - started) / 1_000_000 >= 300)
+    }
+
+    @Test
+    fun `LYR-04 a reply slower than the call timeout is a network failure`() {
+        val impatient =
+            Lrclib(
+                OkHttpClient(),
+                "1.2.3",
+                server.url("/").toString().removeSuffix("/"),
+                retryDelayMs = 1,
+                timeoutMs = 200,
+            )
+        repeat(2) { server.enqueue(fixture("plain-only").setHeadersDelay(1, TimeUnit.SECONDS)) }
+        assertEquals(
+            LyricsAnswer.Failed,
+            runBlocking {
+                impatient.lyrics(Track("1", "Song", listOf("Band")))
+            },
+        )
+    }
+
+    @Test
+    fun `LYR-04 the title and the artist are sent encoded`() {
+        server.enqueue(fixture("empty"))
+        ask(Track("1", "Rock & Roll + Жыта", listOf("A&B")))
+        val url = server.takeRequest().requestUrl!!
+        assertTrue(url.encodedQuery!!.contains("%26") && url.encodedQuery!!.contains("%2B"))
+        assertEquals("Rock & Roll + Жыта", url.queryParameter("track_name"))
+        assertEquals("A&B", url.queryParameter("artist_name"))
+    }
+
+    @Test
+    fun `LYR-09 a cancelled lookup cancels its HTTP call`() {
+        var canceled = false
+        val client =
+            OkHttpClient.Builder()
+                .eventListener(
+                    object : EventListener() {
+                        override fun canceled(call: Call) {
+                            canceled = true
+                        }
+                    },
+                )
+                .build()
+        val watched = Lrclib(client, "1.2.3", server.url("/").toString().removeSuffix("/"), retryDelayMs = 1)
+        server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
+        runBlocking {
+            val lookup =
+                launch(start = CoroutineStart.UNDISPATCHED) {
+                    watched.lyrics(Track("1", "Song", listOf("Band")))
+                }
+            server.takeRequest()
+            lookup.cancelAndJoin()
+        }
+        assertTrue(canceled)
     }
 
     private fun ask(track: Track): LyricsAnswer = runBlocking { lrclib.lyrics(track) }

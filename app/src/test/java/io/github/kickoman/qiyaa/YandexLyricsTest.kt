@@ -64,6 +64,16 @@ class YandexLyricsTest {
         assertEquals(false, asked)
     }
 
+    @Test
+    fun `LYR-02 the track's id is what is asked`() {
+        var asked = ""
+        ask {
+            asked = it
+            null
+        }
+        assertEquals("42", asked)
+    }
+
     private fun ask(fetch: suspend (String) -> String?): LyricsAnswer =
         runBlocking { YandexLyrics(fetch, signedIn = { true }).lyrics(track) }
 }

@@ -4,6 +4,7 @@ import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.track.TrackKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -173,7 +174,7 @@ class LyricsFinder(
         silenceJob?.cancel()
         sourceJob =
             scope.launch {
-                val answer = withTimeoutOrNull(answerWaitMs) { source.lyrics(asked) }
+                val answer = waitFor { source.lyrics(asked) }
                 if (answer == null) sourceTimedOut(request) else sourceAnswered(request, answer)
             }
         silenceJob =
@@ -202,7 +203,7 @@ class LyricsFinder(
         thirdPartyJob?.cancel()
         thirdPartyJob =
             scope.launch {
-                val answer = withTimeoutOrNull(answerWaitMs) { service.lyrics(asked) }
+                val answer = waitFor { service.lyrics(asked) }
                 if (answer == null) thirdPartyTimedOut(request) else thirdPartyAnswered(request, answer)
             }
     }
@@ -347,6 +348,15 @@ class LyricsFinder(
         finishLookup()
         drop()
         update()
+    }
+
+    private suspend fun waitFor(ask: suspend () -> LyricsAnswer): LyricsAnswer? {
+        val reply = scope.async { ask() }
+        try {
+            return withTimeoutOrNull(answerWaitMs) { reply.await() }
+        } finally {
+            reply.cancel()
+        }
     }
 
     private fun LyricsAnswer?.isText(kind: LyricsKind): Boolean =

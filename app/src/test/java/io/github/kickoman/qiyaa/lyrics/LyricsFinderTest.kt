@@ -5,15 +5,16 @@ import io.github.kickoman.qiyaa.track.TrackSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -31,11 +32,11 @@ class LyricsFinderTest {
         h.track.value = trackB
         runCurrent()
         assertEquals(emptyList<String>(), h.source.asked)
-        assertEquals(LyricsView(), h.finder.view.value)
+        assertEquals(LyricsView(), h.view())
         h.active.value = true
         runCurrent()
         assertEquals(listOf("2"), h.source.asked)
-        assertEquals(LyricsPhase.LOADING, h.finder.view.value.phase)
+        assertEquals(LyricsPhase.LOADING, h.view().phase)
     }
 
     @Test
@@ -59,7 +60,7 @@ class LyricsFinderTest {
         }
 
     @Test
-    fun `LYR-03 a source silent for 1 s lets the service in, and its later synced text cancels it`() =
+    fun `LYR-03 a source silent for 1 s lets the service in, and its text waits for the source's`() =
         runTest {
             val h = Harness(this, service = true)
             h.track.value = trackA
@@ -69,11 +70,28 @@ class LyricsFinderTest {
             advanceTimeBy(2)
             assertEquals(listOf("1"), h.thirdParty.asked)
             assertEquals(LyricsPhase.LOADING, h.view().phase)
+            h.thirdParty.answer("1", LyricsAnswer.Text(plain, LyricsFrom.CATALOG))
+            runCurrent()
+            assertEquals(
+                LyricsView(trackA, LyricsPhase.SHOWN, plain, LyricsFrom.THIRD_PARTY, better = true),
+                h.view(),
+            )
             h.source.answer("1", LyricsAnswer.Text(synced, LyricsFrom.CATALOG))
             runCurrent()
-            assertEquals(listOf("1"), h.thirdParty.cancelled)
             assertEquals(LyricsView(trackA, LyricsPhase.SHOWN, synced, LyricsFrom.CATALOG), h.view())
         }
+
+    @Test
+    fun `LYR-03 a synced text of the source cancels a service still asked`() = runTest {
+        val h = Harness(this, service = true)
+        h.track.value = trackA
+        runCurrent()
+        advanceTimeBy(1_001)
+        h.source.answer("1", LyricsAnswer.Text(synced, LyricsFrom.CATALOG))
+        runCurrent()
+        assertEquals(listOf("1"), h.thirdParty.cancelled)
+        assertEquals(LyricsView(trackA, LyricsPhase.SHOWN, synced, LyricsFrom.CATALOG), h.view())
+    }
 
     @Test
     fun `LYR-03 a synced text of the source means the service is never asked`() = runTest {
@@ -89,17 +107,11 @@ class LyricsFinderTest {
     @Test
     fun `LYR-05 the service's instrumental shows only when the source has no text`() = runTest {
         val h = Harness(this, service = true)
-        h.track.value = trackA
-        runCurrent()
-        h.source.answer("1", LyricsAnswer.Missing())
-        runCurrent()
+        h.show(trackA, LyricsAnswer.Missing())
         h.thirdParty.answer("1", LyricsAnswer.Instrumental)
         runCurrent()
         assertEquals(LyricsPhase.INSTRUMENTAL, h.view().phase)
-        h.track.value = trackB
-        runCurrent()
-        h.source.answer("2", LyricsAnswer.Text(plain, LyricsFrom.CATALOG))
-        runCurrent()
+        h.show(trackB, LyricsAnswer.Text(plain, LyricsFrom.CATALOG))
         h.thirdParty.answer("2", LyricsAnswer.Instrumental)
         runCurrent()
         assertEquals(LyricsView(trackB, LyricsPhase.SHOWN, plain, LyricsFrom.CATALOG), h.view())
@@ -112,7 +124,12 @@ class LyricsFinderTest {
         runCurrent()
         advanceTimeBy(1_001)
         assertEquals(listOf("1"), h.thirdParty.asked)
-        advanceTimeBy(9_000)
+        advanceTimeBy(6_998)
+        assertEquals(emptyList<String>(), h.source.cancelled)
+        advanceTimeBy(2)
+        assertEquals(listOf("1"), h.source.cancelled)
+        assertEquals(LyricsView(trackA, LyricsPhase.LOADING), h.view())
+        advanceTimeBy(1_000)
         assertEquals(LyricsView(trackA, LyricsPhase.MISSING), h.view())
         assertEquals(listOf("1"), h.thirdParty.cancelled)
         h.source.answer("1", LyricsAnswer.Text(plain, LyricsFrom.CATALOG))
@@ -121,14 +138,40 @@ class LyricsFinderTest {
     }
 
     @Test
+    fun `a source that ignores cancellation still gives way after 8 s, and the timeout is not remembered`() =
+        runTest {
+            var calls = 0
+            val stubborn =
+                LyricsSource {
+                    calls++
+                    withContext(NonCancellable) { delay(20_000) }
+                    LyricsAnswer.Text(plain, LyricsFrom.CATALOG)
+                }
+            val h = Harness(this, source = stubborn)
+            h.track.value = trackA
+            runCurrent()
+            advanceTimeBy(7_999)
+            assertEquals(LyricsPhase.LOADING, h.view().phase)
+            advanceTimeBy(2)
+            assertEquals(LyricsView(trackA, LyricsPhase.MISSING), h.view())
+            h.track.value = trackB
+            runCurrent()
+            h.track.value = trackA
+            runCurrent()
+            assertEquals(3, calls)
+        }
+
+    @Test
     fun `LYR-09 another track drops the answers for the earlier one and looks up the new one at once`() =
         runTest {
             val h = Harness(this, service = true)
             h.track.value = trackA
             runCurrent()
+            advanceTimeBy(1_001)
             h.track.value = trackB
             runCurrent()
             assertEquals(listOf("1"), h.source.cancelled)
+            assertEquals(listOf("1"), h.thirdParty.cancelled)
             assertEquals(LyricsView(trackB, LyricsPhase.LOADING), h.view())
             h.source.answer("1", LyricsAnswer.Text(plain, LyricsFrom.CATALOG))
             runCurrent()
@@ -148,9 +191,7 @@ class LyricsFinderTest {
     @Test
     fun `LYR-09 a local file and a Yandex track with the same id are two tracks`() = runTest {
         val h = Harness(this)
-        h.track.value = trackA
-        runCurrent()
-        h.source.answer("1", LyricsAnswer.Missing())
+        h.show(trackA, LyricsAnswer.Missing())
         h.track.value = trackA.copy(source = TrackSource.LOCAL)
         runCurrent()
         assertEquals(listOf("1", "1"), h.source.asked)
@@ -164,16 +205,22 @@ class LyricsFinderTest {
         h.track.value = trackA
         runCurrent()
         assertEquals(LyricsView(trackA, LyricsPhase.SHOWN, plain, LyricsFrom.CATALOG), h.view())
+        h.show(trackB, LyricsAnswer.NoAccount)
+        h.track.value = trackA
+        runCurrent()
         h.track.value = trackB
         runCurrent()
-        assertEquals(listOf("1", "2", "2"), h.source.asked)
-        h.source.answer("2", LyricsAnswer.NoAccount)
+        assertEquals(listOf("1", "2", "2", "2"), h.source.asked)
+        h.source.answer("2", LyricsAnswer.Missing())
         runCurrent()
-        for (i in 3..12) h.show(Track("$i", "T$i"), LyricsAnswer.Missing())
+        for (i in 3..10) h.show(Track("$i", "T$i"), LyricsAnswer.Missing())
+        h.track.value = trackA
+        runCurrent()
+        assertEquals("10", h.source.asked.last())
+        for (i in 11..20) h.show(Track("$i", "T$i"), LyricsAnswer.Missing())
         h.track.value = trackA
         runCurrent()
         assertEquals("1", h.source.asked.last())
-        assertEquals(1 + 2 + 10 + 1, h.source.asked.size)
     }
 
     @Test
@@ -182,8 +229,9 @@ class LyricsFinderTest {
             val h = Harness(this)
             h.show(trackA, LyricsAnswer.Missing())
             h.show(trackB, LyricsAnswer.Missing())
-            h.service.value = true
             h.track.value = trackA
+            runCurrent()
+            h.service.value = true
             runCurrent()
             assertEquals(listOf("1", "2"), h.source.asked)
             assertEquals(listOf("1"), h.thirdParty.asked)
@@ -254,6 +302,20 @@ class LyricsFinderTest {
     }
 
     @Test
+    fun `LYR-17 a service that failed is asked again when the network comes back`() = runTest {
+        val h = Harness(this, service = true)
+        h.show(trackA, LyricsAnswer.Missing())
+        h.thirdParty.answer("1", LyricsAnswer.Failed)
+        runCurrent()
+        h.network.value = false
+        runCurrent()
+        h.network.value = true
+        runCurrent()
+        assertEquals(listOf("1"), h.source.asked)
+        assertEquals(listOf("1", "1"), h.thirdParty.asked)
+    }
+
+    @Test
     fun `a lookup is counted once when everyone asked answered, with the service's failure`() = runTest {
         val h = Harness(this, service = true)
         h.show(trackA, LyricsAnswer.Missing())
@@ -271,8 +333,41 @@ class LyricsFinderTest {
             ),
             h.lookups,
         )
-        assertFalse(h.lookups.any { it.shown == LyricsShown.INSTRUMENTAL })
-        assertTrue(h.source.asked.size == 2)
+    }
+
+    @Test
+    fun `a remembered server error of the service is not counted again`() = runTest {
+        val h = Harness(this, service = true)
+        h.show(trackA, LyricsAnswer.Failed)
+        h.thirdParty.answer("1", LyricsAnswer.Missing(serverError = true))
+        runCurrent()
+        h.show(trackB, LyricsAnswer.Text(synced, LyricsFrom.CATALOG))
+        h.show(trackA, LyricsAnswer.Missing())
+        assertEquals(listOf("1"), h.thirdParty.asked)
+        assertEquals(
+            listOf(
+                LyricsLookup(LyricsShown.NONE, thirdPartyFailed = true),
+                LyricsLookup(LyricsShown.SOURCE_SYNCED, thirdPartyFailed = false),
+                LyricsLookup(LyricsShown.NONE, thirdPartyFailed = false),
+            ),
+            h.lookups,
+        )
+    }
+
+    @Test
+    fun `an instrumental track and a track left before its answers are each counted once`() = runTest {
+        val h = Harness(this, service = true)
+        h.show(trackA, LyricsAnswer.Missing())
+        h.thirdParty.answer("1", LyricsAnswer.Instrumental)
+        runCurrent()
+        h.track.value = trackB
+        runCurrent()
+        h.track.value = trackA
+        runCurrent()
+        assertEquals(
+            listOf(LyricsLookup(LyricsShown.INSTRUMENTAL, false), LyricsLookup(LyricsShown.NONE, false)),
+            h.lookups,
+        )
     }
 
     private class FakeSource : LyricsSource {
@@ -297,7 +392,12 @@ class LyricsFinderTest {
         }
     }
 
-    private class Harness(private val scope: TestScope, active: Boolean = true, service: Boolean = false) {
+    private class Harness(
+        private val scope: TestScope,
+        active: Boolean = true,
+        service: Boolean = false,
+        source: LyricsSource? = null,
+    ) {
         val track = MutableStateFlow<Track?>(null)
         val active = MutableStateFlow(active)
         val service = MutableStateFlow(service)
@@ -309,7 +409,7 @@ class LyricsFinderTest {
         val finder =
             LyricsFinder(
                 scope.backgroundScope,
-                source,
+                source ?: this.source,
                 thirdParty,
                 track,
                 this.active,

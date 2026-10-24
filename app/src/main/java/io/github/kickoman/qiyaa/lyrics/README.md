@@ -32,7 +32,7 @@ sealed interface LyricsAnswer {
 fun interface LyricsSource { suspend fun lyrics(track: Track): LyricsAnswer }
 ```
 
-- `LyricsSource` — и источник трека, и сервис. Он не бросает: сеть и ошибки сервера — `Failed`, «ничего нет» — `Missing`. Отмену (смена трека, выключенный сервис, 8 с ожидания) он узнаёт как отмену корутины.
+- `LyricsSource` — и источник трека, и сервис. Он не бросает: сеть и ошибки сервера — `Failed`, «ничего нет» — `Missing`. Смену трека, выключенный сервис и истёкшие 8 с он узнаёт как отмену корутины, но может её и не заметить (блокирующий OkHttp в `YandexApi`): ждать его `LyricsFinder` не станет («Ожидание» ниже).
 - `CATALOG` — каталог источника трека; экран называет его по `track.source`. `LRC_FILE` и `FILE_TAGS` — свой файл. `THIRD_PARTY` ставит сам `LyricsFinder` на каждый текст сервиса.
 - `serverError` у `Missing`: LRCLIB отвечает 503 на часть промахов, на экране это «ничего», а в телеметрии — сбой сервиса.
 
@@ -73,12 +73,12 @@ data class LyricsView(val track: Track? = null, val phase: LyricsPhase = IDLE, v
 data class LyricsLookup(val shown: LyricsShown, val thirdPartyFailed: Boolean)
 ```
 
-Порт `Core::LyricsFinder` десктопа, правило за правилом; `LyricsFinderTest` проверяет их по ID.
+Порт `Core::LyricsFinder` десктопа, правило за правилом; `LyricsFinderTest` проверяет их по ID («Тесты» ниже).
 
 - **Только пока экран открыт** (LYR-01, `active`). Закрытый ничего не спрашивает, его вид — `IDLE`. Открытие ищет текущий трек, из памяти, если можно; закрытие бросает то, что спрашивалось.
 - **Текущий трек** сравнивается по `TrackKey`: тот же трек, пришедший снова (другая строка очереди, обновлённый `Track`), второй раз не спрашивается, а свой файл 42 и трек Яндекса 42 — разные треки.
 - **Порядок** (LYR-03, LYR-05). Источник спрашивается сразу. Сервис — когда он есть и включён, а у источника нет синхронного текста: ответил без него или молчит дольше `sourceSilentMs`. Синхронный текст источника отменяет запрос сервиса. Вид показывает первый текст из: синхронный источника, синхронный сервиса, обычный источника, обычный сервиса. Без текста: `INSTRUMENTAL`, если так говорит сервис; `LOADING`, пока кто-то спрашивается; потом `NO_ACCOUNT` или `FAILED` по ответу источника; иначе `MISSING`.
-- **Ожидание.** Кто не ответил за `answerWaitMs`, тому нечего сказать (`Missing`), его корутина отменяется, поздний ответ не нужен.
+- **Ожидание.** Запрос идёт отдельной корутиной в `scope`, а ждёт его `await` с `withTimeoutOrNull(answerWaitMs)`. Кто не ответил за это время, тому нечего сказать (`Missing`, в память не идёт), его корутина отменяется, поздний ответ не нужен. Ожидание не зависит от того, заметит ли источник отмену: `withTimeoutOrNull` прямо вокруг вызова ждал бы конца блокирующего запроса, до 20 с тайм-аутов общего клиента.
 - **Устаревшие ответы** (LYR-09). У каждого запроса номер; ответ на прежний запрос, трек или поиск ничего не делает, а сама корутина прежнего запроса отменяется.
 - **Память** (LYR-14): ответы 10 последних треков, источника и сервиса отдельно. `Failed`, `NoAccount` и истёкшее ожидание не хранятся. Ответ из памяти запроса не слал, поэтому его `serverError` второй раз не считается. Вход и выход (`signedIn`, со второго значения) забывают всё и ищут текущий трек заново.
 - **Сервис включили и выключили** (LYR-15, `thirdPartyEnabled`). Включили — спрашивается сразу, если у источника нет синхронного текста. Выключили — его ответ уходит из вида, запрос отменяется.
@@ -89,6 +89,7 @@ data class LyricsLookup(val shown: LyricsShown, val thirdPartyFailed: Boolean)
 - Всё состояние меняется в корутинах одного `scope`. Многопоточный диспетчер сломает его: номера запросов и флаги — обычные поля.
 - Подписки на потоки стартуют в `init` и живут, пока жив `scope`. В приложении это `AppGraph` (часть 3): память переживает пересоздание активности.
 - `LyricsSource`, который бросит, уронит корутину `scope`. Источники ловят свои ошибки сами (`YandexLyrics`, `Lrclib`).
+- `lookups` шлёт через `tryEmit`: без подписчика или при полном буфере (16) событие теряется. Подписчик — телеметрия в `AppGraph` (часть 3).
 
 ## `LrclibSearch`, `Lrclib`
 
@@ -100,21 +101,22 @@ object LrclibSearch {
     fun titleWithoutVersion(title: String): String?                       // "Song (Live)" → "Song"; null — версии нет
 }
 class Lrclib(client: OkHttpClient, appVersion: String, baseUrl: String = "https://lrclib.net",
-             retryDelayMs: Long = 1_000) : LyricsSource
+             retryDelayMs: Long = 1_000, timeoutMs: Long = 8_000) : LyricsSource
 ```
 
 Запрос, выбор записи, повторы и название без версии — `spec/player/lyrics.md`, «LRCLIB» (LYR-04); `LrclibSearchTest` гоняет выбор на `spec/fixtures/lrclib`, `LrclibTest` — запросы на `MockWebServer`.
 
 - `GET <baseUrl>/api/search?track_name=<название>&artist_name=<первый исполнитель>`, оба без пробелов по краям. Без названия или исполнителя запроса нет, ответ — `Missing`.
 - `User-Agent: QiYaa/<версия> (https://github.com/Kickoman/QiYaa-android)` — этого требует спека. Версию даёт `AppGraph` (`BuildConfig.VERSION_NAME`).
-- Свой клиент из общего (`newBuilder`): `callTimeout` 8 с (у общего — 20 с на чтение), без тихого повтора OkHttp при обрыве (`retryOnConnectionFailure(false)`: повтор один, тот, что в спеке) и без редиректа с `https` на `http`.
+- Свой клиент из общего (`newBuilder`): `callTimeout` 8 с (у общего — 20 с на чтение), без тихого повтора OkHttp при обрыве (`retryOnConnectionFailure(false)`: повтор один, тот, что в спеке) и без редиректов между `https` и `http` в обе стороны (`followSslRedirects(false)`). `callTimeout` — параметр конструктора, чтобы тест не ждал 8 с.
 - 5xx или обрыв сети — ещё раз через `retryDelayMs`. После повтора 503 — «ничего» с `serverError` и следующее название, другой 5xx или обрыв — `Failed`. 4xx — «ничего» по этому названию.
 - Ответ больше 2 МиБ — `Failed` без повтора: по `Content-Length`, а без него — после 2 МиБ + 1 байта.
+- Ответ разбирается на потоке OkHttp (`read`), выбор записи с разбором LRC — на `Dispatchers.Default`: у `LyricsFinder` это главный поток.
 - Ничего не нашлось, а у названия есть версия в конце (` (…)` или ` […]`), — поиск ещё раз без неё.
 
 ## Тесты
 
-`app/src/test/.../lyrics/`: `LyricsTextTest` (LYR-11, LYR-12, `spec/lyrics/lrc.json`), `LrclibSearchTest` и `LrclibTest` (LYR-04, LYR-11), `LyricsFinderTest` (LYR-01, 03, 05, 09, 14–17, ожидание, `lookups`). Ответ Яндекса — `YandexLyricsTest` в корне и `yandex/TrackLyricsTest`.
+`app/src/test/.../lyrics/`: `LyricsTextTest` (LYR-11, LYR-12, `spec/lyrics/lrc.json`, сдвиг `[offset]`), `LrclibSearchTest` и `LrclibTest` (LYR-04, LYR-09: отмена запроса, LYR-11), `LyricsFinderTest` (LYR-01, 03, 05, 09, 14–17, ожидание 8 с и источник, который не замечает отмены, `lookups`). Ответ Яндекса — `YandexLyricsTest` в корне и `yandex/TrackLyricsTest`. LYR-06…08, 10 и 13 — экран и свои файлы, части 2 и 3.
 
 ## Not here
 

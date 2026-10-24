@@ -4,8 +4,10 @@ import io.github.kickoman.qiyaa.track.Track
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.HttpUrl
@@ -19,10 +21,11 @@ class Lrclib(
     appVersion: String,
     baseUrl: String = BASE_URL,
     private val retryDelayMs: Long = RETRY_DELAY_MS,
+    timeoutMs: Long = TIMEOUT_MS,
 ) : LyricsSource {
     private val client =
         client.newBuilder()
-            .callTimeout(TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            .callTimeout(timeoutMs, TimeUnit.MILLISECONDS)
             .retryOnConnectionFailure(false)
             .followSslRedirects(false)
             .build()
@@ -40,7 +43,7 @@ class Lrclib(
     }
 
     private sealed interface Outcome {
-        data class Status(val code: Int, val body: String) : Outcome
+        data class Status(val code: Int, val records: List<LrclibRecord>) : Outcome
 
         data object Network : Outcome
 
@@ -55,7 +58,10 @@ class Lrclib(
         for (name in listOfNotNull(title, LrclibSearch.titleWithoutVersion(title))) {
             when (val reply = searchTwice(name, artist)) {
                 is Reply.Records -> {
-                    val choice = LrclibSearch.pick(reply.records, track.durationMs)
+                    val choice =
+                        withContext(Dispatchers.Default) {
+                            LrclibSearch.pick(reply.records, track.durationMs)
+                        }
                     if (choice.answer !is LyricsAnswer.Missing) return choice.answer
                 }
 
@@ -87,7 +93,7 @@ class Lrclib(
 
     private fun Outcome.reply(): Reply = when (this) {
         Outcome.TooLarge, Outcome.Network -> Reply.Failed
-        is Outcome.Status -> if (code == OK) Reply.Records(LrclibSearch.parse(body)) else Reply.Nothing
+        is Outcome.Status -> if (code == OK) Reply.Records(records) else Reply.Nothing
     }
 
     private suspend fun search(title: String, artist: String): Outcome =
@@ -119,11 +125,11 @@ class Lrclib(
         }
 
     private fun read(response: Response): Outcome {
-        if (response.code != OK) return Outcome.Status(response.code, "")
+        if (response.code != OK) return Outcome.Status(response.code, emptyList())
         if (response.body.contentLength() > MAX_REPLY_BYTES) return Outcome.TooLarge
         val source = response.body.source()
         if (source.request(MAX_REPLY_BYTES + 1)) return Outcome.TooLarge
-        return Outcome.Status(OK, source.buffer.readUtf8())
+        return Outcome.Status(OK, LrclibSearch.parse(source.buffer.readUtf8()))
     }
 
     companion object {
