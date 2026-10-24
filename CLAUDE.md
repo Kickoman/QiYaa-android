@@ -97,7 +97,7 @@ Writing rules for READMEs:
   | `data` | Persistence: settings and token | `audio` |
   | `jam` | Jam client: protocol codec, connection, the host's stored session | — (pure JVM) |
   | `lyrics` | The lyrics view's text: LRC parsing, the source and the lyrics service in their order, memory, LRCLIB | `track` (pure JVM) |
-  | `local` | The phone's media library: the query, the picks and their order, the restored queue's check | `track` |
+  | `local` | The phone's media library: the query, the picks and their order, the restored queue's check, local files' lyrics | `track`, `lyrics` |
   | `queue` | What plays next: sources, waves, the jam mode, error policy, shuffle rule | `track`, `yandex` (pure JVM) |
   | `playback` | ExoPlayer, MediaSession, the Media3 adapter for `queue`, audio processors, the jam host and its WebSocket transport | `track`, `queue`, `jam`, `yandex`, `audio`, `data` |
   | `ui` | Compose screens, view models, theme | everything above |

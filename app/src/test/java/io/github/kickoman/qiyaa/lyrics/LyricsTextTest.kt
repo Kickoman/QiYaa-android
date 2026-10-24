@@ -74,8 +74,8 @@ class LyricsTextTest {
     fun `LYR-12 an offset is held to one day either way`() {
         val earlier = LyricsText.parse("[offset:-100000000000]\n[00:01.00]line")
         assertEquals(1_000L + 24 * 60 * 60 * 1000, earlier?.lines?.single()?.ms)
-        val later = LyricsText.parse("[offset:100000000000]\n[30:00.00]line")
-        assertEquals(0L, later?.lines?.single()?.ms)
+        val later = LyricsText.parse("[offset:100000000000]\n[1500:00.00]line")
+        assertEquals(1_500L * 60 * 1000 - 24 * 60 * 60 * 1000, later?.lines?.single()?.ms)
     }
 
     private fun expected(case: JsonObject): Lyrics? {

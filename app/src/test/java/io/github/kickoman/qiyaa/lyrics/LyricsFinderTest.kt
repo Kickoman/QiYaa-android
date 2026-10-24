@@ -162,6 +162,19 @@ class LyricsFinderTest {
         }
 
     @Test
+    fun `a service that does not answer within 8 s is asked again next time`() = runTest {
+        val h = Harness(this, service = true)
+        h.show(trackA, LyricsAnswer.Missing())
+        advanceTimeBy(8_001)
+        assertEquals(LyricsView(trackA, LyricsPhase.MISSING), h.view())
+        h.show(trackB, LyricsAnswer.Missing())
+        h.track.value = trackA
+        runCurrent()
+        assertEquals(listOf("1", "2"), h.source.asked)
+        assertEquals(listOf("1", "2", "1"), h.thirdParty.asked)
+    }
+
+    @Test
     fun `LYR-09 another track drops the answers for the earlier one and looks up the new one at once`() =
         runTest {
             val h = Harness(this, service = true)
@@ -217,7 +230,7 @@ class LyricsFinderTest {
         h.track.value = trackA
         runCurrent()
         assertEquals("10", h.source.asked.last())
-        for (i in 11..20) h.show(Track("$i", "T$i"), LyricsAnswer.Missing())
+        h.show(Track("11", "T11"), LyricsAnswer.Missing())
         h.track.value = trackA
         runCurrent()
         assertEquals("1", h.source.asked.last())

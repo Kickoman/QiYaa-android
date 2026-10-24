@@ -124,7 +124,7 @@ class LrclibTest {
     }
 
     @Test
-    fun `LYR-04 the retry waits its delay, and a dropped connection is not retried by OkHttp itself`() {
+    fun `LYR-04 the retry after a dropped connection waits its delay`() {
         val slow =
             Lrclib(OkHttpClient(), "1.2.3", server.url("/").toString().removeSuffix("/"), retryDelayMs = 300)
         server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START))
