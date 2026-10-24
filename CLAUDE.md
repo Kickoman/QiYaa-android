@@ -102,7 +102,7 @@ Writing rules for READMEs:
   | `playback` | ExoPlayer, MediaSession, the Media3 adapter for `queue`, audio processors, the jam host and its WebSocket transport | `track`, `queue`, `jam`, `yandex`, `audio`, `data` |
   | `ui` | Compose screens, view models, theme | everything above |
   | `telemetry` | Anonymous statistics and crash reports: events, the crash handler, the run's files, sending, the schedule and the switch | — (pure JVM; only root imports it) |
-  | root | `AppGraph`, `QiYaaApp` (composition root), `NetworkMonitor` (platform signals), `AppTelemetry`, `TelemetryCodes` (telemetry wiring), `YandexLyrics` (Yandex's lyrics as a `lyrics` source) | everything |
+  | root | `AppGraph`, `QiYaaApp` (composition root), `NetworkMonitor` (platform signals), `AppTelemetry`, `TelemetryCodes` (telemetry wiring), `YandexLyrics`, `SourceLyrics` (lyrics sources: Yandex's, and the choice by the track's source) | everything |
 
   Dependencies point down the table only. `track`, `yandex` and `audio` are pure JVM
   and must not import `android.*` or `androidx.*`; that keeps them testable on

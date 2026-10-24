@@ -49,6 +49,16 @@ class TelemetryStore(private val directory: File) {
                 playMinutes = count(KEY_PLAY_MINUTES),
                 jams = count(KEY_JAMS),
                 errorsDropped = count(KEY_ERRORS_DROPPED),
+                lyrics =
+                    LyricsCounts(
+                        sourceSynced = count(EventCodec.LYRICS_SOURCE_SYNCED),
+                        thirdPartySynced = count(EventCodec.LYRICS_THIRD_PARTY_SYNCED),
+                        sourceText = count(EventCodec.LYRICS_SOURCE_TEXT),
+                        thirdPartyText = count(EventCodec.LYRICS_THIRD_PARTY_TEXT),
+                        instrumental = count(EventCodec.LYRICS_INSTRUMENTAL),
+                        none = count(EventCodec.LYRICS_NONE),
+                        thirdPartyFailed = count(EventCodec.LYRICS_THIRD_PARTY_FAILED),
+                    ),
             ),
         )
     }
@@ -62,6 +72,14 @@ class TelemetryStore(private val directory: File) {
                 put(KEY_PLAY_MINUTES, marker.counts.playMinutes)
                 put(KEY_JAMS, marker.counts.jams)
                 put(KEY_ERRORS_DROPPED, marker.counts.errorsDropped)
+                val lyrics = marker.counts.lyrics
+                put(EventCodec.LYRICS_SOURCE_SYNCED, lyrics.sourceSynced)
+                put(EventCodec.LYRICS_THIRD_PARTY_SYNCED, lyrics.thirdPartySynced)
+                put(EventCodec.LYRICS_SOURCE_TEXT, lyrics.sourceText)
+                put(EventCodec.LYRICS_THIRD_PARTY_TEXT, lyrics.thirdPartyText)
+                put(EventCodec.LYRICS_INSTRUMENTAL, lyrics.instrumental)
+                put(EventCodec.LYRICS_NONE, lyrics.none)
+                put(EventCodec.LYRICS_THIRD_PARTY_FAILED, lyrics.thirdPartyFailed)
             }
         write(file(session, MARKER), json.toString())
     }

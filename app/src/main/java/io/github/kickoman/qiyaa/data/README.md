@@ -51,6 +51,7 @@
 | `playback/quality` | string (`AudioQuality.key`: `standard`, `economy`), качество на Wi-Fi и другой безлимитной сети | `standard` (и любое другое значение) | `quality` |
 | `playback/qualityMetered` | string, то же на мобильной и другой лимитной сети (QUAL-07) | `standard` (и любое другое значение) | `qualityMetered` |
 | `playback/continueWithVibe` | bool, новые очереди без своего продолжения идут дальше волной по истории (CONT-01, `spec/player/continuation.md`) | `true` | `continueWithVibe` |
+| `lyrics/thirdParty` | bool, искать ли тексты в LRCLIB (LYR-15, `spec/player/lyrics.md`); включает «Тексты из LRCLIB» в Library или «Искать в LRCLIB» на экране текста, оба после согласия | `false` | `lyricsThirdParty`, `setLyricsThirdParty` |
 | `local/permissionAsked` | bool, спрашивало ли приложение разрешение на чтение аудио хоть раз: без него отказ без пояснения — первый, с ним — навсегда (LOCAL-10, `ui/LocalAccessRule`) | `false` | `localPermissionAsked`, `setLocalPermissionAsked()` |
 | `shuffle/algorithm` | string (`ShuffleChoice.key`: `without-repeats`, `random`), алгоритм shuffle (SHUF-09, SHUF-10); блок «Случайный порядок» в библиотеке | `without-repeats` (и любое другое значение) | `shuffleAlgorithm` |
 | `telemetry/enabled` | bool, отправлять ли статистику (TEL-02, `docs/telemetry.md`); переключатель внизу библиотеки | `true` | `telemetryEnabled` |

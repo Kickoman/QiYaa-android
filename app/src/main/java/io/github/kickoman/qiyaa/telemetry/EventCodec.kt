@@ -23,6 +23,14 @@ object EventCodec {
     const val MAX_COUNT = 100_000_000L
     const val MIN_DPR = 0.5
     const val MAX_DPR = 8.0
+    const val LYRICS_LOOKUPS = "lyricsLookups"
+    const val LYRICS_SOURCE_SYNCED = "lyricsSourceSynced"
+    const val LYRICS_THIRD_PARTY_SYNCED = "lyricsThirdPartySynced"
+    const val LYRICS_SOURCE_TEXT = "lyricsSourceText"
+    const val LYRICS_THIRD_PARTY_TEXT = "lyricsThirdPartyText"
+    const val LYRICS_INSTRUMENTAL = "lyricsInstrumental"
+    const val LYRICS_NONE = "lyricsNone"
+    const val LYRICS_THIRD_PARTY_FAILED = "lyricsThirdPartyFailed"
     const val MIN_SDK = 1
     const val MAX_SDK = 1_000
     private const val MAX_OS_VERSION = 32
@@ -182,6 +190,16 @@ object EventCodec {
         put("playMinutes", count(counts.playMinutes))
         put("jams", count(counts.jams))
         put("errorsDropped", count(counts.errorsDropped))
+        val lyrics = counts.lyrics
+        if (lyrics.lookups <= 0) return
+        put(LYRICS_LOOKUPS, count(lyrics.lookups))
+        put(LYRICS_SOURCE_SYNCED, count(lyrics.sourceSynced))
+        put(LYRICS_THIRD_PARTY_SYNCED, count(lyrics.thirdPartySynced))
+        put(LYRICS_SOURCE_TEXT, count(lyrics.sourceText))
+        put(LYRICS_THIRD_PARTY_TEXT, count(lyrics.thirdPartyText))
+        put(LYRICS_INSTRUMENTAL, count(lyrics.instrumental))
+        put(LYRICS_NONE, count(lyrics.none))
+        put(LYRICS_THIRD_PARTY_FAILED, count(lyrics.thirdPartyFailed))
     }
 
     private fun JsonObjectBuilder.putCrash(event: Event.Crash) {

@@ -1,6 +1,6 @@
 # `lyrics/` — текст песни текущего трека
 
-Какой текст показывает экран текста (`spec/player/lyrics.md`, LYR-01…17): разбор LRC и обычного текста, выбор между источником трека и сервисом текстов, память на 10 треков и сервис LRCLIB. Порт `src/core/lyrics*` и `src/lrclib` десктопа. Пакет сам ничего не показывает и не знает, откуда текст у источника: текст Яндекса даёт корневой `YandexLyrics`, текст своего файла — `local/LocalLyrics`, экран — `ui/` (часть 3).
+Какой текст показывает экран текста (`spec/player/lyrics.md`, LYR-01…17): разбор LRC и обычного текста, выбор между источником трека и сервисом текстов, память на 10 треков и сервис LRCLIB. Порт `src/core/lyrics*` и `src/lrclib` десктопа. Пакет сам ничего не показывает и не знает, откуда текст у источника: текст Яндекса даёт корневой `YandexLyrics`, текст своего файла — `local/LocalLyrics`, экран — `ui/`, «Текст песни».
 
 Чистая JVM, импортирует только `track`:
 
@@ -122,4 +122,12 @@ class Lrclib(client: OkHttpClient, appVersion: String, baseUrl: String = "https:
 
 - Запрос текста Яндекса и его фикстуры — `yandex/README.md` (`lyricsText`); что из него видит пользователь — корневой `YandexLyrics`.
 - Текст своего файла (`.lrc`, теги) — `local/README.md`, «Тексты своих файлов».
-- Экран текста, переключатель «текст вместо обложки», настройка LRCLIB и телеметрия — `ui/` и корень, часть 3.
+- Экран текста, переключатель «текст вместо обложки» и настройка LRCLIB — `ui/README.md`, «Текст песни»; счётчики и `feature` — `telemetry/README.md`.
+
+## В приложении
+
+`AppGraph` держит один `LyricsFinder` на процесс (память переживает пересоздание активности) на своём `CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)` — однопоточном, как он требует (`applicationScope` графа многопоточный и не годится):
+- `source` — корневой `SourceLyrics`: `when (track.source)` без `else` — `YandexLyrics` для Яндекса, `local/LocalLyrics` для своих файлов, так что Spotify (#113) остановит компиляцию здесь;
+- `thirdParty` — `Lrclib(httpClient, BuildConfig.VERSION_NAME)`;
+- `currentTrack` — `AppGraph.lyricsTrack` (его пишет `PlayerViewModel`), `active` — `lyricsShown && lyricsOnScreen`, `thirdPartyEnabled` — `Settings.lyricsThirdParty`, `connectivity` — `NetworkMonitor.available`, `signedIn` — `Session.state.signedIn` (токен API ставится раньше, чем состояние становится «вошёл», поэтому первый запрос после входа уже с ним);
+- `lookups` слушает `AppTelemetry` (`countLyrics`).

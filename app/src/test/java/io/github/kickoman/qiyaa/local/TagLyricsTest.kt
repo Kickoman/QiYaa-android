@@ -7,6 +7,7 @@ import androidx.media3.extractor.metadata.vorbis.VorbisComment
 import java.io.ByteArrayInputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Before
@@ -16,6 +17,22 @@ class TagLyricsTest {
     @Before
     fun setUp() {
         ParsableByteArray.setShouldEnforceLimitOnLegacyMethods(true)
+    }
+
+    @After
+    fun tearDown() {
+        ParsableByteArray.setShouldEnforceLimitOnLegacyMethods(null)
+    }
+
+    @Test
+    fun `LYR-10 descriptions sort as TagLib keys, upper-cased in ASCII only, LYRICS as none`() {
+        val ascii = listOf(BinaryFrame("USLT", uslt("Banana", "b")), BinaryFrame("USLT", uslt("apple", "a")))
+        assertEquals("a", TagLyrics.textOf(ascii))
+        val cyrillic =
+            listOf(BinaryFrame("USLT", uslt("куплет", "k")), BinaryFrame("USLT", uslt("Припев", "p")))
+        assertEquals("p", TagLyrics.textOf(cyrillic))
+        val named = listOf(BinaryFrame("USLT", uslt("A", "a")), BinaryFrame("USLT", uslt("lyrics", "l")))
+        assertEquals("l", TagLyrics.textOf(named))
     }
 
     @Test

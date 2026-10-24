@@ -13,6 +13,7 @@ import android.provider.Settings.Secure
 import android.util.Log
 import androidx.annotation.RequiresApi
 import io.github.kickoman.qiyaa.data.Settings
+import io.github.kickoman.qiyaa.lyrics.LyricsLookup
 import io.github.kickoman.qiyaa.playback.AudioFailure
 import io.github.kickoman.qiyaa.playback.JamHost
 import io.github.kickoman.qiyaa.playback.JamHostPhase
@@ -83,6 +84,8 @@ class AppTelemetry(
         queue: QueueController,
         jamHost: JamHost,
         network: StateFlow<Boolean>,
+        lyricsShown: StateFlow<Boolean>,
+        lyricsLookups: Flow<LyricsLookup>,
     ) {
         connectedApi.complete(api)
         collect(network) { online.value = it }
@@ -111,6 +114,13 @@ class AppTelemetry(
         }
         collect(settings.visualizerMode.drop(1)) {
             session.recordFeature(FeatureName.VIS, TelemetryCodes.vis(it).code)
+        }
+        collect(lyricsShown.drop(1)) { session.recordFeature(FeatureName.LYRICS, TelemetryCodes.onOff(it)) }
+        collect(settings.lyricsThirdParty.drop(1)) {
+            session.recordFeature(FeatureName.LYRICS_SERVICES, TelemetryCodes.onOff(it))
+        }
+        collect(lyricsLookups) {
+            session.countLyrics(TelemetryCodes.lyricsOutcome(it.shown), it.thirdPartyFailed)
         }
     }
 
