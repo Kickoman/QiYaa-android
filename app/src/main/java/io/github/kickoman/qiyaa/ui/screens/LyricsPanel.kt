@@ -202,7 +202,7 @@ private fun SyncedLines(lyrics: Lyrics, current: Int, canSeek: Boolean, onSeek: 
                 Modifier
                     .fillMaxWidth()
                     .tap(enabled = canSeek && time != null) { time?.let(onSeek) }
-                    .semantics { selected = index == current }
+                    .then(if (index == current) Modifier.semantics { selected = true } else Modifier)
                     .padding(vertical = 6.dp),
                 color = if (index == current) colors.accent else colors.muted,
                 textAlign = TextAlign.Center,
