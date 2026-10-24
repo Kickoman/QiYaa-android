@@ -113,6 +113,9 @@ class YandexApi(
         return (result as? JsonArray)?.map(TrackParsing::parseTrack) ?: emptyList()
     }
 
+    suspend fun lyricsText(trackId: String): String? =
+        TrackLyrics.textOf(getJson("/tracks/${trackId.substringBefore(':')}/supplement"))
+
     suspend fun resolveTrackUrl(trackId: String, quality: Quality = Quality.STANDARD): ResolvedUrl {
         val id = trackId.substringBefore(':')
         if (quality == Quality.ECONOMY) {
