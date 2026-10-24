@@ -110,6 +110,23 @@ class JamHostTest {
     }
 
     @Test
+    fun `create cleans the name by ECMAScript white space and cuts it to 24 code points`() = runTest {
+        val guitar = "\uD83C\uDFB8"
+        val h = Harness(this)
+        assertTrue(h.host.create("\uFEFF Маша\u00A0\u3000Петрова\u2028" + guitar.repeat(30)))
+        h.open()
+        assertEquals(listOf(Create("r1", "Маша Петрова " + guitar.repeat(11))), h.sent())
+    }
+
+    @Test
+    fun `create refuses a name of ECMAScript white space only`() = runTest {
+        val h = Harness(this)
+        assertFalse(h.host.create("\uFEFF\u00A0\u2028"))
+        runCurrent()
+        assertTrue(h.transport.sockets.isEmpty())
+    }
+
+    @Test
     fun `create refuses a missing server and a blank name`() = runTest {
         val h = Harness(this)
         assertFalse(h.host.create("   "))

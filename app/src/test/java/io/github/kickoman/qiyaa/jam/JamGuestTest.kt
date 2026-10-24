@@ -47,35 +47,6 @@ class JamGuestTest {
     }
 
     @Test
-    fun `GUEST-02 a name is trimmed and its JavaScript spaces collapsed, 1 to 24 code points`() {
-        for (space in JAVASCRIPT_SPACES) {
-            val name = "${space}А$space${space}ня$space"
-            assertEquals("U+%04X".format(space.code), "А ня", GuestNames.clean(name))
-        }
-        assertEquals("Аня", GuestNames.clean("  Аня  "))
-        assertEquals(GUITAR.repeat(24), GuestNames.clean(GUITAR.repeat(24)))
-        assertNull(GuestNames.clean(GUITAR.repeat(25)))
-        assertEquals("x".repeat(24), GuestNames.clean(" " + "x".repeat(24) + "\uFEFF"))
-        assertNull(GuestNames.clean("x".repeat(25)))
-        assertNull(GuestNames.clean(""))
-        assertNull(GuestNames.clean(" \u00A0\u3000\uFEFF "))
-        for (cleaned in JAVASCRIPT_SPACES.map { GuestNames.clean("${it}Аня$it")!! }) {
-            assertTrue(cleaned, JamCodec.decodeClient(JamCodec.encode(joinOf(cleaned))) is Decoded.Message)
-        }
-    }
-
-    @Test
-    fun `GUEST-02 the prefilled name is cleaned and cut to 24 code points`() {
-        assertEquals("Аня Ковалёва", GuestNames.prefill(" Аня　 Ковалёва"))
-        assertEquals(GUITAR.repeat(24), GuestNames.prefill(GUITAR.repeat(30)))
-        assertEquals("x".repeat(23), GuestNames.prefill("x".repeat(23) + " " + "y".repeat(10)))
-        assertEquals("", GuestNames.prefill("   "))
-        for (name in listOf("Аня Ковалёва", GUITAR.repeat(30), "x".repeat(40))) {
-            assertEquals(name, GuestNames.prefill(name), GuestNames.clean(GuestNames.prefill(name)))
-        }
-    }
-
-    @Test
     fun `GUEST-02 a name that breaks the name rule is not sent`() = runTest {
         val h = Harness(this)
         h.guest.open(LINK)
@@ -859,9 +830,6 @@ class JamGuestTest {
         const val PID3 = "9e8d7c6b-5a49-4837-a625-14f3e2d1c0b9"
         const val EPOCH = 1_790_730_000_000L
         const val GUITAR = "\uD83C\uDFB8"
-        const val JAVASCRIPT_SPACES =
-            "\t\n\u000B\u000C\r \u00A0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006" +
-                "\u2007\u2008\u2009\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF"
         val LINK = JamLink(SERVER, ROOM, SECRET)
         val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
         val TRACK =
@@ -878,8 +846,6 @@ class JamGuestTest {
             val text = File(Spec.root, "jam/protocol/examples/state/guest.json").readText()
             ((JamCodec.decodeServer(text) as Decoded.Message).message as State).room
         }
-
-        fun joinOf(name: String) = Join("g1", ROOM, SECRET, PID1, name)
 
         fun joinedMembership() =
             GuestMembership(GuestRoom(SERVER, ROOM), PID1, "Аня", SECRET, EPOCH, joined = true)

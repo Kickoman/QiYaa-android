@@ -72,6 +72,19 @@ class JamTracksTest {
     }
 
     @Test
+    fun `a cover URL with white space in it gives no cover, and the track still passes the codec`() {
+        for (space in listOf(" ", "\u00A0", "\uFEFF")) {
+            val coverUrl = "https://" + template.replace("/%%", "$space/400x400")
+            assertNull(JamTracks.coverUri(coverUrl))
+            val track = JamTracks.toJam(
+                Track(id = "1", title = "Песня", artists = listOf("Гурт"), coverUrl = coverUrl),
+            )
+            assertNull(track?.coverUri)
+            assertTrue(JamCodec.decodeClient(JamCodec.encode(Add("q1", track = track))) is Decoded.Message)
+        }
+    }
+
+    @Test
     fun `a cover URL without a size template gives no cover`() {
         assertEquals(template, JamTracks.coverUri("https://" + template.replace("%%", "400x400")))
         assertNull(JamTracks.coverUri("https://example.org/cover.jpg"))

@@ -1,5 +1,6 @@
 package io.github.kickoman.qiyaa.jam
 
+import io.github.kickoman.qiyaa.support.ECMASCRIPT_SPACES
 import io.github.kickoman.qiyaa.support.Spec
 import java.io.File
 import kotlinx.serialization.json.JsonArray
@@ -46,6 +47,58 @@ class JamCodecTest {
         }
         assertTrue("no examples found in $examples", checked > 90)
         assertEquals(emptyList<String>(), failures)
+    }
+
+    @Test
+    fun `ECMAScript white space at an edge of a name is refused, inside it passes, so does U+0085`() {
+        for (space in ECMASCRIPT_SPACES) {
+            val label = "U+%04X".format(space.code)
+            assertFalse(label, decodes(Create("h1", "Маша$space")))
+            assertFalse(label, decodes(Create("h1", "${space}Маша")))
+            assertEquals(label, space.code >= 0x20, decodes(Create("h1", "Ма${space}ша")))
+        }
+        assertTrue(decodes(Create("h1", "Маша\u0085")))
+    }
+
+    @Test
+    fun `of all BMP code points a name refuses at its end exactly the controls and ECMAScript white space`() {
+        val wrong = mutableListOf<String>()
+        for (code in 0..0xFFFF) {
+            if (code in 0xD800..0xDFFF) continue
+            val char = code.toChar()
+            val refused = code < 0x20 || code == 0x7F || char in ECMASCRIPT_SPACES
+            if (decodes(Create("h1", "x$char")) == refused) wrong += "U+%04X".format(code)
+        }
+        assertEquals(emptyList<String>(), wrong)
+    }
+
+    @Test
+    fun `a cover template and a join link with ECMAScript white space are refused`() {
+        val track = JamTrack("1695498", "168137", "Что такое осень", listOf("ДДТ"), 297_700)
+        val cover = "avatars.yandex.net/get-music-content/34131/73fed284.a.168137-2/%%"
+        val joinUrl = "https://jam.example.org/party/j/7k3m9q2x#WDkyFgMr5iV3hKwManPvsg"
+        assertTrue(decodes(Add("q1", track = track.copy(coverUri = cover))))
+        assertTrue(decodes(created(joinUrl)))
+        for (space in listOf("\u2028", "\u3000", "\uFEFF")) {
+            val label = "U+%04X".format(space.single().code)
+            assertFalse(label, decodes(Add("q1", track = track.copy(coverUri = cover + space))))
+            assertFalse(label, decodes(created(joinUrl.replace("/party/", "/par${space}ty/"))))
+        }
+    }
+
+    @Test
+    fun `LISTEN-04 a listen link with ECMAScript white space in its path is not a file of the storage`() {
+        assertTrue(JamCodec.isListenUrl(LISTEN_URL))
+        for (space in listOf("\u00A0", "\u2028", "\u3000", "\uFEFF")) {
+            assertFalse("U+%04X".format(space.single().code), JamCodec.isListenUrl("$LISTEN_URL$space"))
+        }
+    }
+
+    @Test
+    fun `a search text of ECMAScript white space only is refused`() {
+        assertFalse(decodes(Search("s1", "\uFEFF\uFEFF")))
+        assertFalse(decodes(Search("s1", "\u00A0\u2028")))
+        assertTrue(decodes(Search("s1", "\uFEFFДДТ")))
     }
 
     @Test
@@ -141,6 +194,21 @@ class JamCodecTest {
         val add = decodedClient(sent) as Add
         assertFalse(add.track!!.isCatalog)
     }
+
+    private fun decodes(message: ClientMessage): Boolean =
+        JamCodec.decodeClient(JamCodec.encode(message)) is Decoded.Message
+
+    private fun decodes(message: ServerMessage): Boolean =
+        JamCodec.decodeServer(JamCodec.encodeServer(message)) is Decoded.Message
+
+    private fun created(joinUrl: String): Created = Created(
+        "h1",
+        "7k3m9q2x",
+        "R0CuY0ewFywBJU_1W65a_1GZ9ERuf21kPUAYWz9HUUU",
+        "WDkyFgMr5iV3hKwManPvsg",
+        joinUrl,
+        "h7k2m9",
+    )
 
     private fun example(path: String): JsonObject =
         JamCodec.json.parseToJsonElement(File(examples, path).readText()).jsonObject

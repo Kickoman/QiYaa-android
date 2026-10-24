@@ -127,25 +127,6 @@ fun JamNowPlaying.positionMsAt(serverNow: Long): Long {
     return position.coerceIn(0, durationMs.coerceAtLeast(0))
 }
 
-object GuestNames {
-    const val MAX_NAME = 24
-    private val JAVASCRIPT_SPACES =
-        Regex(
-            "[\\t\\n\\u000B\\f\\r \\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000\\uFEFF]+",
-        )
-
-    fun clean(name: String): String? {
-        val cleaned = name.replace(JAVASCRIPT_SPACES, " ").trim(' ')
-        return cleaned.takeIf { it.codePointCount(0, it.length) in 1..MAX_NAME }
-    }
-
-    fun prefill(name: String): String {
-        val cleaned = name.replace(JAVASCRIPT_SPACES, " ").trim(' ')
-        if (cleaned.codePointCount(0, cleaned.length) <= MAX_NAME) return cleaned
-        return cleaned.substring(0, cleaned.offsetByCodePoints(0, MAX_NAME)).trimEnd(' ')
-    }
-}
-
 class JamGuest(
     transport: JamTransport,
     connectivity: Flow<Boolean>,
@@ -233,7 +214,7 @@ class JamGuest(
         val key = session ?: return false
         val secret = linkSecret ?: return false
         if (phase != GuestPhase.NeedName) return false
-        val cleaned = GuestNames.clean(name) ?: return false
+        val cleaned = JamNames.clean(name) ?: return false
         val participantId = newParticipantId()
         if (!passes(Join(PROBE_ID, key.roomId, secret, participantId, cleaned))) return false
         val membership = GuestMembership(key, participantId, cleaned, secret, clock())

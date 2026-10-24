@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.appGraph
+import io.github.kickoman.qiyaa.jam.JamNames
 import io.github.kickoman.qiyaa.jam.JamOrder
 import io.github.kickoman.qiyaa.jam.JamSettingsPatch
 import io.github.kickoman.qiyaa.playback.JamHost
@@ -49,7 +50,7 @@ class JamViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { host.events.collect { notice(it.render(getApplication())) } }
         viewModelScope.launch {
             library.account.collect { account ->
-                val name = account.displayName.ifEmpty { account.login }.trim().take(JamHost.MAX_NAME).trim()
+                val name = JamNames.prefill(account.displayName.ifEmpty { account.login })
                 mutableUi.update { if (it.hostName.isEmpty()) it.copy(hostName = name) else it }
             }
         }
@@ -58,7 +59,7 @@ class JamViewModel(application: Application) : AndroidViewModel(application) {
     val isConfigured: Boolean
         get() = settings.jamServer.value.isNotBlank()
 
-    fun setHostName(name: String) = mutableUi.update { it.copy(hostName = name.take(JamHost.MAX_NAME)) }
+    fun setHostName(name: String) = mutableUi.update { it.copy(hostName = JamNames.cut(name)) }
 
     fun start() {
         if (graph.jamGuest.state.value.phase.isSession) {
