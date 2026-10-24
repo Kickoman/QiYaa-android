@@ -76,7 +76,7 @@ class QueueSnapshotCodecTest {
     }
 
     @Test
-    fun `a local track's bitrate and a queue without a vibe from history survive, written only then`() {
+    fun `CONT-12 a local track's bitrate and a queue with no wave from history survive, written only then`() {
         val local = Track("42", "Свой файл", source = TrackSource.LOCAL, bitrateKbps = 1411)
         val files = snapshot.copy(
             tracks = listOf(local),

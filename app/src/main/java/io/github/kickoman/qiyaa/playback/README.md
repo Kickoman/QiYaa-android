@@ -211,8 +211,8 @@ class Media3Engine(player: ExoPlayer, controller: QueueController, random: Rando
 - `ShuffleOrder`, `setShuffleOrder`, `pauseAtEndOfMediaItems` в Media3 1.4.1 и 1.11.1 — `@UnstableApi`: `HeadShuffleOrder` помечен `@UnstableApi`, `Media3Engine` — `@OptIn(UnstableApi::class)` (`androidx.annotation.OptIn`), иначе lint с `warningsAsErrors` падает.
 - `onSeeked` опирается на код Media3 1.11.1 (сверено по исходникам `ExoPlayerImpl.seekTo` и `updatePlaybackInfo`, так же было в 1.4.1; на устройстве не проверялось). `seekTo` заканчивается `updatePlaybackInfo(…, DISCONTINUITY_REASON_SEEK)` и `flushEvents()`, поэтому разрыв доходит до листенера внутри самого вызова, уже с новой позицией и без `STATE_ENDED` (перемотка из `READY` или `ENDED` сначала показывает `BUFFERING`); исключение — перемотка из колбэка ExoPlayer, тогда разрыв приходит после остальных событий того же обновления (`ListenerSet.flushEvents` ставит их в хвост очереди). `QueueController` перематывает только из команд сессии, UI и сокета джема, поэтому `support/FakeEngine.seekToPosition` зовёт `onSeeked()` синхронно. `setMediaItems` даёт разрыв с причиной `REMOVE`, повтор после ошибки (`prepare()`) разрыва не даёт, так что `onSeeked` приходит только на перемотку внутри текущего трека: ползунок экрана и уведомления, «назад», перемотка в 0 у «стоп», а также любой `seekTo` на текущий элемент (тап по текущей строке плейлиста, «плей» в конце очереди из одного трека, в том числе из уведомления). Всем им нужно одно и то же: отчёт джему, сохранение позиции и конец ожидания продолжения (`queue/README.md`, «Ждёт продолжения»).
 
-
 **Дорожка без декодера** (LOCAL-13). Media3 не падает, если ни один декодер не берёт звук (ALAC в `.m4a`, FLAC на Android 8.0 без расширения): трек выбирает пустую дорожку и может «играть» тишину. `onTracksChanged` проверяет это чистой функцией `PlaybackFailures.hasNoPlayableAudio(tracks)` (звук есть, но `isTypeSupported(AUDIO, true)` — нет) и делает то же, что настоящая ошибка декодера: `player.stop()`, `onAudioFailure(UNDECODABLE)` для телеметрии и `controller.onFailure(TRACK, TrackUnplayable)`, так что ERR-04…07 считают этот трек сбоем и после трёх подряд останавливают воспроизведение.
+
 ## `HeadShuffleOrder`
 
 ```kotlin
@@ -289,7 +289,7 @@ URI трека виртуальный (`MediaItems.SCHEME = "qiyaa"`):
 
 **`mediaId` несёт источник:** у трека Яндекса это id, как раньше, у своего — `local:<id>` (`mediaIdOf`, `sourceOf`, `idOf`). `toTrack` восстанавливает источник из `mediaId`, а не из `extras`: это строка, и её круг проверяется на JVM (`MediaItemsTest`), а `Bundle` в JVM-тестах — заглушка. Поэтому всё, что ищет по `mediaId` (`CurrentBitrate`, сердце уведомления), не спутает свой файл «42» с треком Яндекса 42. `extras` несут ещё `kbps` (`Track.bitrateKbps`): у своего трека `PlaybackService.localBitrate` отдаёт его в `CurrentBitrate.onResolved(mediaId, kbps)` при смене трека — у своего файла нет ссылки, которая сообщила бы битрейт.
 
-`uriText(id, revision = 0)` строит текст (`require(revision >= 0)`), `revised(item, id, revision)` — тот же `MediaItem` (`buildUpon`) с новым URI: `mediaId`, метаданные и `extras` те же. `trackIdOf(uri)` — `uri.lastPathSegment` при схеме `qiyaa`: путь `qiyaa://track/42?r=3` — `/42`, запрос в путь не входит, так что `TrackResolver` и `ExpiredLinkDataSource` ревизии не видят. URI с ревизией живёт только в плейлисте ExoPlayer: `QueueSnapshot` хранит треки, `onPlaybackResumption` строит обычные элементы, а кроме `trackIdOf` URI в приложении никто не читает. `mediaId = track.id`, поэтому `PlaybackService.currentTrackId`, ♥ и `CurrentBitrate` замены не замечают. В `MediaMetadata.extras` (`Bundle`) лежат `id`, `albumId`, `durationMs` (long), `artists` (string array list), `cover` (nullable string), `title`, чтобы `toTrack` восстанавливал `Track` из уведомления и после пересоздания процесса без сети. `artworkUri` = `coverUrl`.
+`uriText(id, revision = 0)` строит текст (`require(revision >= 0)`), `revised(item, id, revision)` — тот же `MediaItem` (`buildUpon`) с новым URI: `mediaId`, метаданные и `extras` те же. `trackIdOf(uri)` — `uri.lastPathSegment` при схеме `qiyaa`: путь `qiyaa://track/42?r=3` — `/42`, запрос в путь не входит, так что `TrackResolver` и `ExpiredLinkDataSource` ревизии не видят. URI с ревизией живёт только в плейлисте ExoPlayer: `QueueSnapshot` хранит треки, `onPlaybackResumption` строит обычные элементы, а кроме `trackIdOf` URI в приложении никто не читает. `mediaId` у замены тот же (`mediaIdOf(track)`), поэтому `PlaybackService.currentTrackId`, ♥ и `CurrentBitrate` замены не замечают. В `MediaMetadata.extras` (`Bundle`) лежат `id`, `albumId`, `durationMs` (long), `artists` (string array list), `cover` (nullable string), `title`, `kbps` (int, `Track.bitrateKbps`, 0 — неизвестен), чтобы `toTrack` восстанавливал `Track` из уведомления и после пересоздания процесса без сети. `artworkUri` = `coverUrl`.
 
 **Одна игра — один источник.** Источник данных собирает `PlaybackDataSources` («`PlaybackDataSources` — цепочка источников» ниже). Каждый вызов фабрики даёт новый `ResolvingDataSource` со своим `TrackResolver`, а у того свой `PlayLink`. Сверено по исходникам Media3 1.11.1 (на устройстве не проверялось, Kickoman/QiYaa-android#91):
 - ExoPlayer зовёт фабрику один раз на период: `ProgressiveMediaSource.createPeriod` (`ProgressiveMediaSource.java:416–417`). Все загрузки периода идут через этот источник: `startLoading` отдаёт его каждой `ExtractingLoadable` (`ProgressiveMediaPeriod.java:1059–1062`), а та оборачивает его в `StatsDataSource` (`:1273`). Первое открытие периода — всегда с начала файла: позицию загрузки период ставит, только когда уже подготовлен (`:1063–1078`).
@@ -431,23 +431,24 @@ object PlayerBuffer {
 - Границу позади ExoPlayer читает один раз, когда собирается.
 - Перемотка мимо удержанного выбрасывает из памяти всё удержанное (`discardToEnd`) и грузит от своей цели. Назад за эту цель — уже не память, а диск: первые байты ждут отмены старого чтения (до 0,1 с) и открытия файла.
 - `SampleQueue.seekTo` отказывает, если цель раньше первого удержанного сэмпла. Исключение для цели до первого сэмпла (задержка кодера, `ProgressiveMediaPeriod.java:1152–1165`) работает, только если с начала файла ничего не выброшено и прошлая перемотка этого периода была в то же место. `lastSeekPositionUs` (`:171`) начинается с 0 и меняется только в `seekToUs` (`:593–594`; туда же идёт `selectTracks` при старте не с 0, `:378–379`, `:466–467`) и при перезапуске загрузки с 0 (`:737`, `:1117`), так что период, начатый с 0 без перемоток, считается перемотанным в 0. Поэтому у файла, первый сэмпл которого позже 0, перемотка в 0 идёт в сеть только после перемотки этого трека в другое место или если трек начат не с 0 (восстановленная позиция).
-- Граница позади общая для всех периодов, поэтому свой файл обходит её не настройкой, а периодом: `LocalMediaSources` оборачивает источник элемента `content://`, и его период в `discardBuffer` получает обратно вычтенные 10 минут (`discardBefore(positionUs) = positionUs + BACK_BUFFER_MS × 1000`), то есть выбрасывает сыгранное до позиции воспроизведения. `SampleQueue.discardTo` дальше позиции чтения не заходит, так что и откат Media3 (впереди меньше 0,5 с) безопасен. Обёртка сама передаёт `onPrepared` и `onContinueLoadingRequested` с собой, а не с обёрнутым периодом: ExoPlayer сверяет период по ссылке.
+- Граница позади общая для всех периодов, поэтому свой файл обходит её не настройкой, а периодом: `LocalMediaSources` оборачивает источник элемента `content://`, и его период в `discardBuffer` получает обратно вычтенные 10 минут (`discardBefore(positionUs) = positionUs + BACK_BUFFER_MS × 1000`), то есть выбрасывает сыгранное до позиции воспроизведения. `SampleQueue.discardTo` дальше позиции чтения не заходит, так что и откат Media3 (впереди меньше 0,5 с) безопасен. Обёртка передаёт `onPrepared` и `onContinueLoadingRequested` с собой, а не с обёрнутым периодом, как и положено периоду. Сам ExoPlayer этого не заметил бы: обёртку готовит `MaskingMediaPeriod` (`MediaSourceList` маскирует каждый источник), а он в своих колбэках подставляет себя.
 - Lossless (в 5–10 раз больше mp3) — пересчитать таблицу памяти. Если на телефонах с кучей 128 МБ появятся `OutOfMemoryError`, уменьшить `BACK_BUFFER_MS` вдвое (формула выше).
 
 ## `PlaybackDataSources` — цепочка источников
 
 ```kotlin
 @UnstableApi
-class PlaybackDataSources(client: Call.Factory, links: TrackUrlCache, bitrate: CurrentBitrate, cache: PlaybackCache, interrupts: ReadInterrupts) : DataSource.Factory {
+class PlaybackDataSources(context: Context, client: Call.Factory, links: TrackUrlCache, bitrate: CurrentBitrate, cache: PlaybackCache, interrupts: ReadInterrupts) : DataSource.Factory {
     override fun createDataSource(): DataSource   // своя цепочка на каждый вызов, то есть на каждую игру
     companion object { const val USER_AGENT = "QiYaa/Android" }
 }
 ```
 
-Фабрика, которую `PlaybackService` отдаёт в `DefaultMediaSourceFactory.setDataSourceFactory`. ExoPlayer зовёт её один раз на период (`ProgressiveMediaSource.java:416–417`), на потоке воспроизведения. Каждый вызов собирает цепочку заново, снаружи внутрь: Снаружи цепочки — `DefaultDataSource(context, цепочка)`: `content://` своего файла он отдаёт `ContentDataSource` (файл с диска, LOCAL-06), мимо подписи ссылки, `TrackUrlCache`, диска игры (`PlaybackCache`, `CachedPlays`), `ExpiredLinkDataSource` и `ReadInterrupts`; `qiyaa://` и `https://` идут в цепочку, как раньше. Пропавший файл — `ERROR_CODE_IO_FILE_NOT_FOUND`, без повторов и без ожидания сети (LOCAL-07). Фабрику источников оборачивает `LocalMediaSources` (буфер позади, «Перемотка и буфер»).
+Фабрика, которую `PlaybackService` отдаёт в `DefaultMediaSourceFactory.setDataSourceFactory`. ExoPlayer зовёт её один раз на период (`ProgressiveMediaSource.java:416–417`), на потоке воспроизведения. Каждый вызов собирает цепочку заново. Слои снаружи внутрь — в таблице. Верхний, `DefaultDataSource(context, …)`, отдаёт `content://` своего файла `ContentDataSource` (файл с диска, LOCAL-06), мимо подписи ссылки, `TrackUrlCache`, диска игры (`PlaybackCache`, `CachedPlays`), `ExpiredLinkDataSource` и `ReadInterrupts`; `qiyaa://` и `https://` идут ниже, как раньше. Пропавший файл — `ERROR_CODE_IO_FILE_NOT_FOUND`, без повторов и без ожидания сети (LOCAL-07). Фабрику источников оборачивает `LocalMediaSources` (ниже, «`LocalMediaSources`»).
 
 | Слой | Что делает |
 |---|---|
+| `DefaultDataSource` | `content://` — `ContentDataSource` (свой файл), остальное — в слои ниже |
 | `DiskErrorDataSource` (`PlaybackCache.dataSource`) | ошибку диска превращает в ошибку, которую загрузчик повторяет («Ошибки диска трек не роняют» ниже). Без диска этого слоя нет |
 | `CacheDataSource` (`PlaybackCache.dataSource`) | ключ игры; то, что игра уже скачала, — с диска, остальное — из сети с записью на диск («`PlaybackCache`» ниже). Без диска (`SimpleCache` не открылся) этого слоя нет |
 | `ExpiredLinkDataSource` | при 403/410 сбрасывает отвергнутую ссылку и открывает заново («`MediaItems`, `TrackResolver`, кэш ссылок» выше) |
@@ -458,6 +459,22 @@ class PlaybackDataSources(client: Call.Factory, links: TrackUrlCache, bitrate: C
 `OkHttpDataSource.Factory(calls).setUserAgent(USER_AGENT).createDataSource()` — тоже на каждый вызов: конструктор `OkHttpDataSource` закрыт (1.11.1), а `CallTracker` у каждой игры свой.
 
 Порядок важен. Диск снаружи: чтение с диска не подписывает и сети не касается, а переподпись при 403/410 остаётся внутри одного открытия сети, и `CacheDataSource` видит одно открытие; 403/410 для него — не ошибка кэша (`CacheDataSource.java:866–870`). Кэш под резолвером взял бы ключом подписанную ссылку, а ссылку старше 15 минут подписывал бы по сети раньше, чем прочесть диск.
+
+## `LocalMediaSources` — свой файл не держит сыгранное (LOCAL-06)
+
+```kotlin
+@UnstableApi
+class LocalMediaSources(delegate: MediaSource.Factory) : MediaSource.Factory {
+    override fun createMediaSource(mediaItem: MediaItem): MediaSource   // content:// — в PlayedDiscardingSource, остальное как есть
+    companion object {
+        fun discardsPlayed(uri: String?): Boolean   // схема content, без учёта регистра
+        fun discardBefore(positionUs: Long): Long   // positionUs + BACK_BUFFER_MS × 1000
+    }
+}
+internal class PlayedDiscardingPeriod(val wrapped: MediaPeriod) : MediaPeriod   // всё — wrapped; discardBuffer со сдвигом, колбэки prepare — с собой
+```
+
+`PlaybackService` оборачивает ею `DefaultMediaSourceFactory`. Остальные `set…` фабрики уходят обёрнутой. Источник элемента `content://` — `WrappingMediaSource`, чей период отдаёт `discardBuffer` обёрнутому со сдвигом `discardBefore` («Перемотка и буфер», ловушки), а все прочие вызовы, в том числе необязательные `getStreamKeys`, `setUsesStreamPrerollFlags` и `setEndPositionUs`, — как есть. `releasePeriod` снимает обёртку. Тесты: `LocalMediaSourcesTest` — какой URI оборачивается, сдвиг, колбэки с внешним периодом, необязательные вызовы.
 
 ## `ReadInterrupts` — прерываемое чтение (TR-09)
 

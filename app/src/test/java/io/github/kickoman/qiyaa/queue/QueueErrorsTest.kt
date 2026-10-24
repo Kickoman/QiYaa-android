@@ -1,6 +1,7 @@
 package io.github.kickoman.qiyaa.queue
 
 import io.github.kickoman.qiyaa.queue.QueueEvent.Stage
+import io.github.kickoman.qiyaa.support.FakeQueueStore
 import io.github.kickoman.qiyaa.support.NetworkLoss
 import io.github.kickoman.qiyaa.support.QueueHarness
 import io.github.kickoman.qiyaa.support.QueueHarness.Companion.tracks
@@ -84,6 +85,30 @@ class QueueErrorsTest {
             ),
             harness.events,
         )
+    }
+
+    @Test
+    fun `ERR-04 a broken track of a restored paused queue is skipped and playback does not start`() =
+        runTest {
+            val first = QueueHarness(this)
+            first.controller.loadSource("Liked") { tracks("a", "b", "c") }
+            runCurrent()
+            first.engine.pause()
+            runCurrent()
+            val restored = QueueHarness(this, store = FakeQueueStore(first.store.text))
+            assertFalse(restored.engine.playWhenReady)
+            restored.engine.fail(FailureKind.TRACK)
+            assertEquals(1, restored.engine.currentIndex)
+            assertFalse(restored.engine.playWhenReady)
+            assertEquals(0, restored.engine.commands.count { it == "play" })
+        }
+
+    @Test
+    fun `ERR-04 a broken track the user wanted playing is skipped and the next one plays`() = runTest {
+        val harness = loaded(this, "a", "b")
+        harness.engine.fail(FailureKind.TRACK)
+        assertEquals(1, harness.engine.currentIndex)
+        assertEquals(listOf("play"), harness.engine.commands.filter { it == "play" })
     }
 
     @Test

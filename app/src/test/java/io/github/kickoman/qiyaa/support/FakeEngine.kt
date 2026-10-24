@@ -16,7 +16,7 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
     val tracks = ArrayList<Track>()
     val commands = ArrayList<String>()
     val leads = ArrayList<List<Int>>()
-    var playWhenReady = false
+    override var playWhenReady = false
         private set
     var playing = false
         private set

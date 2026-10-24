@@ -252,4 +252,4 @@ fun Chip(text: String, active: Boolean, onLongClick: (() -> Unit)? = null, onCli
     }
 }
 
-private const val DISABLED_ALPHA = 0.35f
+internal const val DISABLED_ALPHA = 0.35f

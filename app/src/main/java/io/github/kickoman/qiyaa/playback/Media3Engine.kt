@@ -89,6 +89,7 @@ class Media3Engine(
     override val currentIndex: Int get() = player.currentMediaItemIndex
     override val positionMs: Long get() = player.currentPosition
     override val isEnded: Boolean get() = player.playbackState == Player.STATE_ENDED
+    override val playWhenReady: Boolean get() = player.playWhenReady
 
     override var shuffleEnabled: Boolean
         get() = player.shuffleModeEnabled

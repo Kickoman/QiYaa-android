@@ -41,11 +41,4 @@ class MediaItemsTest {
             MediaItems.uriTextFor(Track(id = "42", title = "B", source = TrackSource.LOCAL)),
         )
     }
-
-    @Test
-    fun `LOCAL-06 a local track keeps nothing it has played - the discard point is the play position`() {
-        val playingAtUs = 95_000_000L
-        val asked = playingAtUs - PlayerBuffer.BACK_BUFFER_MS * 1_000L
-        assertEquals(playingAtUs, LocalMediaSources.discardBefore(asked))
-    }
 }

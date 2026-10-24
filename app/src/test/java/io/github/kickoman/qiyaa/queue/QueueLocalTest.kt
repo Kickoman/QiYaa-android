@@ -4,6 +4,8 @@ import io.github.kickoman.qiyaa.support.FakeQueueStore
 import io.github.kickoman.qiyaa.support.QueueHarness
 import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.track.TrackSource
+import io.github.kickoman.qiyaa.yandex.WaveBatch
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -46,13 +48,29 @@ class QueueLocalTest {
             assertFalse(h.controller.state.value.continueWithVibe)
             h.engine.startPlaying()
             h.engine.finishTrack()
+            h.engine.finishTrack()
             runCurrent()
-            assertEquals(emptyList<String>(), h.source.calls.filter { it.startsWith("startWave") })
+            assertTrue(h.engine.isEnded)
+            h.source.onStartWave = { CompletableDeferred<WaveBatch>().await() }
             h.controller.loadSource("Liked") { listOf(yandex("1"), yandex("2")) }
             runCurrent()
             assertTrue(h.controller.state.value.continueWithVibe)
             assertTrue(h.controller.state.value.waveFromHistory)
         }
+
+    @Test
+    fun `CONT-12 a cleared queue of local files takes the flag by the setting again`() = runTest {
+        for (setting in listOf(true, false)) {
+            val h = QueueHarness(this, continueWithVibe = setting)
+            h.controller.loadSource("Files", waveFromHistory = false) { listOf(local("42")) }
+            runCurrent()
+            h.controller.clear()
+            runCurrent()
+            assertTrue(h.controller.state.value.waveFromHistory)
+            assertEquals(setting, h.controller.state.value.continueWithVibe)
+            assertTrue(h.store.snapshot()?.waveFromHistory ?: true)
+        }
+    }
 
     @Test
     fun `CONT-12 a queue without a wave from history stays so after a restart`() = runTest {

@@ -1,7 +1,10 @@
 package io.github.kickoman.qiyaa.playback
 
 import android.content.ContentResolver
+import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
+import androidx.media3.common.StreamKey
+import androidx.media3.common.util.ExperimentalApi
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.LoadingInfo
 import androidx.media3.exoplayer.SeekParameters
@@ -23,8 +26,11 @@ import com.google.common.base.Supplier
 class LocalMediaSources(private val delegate: MediaSource.Factory) : MediaSource.Factory {
     override fun createMediaSource(mediaItem: MediaItem): MediaSource {
         val source = delegate.createMediaSource(mediaItem)
-        val local = mediaItem.localConfiguration?.uri?.scheme == ContentResolver.SCHEME_CONTENT
-        return if (local) PlayedDiscardingSource(source) else source
+        return if (discardsPlayed(mediaItem.localConfiguration?.uri?.toString())) {
+            PlayedDiscardingSource(source)
+        } else {
+            source
+        }
     }
 
     override fun getSupportedTypes(): IntArray = delegate.supportedTypes
@@ -45,6 +51,9 @@ class LocalMediaSources(private val delegate: MediaSource.Factory) : MediaSource
         apply { delegate.setDownloadExecutor(executor) }
 
     companion object {
+        fun discardsPlayed(uri: String?): Boolean =
+            uri?.substringBefore(':', "").equals(ContentResolver.SCHEME_CONTENT, ignoreCase = true)
+
         fun discardBefore(positionUs: Long): Long = positionUs + PlayerBuffer.BACK_BUFFER_MS * 1_000L
     }
 }
@@ -63,7 +72,7 @@ private class PlayedDiscardingSource(source: MediaSource) : WrappingMediaSource(
 }
 
 @UnstableApi
-private class PlayedDiscardingPeriod(val wrapped: MediaPeriod) : MediaPeriod {
+internal class PlayedDiscardingPeriod(val wrapped: MediaPeriod) : MediaPeriod {
     override fun prepare(callback: MediaPeriod.Callback, positionUs: Long) {
         val outer = this
         wrapped.prepare(
@@ -83,6 +92,14 @@ private class PlayedDiscardingPeriod(val wrapped: MediaPeriod) : MediaPeriod {
     override fun maybeThrowPrepareError() = wrapped.maybeThrowPrepareError()
 
     override fun getTrackGroups(): TrackGroupArray = wrapped.trackGroups
+
+    override fun getStreamKeys(trackSelections: List<ExoTrackSelection>): List<StreamKey> =
+        wrapped.getStreamKeys(trackSelections)
+
+    @OptIn(ExperimentalApi::class)
+    override fun setUsesStreamPrerollFlags() = wrapped.setUsesStreamPrerollFlags()
+
+    override fun setEndPositionUs(endPositionUs: Long): Long = wrapped.setEndPositionUs(endPositionUs)
 
     override fun selectTracks(
         selections: Array<out ExoTrackSelection?>,

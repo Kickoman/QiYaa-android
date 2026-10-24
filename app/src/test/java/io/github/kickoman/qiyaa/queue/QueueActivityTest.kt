@@ -142,17 +142,19 @@ class QueueActivityTest {
     }
 
     @Test
-    fun `HOST-36 ERR-04 a held item that breaks on pause is one failure, the next item plays`() = runTest {
-        val harness = held(this)
-        val seen = activity(harness)
+    fun `HOST-36 ERR-04 a held item that breaks on pause is one failure, the next item waits on pause`() =
+        runTest {
+            val harness = held(this)
+            val seen = activity(harness)
 
-        harness.engine.fail(FailureKind.TRACK)
-        runCurrent()
+            harness.engine.fail(FailureKind.TRACK)
+            runCurrent()
 
-        assertEquals(listOf(QueueActivity.PlaybackFailed(FailureKind.TRACK)), failures(seen))
-        assertEquals("Y", harness.engine.tracks[harness.engine.currentIndex].id)
-        assertEquals(listOf("prepare", "play"), harness.engine.commands.takeLast(2))
-    }
+            assertEquals(listOf(QueueActivity.PlaybackFailed(FailureKind.TRACK)), failures(seen))
+            assertEquals("Y", harness.engine.tracks[harness.engine.currentIndex].id)
+            assertEquals("prepare", harness.engine.commands.last())
+            assertFalse(harness.engine.playWhenReady)
+        }
 
     @Test
     fun `HOST-36 ERR-09 a held item that waits for the network is one failure, however many retries fail`() =

@@ -580,9 +580,10 @@ class QueueController(
             ErrorAction.SkipToNext -> {
                 consecutiveTrackFailures++
                 emit(QueueEvent.Failed(Stage.PLAYBACK, error))
+                val resume = current.playWhenReady
                 target?.let { skipForward(current, it) }
                 current.prepare()
-                current.play()
+                if (resume) current.play()
             }
 
             ErrorAction.WaitForMore -> {

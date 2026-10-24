@@ -80,6 +80,14 @@ class FormatTest {
     }
 
     @Test
+    fun `formatReadout shows a bitrate over 999 kbps in hundreds, as the desktop`() {
+        assertEquals("999K · 44 · ST", formatReadout(999, 44100, 2))
+        assertEquals("10H · 44 · ST", formatReadout(1000, 44100, 2))
+        assertEquals("14H · 44 · ST", formatReadout(1411, 44100, 2))
+        assertEquals("99H · 96 · ST", formatReadout(12_288, 96000, 2))
+    }
+
+    @Test
     fun `formatDb drops the fraction when it is zero and signs positive values`() {
         assertEquals("0", formatDb(0.0))
         assertEquals("+3.5", formatDb(3.5))

@@ -7,6 +7,7 @@ interface PlayerEngine {
     val currentIndex: Int
     val positionMs: Long
     val isEnded: Boolean
+    val playWhenReady: Boolean
     var shuffleEnabled: Boolean
     var repeatEnabled: Boolean
     var pauseAtEndOfCurrent: Boolean
