@@ -36,7 +36,7 @@ grep -nE '\\\\[sSpPdDwWbB]' app/src/main/java/io/github/kickoman/qiyaa/jam/{JamC
 
 - `JamTrack.coverUri` — шаблон Яндекса с `%%`, как в протоколе; это не `track/Track.coverUrl`.
 - `JamTrack.source` — `null` (по умолчанию схемы, `yandex`), `YANDEX` или `HOST`: трек, который может
-  сыграть только хозяин, например локальный файл десктопа (протокол, «Tracks»; HOST-37, LISTEN-14).
+  сыграть только хозяин, например свой файл десктопа или телефона (протокол, «Tracks»; HOST-37, LISTEN-14).
   `null` при кодировании пропадает (`explicitNulls = false`), так что трек каталога уходит без ключа
   `source`, как и раньше, и старый сервер его не видит. `JamTrack.isCatalog` — не `HOST`. Хозяин на
   Android сам `host`-треков не шлёт: он играет только каталог Яндекса (`playback/JamTracks.toJam`
