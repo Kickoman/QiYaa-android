@@ -109,6 +109,23 @@ class QueueLocalTest {
             assertEquals(0, h.engine.currentIndex)
         }
 
+    @Test
+    fun `LOCAL-14 a restored queue is cleared on request, one that another source replaced is not`() =
+        runTest {
+            val h = QueueHarness(this)
+            h.controller.loadSource("Files") { listOf(local("42"), local("43")) }
+            runCurrent()
+            val restored = QueueHarness(this, store = FakeQueueStore(h.store.text))
+            assertTrue(restored.controller.clearIfRestored())
+            assertEquals(emptyList<Track>(), restored.controller.state.value.tracks)
+            val replaced = QueueHarness(this, store = FakeQueueStore(h.store.text))
+            replaced.controller.loadSource("Liked") { listOf(yandex("1")) }
+            runCurrent()
+            assertFalse(replaced.controller.clearIfRestored())
+            assertEquals(listOf("1"), replaced.controller.state.value.tracks.map { it.id })
+            assertFalse(QueueHarness(this).controller.clearIfRestored())
+        }
+
     private fun yandex(id: String) = Track(id = id, title = "T$id")
 
     private fun local(id: String) = Track(id = id, title = "Свой $id", source = TrackSource.LOCAL)

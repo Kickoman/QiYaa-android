@@ -96,6 +96,7 @@ Writing rules for READMEs:
   | `audio` | DSP: equalizer, FFT, spectrum, visualizer ring, PCM | — (pure JVM) |
   | `data` | Persistence: settings and token | `audio` |
   | `jam` | Jam client: protocol codec, connection, the host's stored session | — (pure JVM) |
+  | `local` | The phone's media library: the query, the picks and their order, the restored queue's check | `track` |
   | `queue` | What plays next: sources, waves, the jam mode, error policy, shuffle rule | `track`, `yandex` (pure JVM) |
   | `playback` | ExoPlayer, MediaSession, the Media3 adapter for `queue`, audio processors, the jam host and its WebSocket transport | `track`, `queue`, `jam`, `yandex`, `audio`, `data` |
   | `ui` | Compose screens, view models, theme | everything above |
@@ -111,6 +112,7 @@ Writing rules for READMEs:
   grep -rln --include='*.kt' 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/{track,yandex,audio,data,queue,playback}/           # must print nothing
   grep -rlnE --include='*.kt' 'qiyaa\.(track|yandex|audio|data|jam|queue|playback|ui)\.' app/src/main/java/io/github/kickoman/qiyaa/telemetry/   # must print nothing
   grep -rln --include='*.kt' '^import io\.github\.kickoman\.qiyaa\.' app/src/main/java/io/github/kickoman/qiyaa/track/   # must print nothing
+  grep -rlnE --include='*.kt' 'qiyaa\.(yandex|audio|data|jam|queue|playback|ui|telemetry)\.' app/src/main/java/io/github/kickoman/qiyaa/local/   # must print nothing
   ```
 
   The greps walk each package with its subfolders but read `*.kt` files only: a README may quote

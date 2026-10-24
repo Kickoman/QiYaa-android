@@ -72,6 +72,7 @@ class QueueController(
     private var waveSessionId: String? = null
     private var queueGeneration = 0L
     private var sourceTicket = 0L
+    private var restoredTicket: Long? = null
     private var loadJob: Job? = null
     private val playTracker = PlayTracker(clock)
     private var waveStationId = ""
@@ -1048,8 +1049,15 @@ class QueueController(
         }
     }
 
+    fun clearIfRestored(): Boolean {
+        if (restoredTicket != sourceTicket || jam != null) return false
+        clear()
+        return true
+    }
+
     private fun restore(snapshot: QueueSnapshot) {
         if (snapshot.tracks.isEmpty()) return
+        restoredTicket = sourceTicket
         val default = EntryPart.defaultFor(snapshot.isWave)
         val entries =
             snapshot.tracks.mapIndexed { i, track ->
