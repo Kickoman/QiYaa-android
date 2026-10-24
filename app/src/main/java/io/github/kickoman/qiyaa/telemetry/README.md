@@ -6,7 +6,7 @@
 
 ```bash
 grep -rlnE --include='*.kt' '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiyaa/telemetry/                      # ничего не печатает
-grep -rlnE --include='*.kt' 'qiyaa\.(track|yandex|audio|data|jam|queue|playback|ui)\.' app/src/main/java/io/github/kickoman/qiyaa/telemetry/  # ничего не печатает
+grep -rlnE --include='*.kt' 'qiyaa\.(track|yandex|spotify|audio|data|jam|queue|playback|ui|local|lyrics)\.' app/src/main/java/io/github/kickoman/qiyaa/telemetry/  # ничего не печатает
 grep -rnE --include='*.kt' 'https?://' app/src/main/java/io/github/kickoman/qiyaa/telemetry/                                         # ничего не печатает
 ```
 

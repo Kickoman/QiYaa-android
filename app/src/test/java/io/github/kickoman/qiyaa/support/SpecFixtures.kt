@@ -55,6 +55,17 @@ object Spec {
         return Json.parseToJsonElement(file.readText()).jsonObject
     }
 
+    fun spotify(name: String): JsonObject {
+        val file = File(root, "spotify/$name.json")
+        check(file.isFile) { "No Spotify vectors $file" }
+        return Json.parseToJsonElement(file.readText()).jsonObject
+    }
+
+    fun spotifyFiles(): List<String> = File(root, "spotify").listFiles { file -> file.extension == "json" }
+        .orEmpty()
+        .map { it.nameWithoutExtension }
+        .sorted()
+
     fun cases(endpoint: String, service: String = YANDEX): List<String> =
         File(root, "fixtures/$service/$endpoint").listFiles { file -> file.extension == "json" }
             .orEmpty()
