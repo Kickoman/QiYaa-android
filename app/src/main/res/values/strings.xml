@@ -96,10 +96,10 @@
     <string name="local_artists">Artists</string>
     <string name="local_folders">Folders</string>
     <string name="local_allow">Allow access to your music</string>
-    <string name="local_allow_note">QiYaa reads the music in the phone’s media library. Nothing leaves the phone.</string>
+    <string name="local_allow_note">QiYaa reads the music in the phone’s media library. The files themselves stay on the phone.</string>
     <string name="local_allow_again_note">Without this permission your own files stay hidden.</string>
     <string name="local_settings">Open app settings</string>
-    <string name="local_settings_note">The permission was denied for good: allow “Music and audio” in the app settings.</string>
+    <string name="local_settings_note">The permission was denied for good: allow access to music in the app’s permissions.</string>
     <string name="local_unknown_artist">No artist</string>
     <string name="local_unknown_album">No album</string>
     <string name="local_root">Storage root</string>

@@ -80,10 +80,10 @@
     <string name="local_artists">Исполнители</string>
     <string name="local_folders">Папки</string>
     <string name="local_allow">Разрешить доступ к музыке</string>
-    <string name="local_allow_note">QiYaa читает музыку из медиатеки телефона. С телефона ничего не уходит.</string>
+    <string name="local_allow_note">QiYaa читает музыку из медиатеки телефона. Сами файлы остаются на телефоне.</string>
     <string name="local_allow_again_note">Без разрешения свои файлы не видны.</string>
     <string name="local_settings">Открыть настройки приложения</string>
-    <string name="local_settings_note">В разрешении отказано насовсем: разрешите «Музыка и аудио» в настройках приложения.</string>
+    <string name="local_settings_note">В разрешении отказано насовсем: разрешите доступ к музыке в разрешениях приложения.</string>
     <string name="local_unknown_artist">Без исполнителя</string>
     <string name="local_unknown_album">Без альбома</string>
     <string name="local_root">Корень хранилища</string>

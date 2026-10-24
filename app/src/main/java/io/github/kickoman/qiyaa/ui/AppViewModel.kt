@@ -379,10 +379,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun onLocalGranted() {
-        if (mutableLocalAccess.value != LocalAccess.GRANTED) {
-            mutableLocalAccess.value = LocalAccess.GRANTED
-            graph.checkRestoredLocalQueue()
-        }
+        mutableLocalAccess.value = LocalAccess.GRANTED
+        graph.checkRestoredLocalQueue()
         localRows.load(force = localLibrary.takeChanged())
     }
 

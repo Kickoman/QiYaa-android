@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -56,25 +57,32 @@ fun LocalSectionScreen(viewModel: AppViewModel, section: LibrarySection) {
                 else -> R.string.local_albums
             },
         )
-    val items: List<LocalItem> =
-        picks?.let { loaded ->
-            when (section) {
-                LibrarySection.LOCAL_ARTISTS -> loaded.artists.map {
-                    val name = it.name.ifEmpty { unknownArtist }
-                    LocalItem("artist:${it.name}", name, it.trackCount, LocalPick.Artist(it.name))
-                }
+    val items: List<LocalItem>? =
+        remember(picks, section, unknownArtist, unknownAlbum, root) {
+            picks?.let { loaded ->
+                when (section) {
+                    LibrarySection.LOCAL_ARTISTS -> loaded.artists.map {
+                        val name = it.name.ifEmpty { unknownArtist }
+                        LocalItem("artist:${it.name}", name, it.trackCount, LocalPick.Artist(it.name))
+                    }
 
-                LibrarySection.LOCAL_FOLDERS -> loaded.folders.map {
-                    val key = "folder:${it.folder.volume}/${it.folder.path.joinToString("/")}"
-                    LocalItem(key, folderName(it.folder, root), it.trackCount, LocalPick.Folder(it.folder))
-                }
+                    LibrarySection.LOCAL_FOLDERS -> loaded.folders.map {
+                        val key = "folder:${it.folder.volume}/${it.folder.path.joinToString("/")}"
+                        LocalItem(
+                            key,
+                            folderName(it.folder, root),
+                            it.trackCount,
+                            LocalPick.Folder(it.folder),
+                        )
+                    }
 
-                else -> loaded.albums.map {
-                    val name = it.name.ifEmpty { unknownAlbum }
-                    LocalItem("album:${it.id}", name, it.trackCount, LocalPick.Album(it.id))
+                    else -> loaded.albums.map {
+                        val name = it.name.ifEmpty { unknownAlbum }
+                        LocalItem("album:${it.id}", name, it.trackCount, LocalPick.Album(it.id))
+                    }
                 }
             }
-        }.orEmpty()
+        }
 
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -88,38 +96,48 @@ fun LocalSectionScreen(viewModel: AppViewModel, section: LibrarySection) {
             QiText(stringResource(R.string.library_sub_title, title), CaptionStyle, color = colors.muted)
         }
         when (val state = rows) {
-            ListState.Idle, ListState.Loading ->
-                QiText(
-                    stringResource(R.string.library_loading),
-                    HintStyle,
-                    Modifier.padding(16.dp),
-                    color = colors.dim,
-                )
+            ListState.Idle, ListState.Loading -> Loading()
 
             is ListState.Failed ->
                 QiText(state.error.render(), HintStyle, Modifier.padding(16.dp), color = colors.error)
 
             is ListState.Loaded ->
-                if (items.isEmpty()) {
-                    QiText(
-                        stringResource(R.string.local_empty),
-                        HintStyle,
-                        Modifier.padding(16.dp),
-                        color = colors.dim,
-                    )
-                } else {
-                    LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-                        items(items, key = LocalItem::key) { item ->
-                            LocalRowItem(item) { viewModel.playLocal(item.pick, item.name) }
+                when {
+                    items == null -> Loading()
+
+                    items.isEmpty() ->
+                        QiText(
+                            stringResource(R.string.local_empty),
+                            HintStyle,
+                            Modifier.padding(16.dp),
+                            color = colors.dim,
+                        )
+
+                    else ->
+                        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+                            items(items, key = LocalItem::key) { item ->
+                                LocalRowItem(item, startEllipsis = section == LibrarySection.LOCAL_FOLDERS) {
+                                    viewModel.playLocal(item.pick, item.name)
+                                }
+                            }
                         }
-                    }
                 }
         }
     }
 }
 
 @Composable
-private fun LocalRowItem(item: LocalItem, onClick: () -> Unit) {
+private fun Loading() {
+    QiText(
+        stringResource(R.string.library_loading),
+        HintStyle,
+        Modifier.padding(16.dp),
+        color = Qi.colors.dim,
+    )
+}
+
+@Composable
+private fun LocalRowItem(item: LocalItem, startEllipsis: Boolean, onClick: () -> Unit) {
     val colors = Qi.colors
     Row(
         Modifier
@@ -136,7 +154,7 @@ private fun LocalRowItem(item: LocalItem, onClick: () -> Unit) {
             Modifier.weight(1f),
             color = colors.text,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            overflow = if (startEllipsis) TextOverflow.StartEllipsis else TextOverflow.Ellipsis,
         )
         QiText("${item.count}", mono(12.sp, 400), color = colors.muted)
     }

@@ -110,6 +110,7 @@ class AppGraph(val context: Context) {
         }
 
     val localLibrary = LocalLibrary(context)
+    private var localQueueChecked = false
 
     init {
         checkRestoredLocalQueue()
@@ -120,9 +121,11 @@ class AppGraph(val context: Context) {
     }
 
     private suspend fun checkLocalQueue() {
+        if (localQueueChecked || !localLibrary.hasPermission()) return
+        localQueueChecked = true
         val saved = queue.state.value.tracks
         val ids = LocalCheck.localIds(saved)
-        if (ids.isEmpty() || !localLibrary.hasPermission()) return
+        if (ids.isEmpty()) return
         val found =
             try {
                 withContext(Dispatchers.IO) { localLibrary.rowsById(ids) }

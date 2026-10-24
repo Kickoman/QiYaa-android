@@ -80,10 +80,10 @@
     <string name="local_artists">Выканаўцы</string>
     <string name="local_folders">Тэчкі</string>
     <string name="local_allow">Дазволіць доступ да музыкі</string>
-    <string name="local_allow_note">QiYaa чытае музыку з медыятэкі тэлефона. З тэлефона нічога не сыходзіць.</string>
+    <string name="local_allow_note">QiYaa чытае музыку з медыятэкі тэлефона. Самі файлы застаюцца на тэлефоне.</string>
     <string name="local_allow_again_note">Без дазволу свае файлы не відаць.</string>
     <string name="local_settings">Адкрыць налады праграмы</string>
-    <string name="local_settings_note">У дазволе адмоўлена назаўсёды: дазвольце «Музыка і аўдыя» ў наладах праграмы.</string>
+    <string name="local_settings_note">У дазволе адмоўлена назаўсёды: дазвольце доступ да музыкі ў дазволах праграмы.</string>
     <string name="local_unknown_artist">Без выканаўцы</string>
     <string name="local_unknown_album">Без альбома</string>
     <string name="local_root">Корань сховішча</string>

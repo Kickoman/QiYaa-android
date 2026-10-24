@@ -94,6 +94,7 @@ class QueueController(
     private var networkRetryAttempt = 0
     private var retryJob: Job? = null
     private var continueAtEnd = false
+    private var playAfterWait = true
     private var restorePoint: RestorePoint? = null
     private val shuffleRule = WaveModeRule()
     private val repeatRule = WaveModeRule()
@@ -222,8 +223,9 @@ class QueueController(
         stoppedAtEnd = true
     }
 
-    private fun waitForMore(current: PlayerEngine) {
+    private fun waitForMore(current: PlayerEngine, play: Boolean = true) {
         continueAtEnd = true
+        playAfterWait = play
         maybeLoadMore(current)
         if (!asking) continueAtEnd = false
         publishLoadingMore()
@@ -590,7 +592,7 @@ class QueueController(
             ErrorAction.WaitForMore -> {
                 consecutiveTrackFailures++
                 emit(QueueEvent.Failed(Stage.PLAYBACK, error))
-                waitForMore(current)
+                waitForMore(current, play = current.playWhenReady)
                 if (!asking) stoppedAtEnd = true
                 reportJam()
             }
@@ -1221,7 +1223,7 @@ class QueueController(
             if (resume) {
                 afterAppend.seekTo(firstNew)
                 afterAppend.prepare()
-                afterAppend.play()
+                if (playAfterWait) afterAppend.play()
             }
         }
     }

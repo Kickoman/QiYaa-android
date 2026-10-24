@@ -88,7 +88,7 @@ class QueueErrorsTest {
     }
 
     @Test
-    fun `ERR-04 a broken track of a restored paused queue is skipped and playback does not start`() =
+    fun `ERR-10 a broken track of a restored paused queue is skipped and playback does not start`() =
         runTest {
             val first = QueueHarness(this)
             first.controller.loadSource("Liked") { tracks("a", "b", "c") }
@@ -158,6 +158,30 @@ class QueueErrorsTest {
             reply.complete(WaveBatch("S1", "B2", tracks("m1")))
             runCurrent()
             assertEquals(listOf("append [m1]", "seek 3", "prepare", "play"), harness.engine.commands)
+        }
+
+    @Test
+    fun `ERR-10 a broken last track of a paused wave waits for more and stays paused on the new one`() =
+        runTest {
+            val harness = QueueHarness(this)
+            val reply = CompletableDeferred<WaveBatch>()
+            var requests = 0
+            harness.source.onStartWave = { WaveBatch("S1", "B1", tracks("w1", "w2", "w3")) }
+            harness.source.onMoreWave =
+                { _, _ -> if (++requests == 1) reply.await() else CompletableDeferred<WaveBatch>().await() }
+            harness.controller.playWave(listOf("user:onyourwave"), "My Wave")
+            runCurrent()
+            harness.engine.finishTrack()
+            harness.engine.finishTrack()
+            runCurrent()
+            harness.engine.pause()
+            harness.engine.commands.clear()
+            harness.engine.fail(FailureKind.TRACK)
+            runCurrent()
+            reply.complete(WaveBatch("S1", "B2", tracks("m1")))
+            runCurrent()
+            assertEquals(listOf("append [m1]", "seek 3", "prepare"), harness.engine.commands)
+            assertFalse(harness.engine.playWhenReady)
         }
 
     @Test
