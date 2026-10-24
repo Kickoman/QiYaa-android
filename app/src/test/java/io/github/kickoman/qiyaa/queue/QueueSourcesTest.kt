@@ -4,10 +4,10 @@ import io.github.kickoman.qiyaa.queue.QueueEvent.Stage
 import io.github.kickoman.qiyaa.support.QueueHarness
 import io.github.kickoman.qiyaa.support.QueueHarness.Companion.track
 import io.github.kickoman.qiyaa.support.QueueHarness.Companion.tracks
+import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.yandex.ErrorKind
 import io.github.kickoman.qiyaa.yandex.NetworkException
 import io.github.kickoman.qiyaa.yandex.SearchResult
-import io.github.kickoman.qiyaa.yandex.Track
 import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi

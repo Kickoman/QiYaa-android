@@ -5,7 +5,7 @@ import io.github.kickoman.qiyaa.jam.Decoded
 import io.github.kickoman.qiyaa.jam.JamCodec
 import io.github.kickoman.qiyaa.jam.JamGuest
 import io.github.kickoman.qiyaa.jam.JamTrack
-import io.github.kickoman.qiyaa.yandex.Track
+import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.yandex.TrackParsing
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull

@@ -1,6 +1,6 @@
 package io.github.kickoman.qiyaa.queue
 
-import io.github.kickoman.qiyaa.yandex.Track
+import io.github.kickoman.qiyaa.track.Track
 
 class PlayTracker(private val clock: () -> Long) {
     data class Closed(val track: Track, val playedSeconds: Double, val finished: Boolean)

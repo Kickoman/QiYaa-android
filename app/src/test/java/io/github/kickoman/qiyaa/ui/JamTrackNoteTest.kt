@@ -4,7 +4,7 @@ import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.queue.EntryPart
 import io.github.kickoman.qiyaa.queue.ItemMark
 import io.github.kickoman.qiyaa.queue.QueueEntry
-import io.github.kickoman.qiyaa.yandex.Track
+import io.github.kickoman.qiyaa.track.Track
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

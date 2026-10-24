@@ -2,7 +2,7 @@ package io.github.kickoman.qiyaa.support
 
 import io.github.kickoman.qiyaa.queue.QueueController
 import io.github.kickoman.qiyaa.queue.QueueEvent
-import io.github.kickoman.qiyaa.yandex.Track
+import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.yandex.WaveBatch
 import kotlin.random.Random
 import kotlinx.coroutines.CompletableDeferred

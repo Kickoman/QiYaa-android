@@ -1,7 +1,7 @@
 package io.github.kickoman.qiyaa.queue
 
+import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.yandex.SearchResult
-import io.github.kickoman.qiyaa.yandex.Track
 import io.github.kickoman.qiyaa.yandex.WaveBatch
 import io.github.kickoman.qiyaa.yandex.WaveContext
 import io.github.kickoman.qiyaa.yandex.WaveEvent

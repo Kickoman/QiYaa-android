@@ -27,11 +27,11 @@ import io.github.kickoman.qiyaa.queue.LibraryMusicSource
 import io.github.kickoman.qiyaa.queue.QueueController
 import io.github.kickoman.qiyaa.queue.QueueStore
 import io.github.kickoman.qiyaa.queue.ShuffleAlgorithm
+import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.yandex.DeviceAuth
 import io.github.kickoman.qiyaa.yandex.Library
 import io.github.kickoman.qiyaa.yandex.Quality
 import io.github.kickoman.qiyaa.yandex.Session
-import io.github.kickoman.qiyaa.yandex.Track
 import io.github.kickoman.qiyaa.yandex.YandexApi
 import java.io.File
 import java.util.concurrent.Executors

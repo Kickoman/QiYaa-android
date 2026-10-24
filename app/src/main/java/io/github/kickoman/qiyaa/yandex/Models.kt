@@ -1,31 +1,23 @@
 package io.github.kickoman.qiyaa.yandex
 
+import io.github.kickoman.qiyaa.track.Track
+import io.github.kickoman.qiyaa.track.TrackSource
+
 data class Account(val uid: String = "", val login: String = "", val displayName: String = "") {
     val isValid: Boolean get() = uid.isNotEmpty()
 }
 
-data class Track(
-    val id: String,
-    val title: String,
-    val artists: List<String> = emptyList(),
-    val albumId: String = "",
-    val durationMs: Long = 0,
-    val available: Boolean = true,
-    val coverUrl: String? = null,
-) {
-    val artistLine: String get() = artists.joinToString(", ")
-
-    val displayTitle: String
-        get() = if (artists.isEmpty()) title else "$artistLine - $title"
-
-    val webUrl: String
-        get() =
+val Track.webUrl: String?
+    get() = when (source) {
+        TrackSource.YANDEX ->
             if (albumId.isEmpty()) {
                 "https://music.yandex.ru/track/$id"
             } else {
                 "https://music.yandex.ru/album/$albumId/track/$id"
             }
-}
+
+        TrackSource.LOCAL -> null
+    }
 
 data class NamedRef(val id: String, val name: String)
 

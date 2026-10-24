@@ -47,8 +47,8 @@ import io.github.kickoman.qiyaa.queue.JamEntry
 import io.github.kickoman.qiyaa.queue.JamPlayback
 import io.github.kickoman.qiyaa.queue.JamPlaybackListener
 import io.github.kickoman.qiyaa.queue.QueueController
+import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.yandex.ErrorKind
-import io.github.kickoman.qiyaa.yandex.Track
 import java.util.UUID
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CancellationException

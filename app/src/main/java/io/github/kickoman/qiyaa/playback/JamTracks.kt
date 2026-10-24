@@ -2,7 +2,7 @@ package io.github.kickoman.qiyaa.playback
 
 import io.github.kickoman.qiyaa.jam.JamCodec
 import io.github.kickoman.qiyaa.jam.JamTrack
-import io.github.kickoman.qiyaa.yandex.Track
+import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.yandex.TrackParsing
 
 /** The app's `Track` and the protocol's `JamTrack` (`spec/jam/protocol`, "Tracks"). */

@@ -1,6 +1,7 @@
 package io.github.kickoman.qiyaa.queue
 
-import io.github.kickoman.qiyaa.yandex.Track
+import io.github.kickoman.qiyaa.track.Track
+import io.github.kickoman.qiyaa.track.TrackSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -50,6 +51,35 @@ class QueueSnapshotCodecTest {
             batchIds = listOf("", ""),
         )
         assertEquals(plain, QueueSnapshotCodec.decode(QueueSnapshotCodec.encode(plain)))
+    }
+
+    @Test
+    fun `a track's source survives encoding and decoding, and only a source other than Yandex is written`() {
+        val local = Track("42", "Свой файл", listOf("Гурт"), durationMs = 180_000, source = TrackSource.LOCAL)
+        val mixed = snapshot.copy(tracks = snapshot.tracks + local, batchIds = snapshot.batchIds + "")
+        val text = QueueSnapshotCodec.encode(mixed)
+        assertEquals(1, Regex("\"source\"").findAll(text).count())
+        assertTrue(text, "\"source\":\"local\"" in text)
+        assertEquals(mixed, QueueSnapshotCodec.decode(text))
+    }
+
+    @Test
+    fun `a queue of Yandex tracks is written without a source, and a file without one reads as Yandex`() {
+        val text = QueueSnapshotCodec.encode(snapshot)
+        assertFalse(text, "\"source\"" in text)
+        assertEquals(
+            listOf(TrackSource.YANDEX, TrackSource.YANDEX),
+            QueueSnapshotCodec.decode(text)?.tracks?.map {
+                it.source
+            },
+        )
+    }
+
+    @Test
+    fun `a source this build does not know gives no snapshot, not a Yandex track`() {
+        val local = Track("42", "Свой файл", source = TrackSource.LOCAL)
+        val text = QueueSnapshotCodec.encode(snapshot.copy(tracks = listOf(local), batchIds = listOf("")))
+        assertNull(QueueSnapshotCodec.decode(text.replace("\"source\":\"local\"", "\"source\":\"spotify\"")))
     }
 
     @Test
