@@ -28,6 +28,8 @@ class Bytes private constructor(private val data: ByteArray) {
     }
 }
 
+internal fun hidden(text: String): String = "<${text.length} chars>"
+
 private const val HEX_DIGITS = "0123456789abcdef"
 
 fun ByteArray.toHex(): String {

@@ -34,6 +34,26 @@ class LoginRepliesTest {
     }
 
     @Test
+    fun `a client-token challenge keeps its first hashcash, not the last`() {
+        val first = ProtoWriter().message(4, ProtoWriter().varint(1, 10).string(2, "0a0a"))
+        val second = ProtoWriter().message(4, ProtoWriter().varint(1, 20).string(2, "0b0b"))
+        val challenges = ProtoWriter().string(1, "state-1").message(2, first).message(2, second)
+        val reply = ProtoWriter().message(3, challenges).toByteArray()
+        assertEquals(
+            ClientTokenReply.Challenge("state-1", HashcashChallenge(Bytes.ofHex("0a0a")!!, 10)),
+            Login.parseClientToken(reply),
+        )
+    }
+
+    @Test
+    fun `a granted client token whose message breaks off is refused even with a token`() {
+        val broken = ProtoWriter().string(1, "client-token").toByteArray() + byteArrayOf(0x18)
+        val reply = ProtoWriter().bytes(2, broken).toByteArray()
+        val failure = ClientTokenReply.Failure("unexpected client token reply of ${reply.size} bytes")
+        assertEquals(failure, Login.parseClientToken(reply))
+    }
+
+    @Test
     fun `a client-token reply without a token or a challenge is a failure`() {
         val emptyToken = ProtoWriter().message(2, ProtoWriter().string(1, "")).toByteArray()
         for (reply in listOf(ByteArray(0), emptyToken, byteArrayOf(0x12, 0x05, 0x0a))) {
@@ -45,6 +65,13 @@ class LoginRepliesTest {
     fun `a login5 reply with an access token is ok`() {
         val ok = ProtoWriter().string(1, "owner").string(2, "bearer-token").varint(4, 3_600)
         val reply = ProtoWriter().message(1, ok).toByteArray()
+        assertEquals(Login5Reply.Ok("owner", "bearer-token", 3_600), Login.parseLogin5(reply))
+    }
+
+    @Test
+    fun `a login5 token wins over an error in the same reply`() {
+        val ok = ProtoWriter().string(1, "owner").string(2, "bearer-token").varint(4, 3_600)
+        val reply = ProtoWriter().varint(2, 1).message(1, ok).toByteArray()
         assertEquals(Login5Reply.Ok("owner", "bearer-token", 3_600), Login.parseLogin5(reply))
     }
 

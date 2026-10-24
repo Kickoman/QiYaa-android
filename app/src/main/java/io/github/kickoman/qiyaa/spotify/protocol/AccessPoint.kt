@@ -36,6 +36,10 @@ data class ClientIdentity(
     val deviceId: String,
     val protocolVersion: Long = PROTOCOL_VERSION,
 ) {
+    override fun toString(): String = "ClientIdentity(platform=$platform, cpuFamily=$cpuFamily, os=$os, " +
+        "systemInformation=$systemInformation, versionString=$versionString, " +
+        "deviceId=${hidden(deviceId)}, protocolVersion=$protocolVersion)"
+
     companion object {
         const val PROTOCOL_VERSION = 124_200_290L
     }
@@ -50,6 +54,8 @@ value class AuthenticationType(val code: Int) {
 }
 
 data class Credentials(val username: String, val type: AuthenticationType, val data: Bytes) {
+    override fun toString(): String = "Credentials(username=${hidden(username)}, type=$type, data=$data)"
+
     companion object {
         fun fromAccessToken(token: String): Credentials =
             Credentials("", AuthenticationType.SPOTIFY_TOKEN, Bytes.of(token.toByteArray(Charsets.UTF_8)))
@@ -140,7 +146,7 @@ class AccessPoint(
         check(stage == Stage.IDLE) { "start() once per connection, the session is $stage" }
         dhPrivate = ByteArray(DH_PRIVATE_SIZE).also(random)
         val gc = Crypto.modPow(byteArrayOf(GENERATOR), dhPrivate, DH_PRIME.toByteArray())
-            ?: return fail("could not compute the key exchange")
+            ?: return fail("could not compute the key exchange with a ${dhPrivate.size}-byte private key")
         val nonce = ByteArray(NONCE_SIZE).also(random)
         val buildInfo = ProtoWriter()
             .varint(BuildInfoFields.PRODUCT, 0)
@@ -177,7 +183,10 @@ class AccessPoint(
     fun advance(nowMs: Long) {
         val due = keepAliveDeadline
         if (stage != Stage.READY || due == null || nowMs < due) return
-        if (keepAlive != KeepAlive.PENDING_PONG) return fail("the access point stopped answering")
+        if (keepAlive != KeepAlive.PENDING_PONG) {
+            val missed = if (keepAlive == KeepAlive.EXPECTING_PING) "Ping" else "PongAck"
+            return fail("the access point stopped answering: no $missed by $due ms, now $nowMs ms")
+        }
         sendPacket(ApCommand.PONG, ByteArray(4))
         keepAlive = KeepAlive.EXPECTING_PONG_ACK
         keepAliveDeadline = nowMs + PONG_ACK_MS
@@ -219,7 +228,9 @@ class AccessPoint(
     private fun readHandshake() {
         if (incomingSize < 4) return
         val size = readU32(incoming, 0).toLong() and 0xffffffffL
-        if (size < 4 || size > MAX_HANDSHAKE_PACKET) return fail("bad handshake packet size")
+        if (size < 4 || size > MAX_HANDSHAKE_PACKET) {
+            return fail("bad handshake packet size $size, not 4..$MAX_HANDSHAKE_PACKET")
+        }
         if (incomingSize < size) return
         val packet = incoming.copyOf(size.toInt())
         consume(size.toInt())
@@ -228,20 +239,29 @@ class AccessPoint(
     }
 
     private fun answerChallenge(reply: ByteArray) {
-        val challenge = parseApResponse(reply) ?: return fail("malformed handshake reply")
+        val challenge = parseApResponse(reply)
+            ?: return fail("malformed handshake reply of ${reply.size} bytes")
         challenge.failed?.let {
             events += it
             stage = Stage.FAILED
             return
         }
-        if (challenge.gs.isEmpty() || challenge.signature.isEmpty()) return fail("handshake reply has no key")
+        if (challenge.gs.isEmpty() || challenge.signature.isEmpty()) {
+            return fail(
+                "handshake reply has no key: gs ${challenge.gs.size} bytes, " +
+                    "signature ${challenge.signature.size} bytes",
+            )
+        }
         val modulus = serverKey.modulus.toByteArray()
         val digest = Crypto.sha1(challenge.gs)
         if (!Crypto.verifyRsaSha1(modulus, serverKey.exponent, digest, challenge.signature)) {
-            return fail("the access point's key is not signed by Spotify")
+            return fail(
+                "the access point's key of ${challenge.gs.size} bytes has no valid signature " +
+                    "by the trusted key (signature ${challenge.signature.size} bytes)",
+            )
         }
         val shared = Crypto.modPow(challenge.gs, dhPrivate, DH_PRIME.toByteArray())
-            ?: return fail("bad key from the access point")
+            ?: return fail("the access point's key of ${challenge.gs.size} bytes is not below the prime")
         val secret = stripLeadingZeros(shared)
         val material = ByteArrayOutputStream()
         for (i in 1..5) material.write(Crypto.hmacSha1(secret, transcript, byteArrayOf(i.toByte())))
@@ -319,7 +339,9 @@ class AccessPoint(
             cipher.decrypt(incoming, consumed, pendingSize)
             val mac = incoming.copyOfRange(consumed + pendingSize, consumed + pendingSize + Shannon.MAC_SIZE)
             if (!cipher.finish().contentEquals(mac)) {
-                fail("packet authentication failed")
+                val commandHex = pendingCommand.toString(16).padStart(2, '0')
+                val nonce = Integer.toUnsignedString(receiveNonce - 1)
+                fail("packet authentication failed: command 0x$commandHex, nonce $nonce, $pendingSize bytes")
                 break
             }
             val command = pendingCommand
@@ -334,7 +356,8 @@ class AccessPoint(
     private fun handlePacket(command: Int, payload: ByteArray, nowMs: Long) {
         when (command) {
             ApCommand.AP_WELCOME -> {
-                val welcome = parseWelcome(payload) ?: return fail("malformed welcome")
+                val welcome = parseWelcome(payload)
+                    ?: return fail("malformed APWelcome of ${payload.size} bytes")
                 stage = Stage.READY
                 keepAlive = KeepAlive.EXPECTING_PING
                 keepAliveDeadline = nowMs + FIRST_PING_MS

@@ -20,22 +20,34 @@ data class ClientTokenParams(
     val clientId: String,
     val deviceId: String,
     val platform: ClientPlatform,
-)
+) {
+    override fun toString(): String = "ClientTokenParams(clientVersion=$clientVersion, clientId=$clientId, " +
+        "deviceId=${hidden(deviceId)}, platform=$platform)"
+}
 
 data class HashcashChallenge(val prefix: Bytes, val length: Int)
 
 data class HashcashSolution(val suffix: Bytes, val tookNanos: Long)
 
 sealed interface ClientTokenReply {
-    data class Granted(val token: String, val refreshAfterSeconds: Long) : ClientTokenReply
+    data class Granted(val token: String, val refreshAfterSeconds: Long) : ClientTokenReply {
+        override fun toString(): String =
+            "Granted(token=${hidden(token)}, refreshAfterSeconds=$refreshAfterSeconds)"
+    }
 
-    data class Challenge(val state: String, val hashcash: HashcashChallenge?) : ClientTokenReply
+    data class Challenge(val state: String, val hashcash: HashcashChallenge?) : ClientTokenReply {
+        override fun toString(): String = "Challenge(state=${hidden(state)}, hashcash=$hashcash)"
+    }
 
     data class Failure(val reason: String) : ClientTokenReply
 }
 
 sealed interface Login5Reply {
-    data class Ok(val username: String, val accessToken: String, val expiresInSeconds: Long) : Login5Reply
+    data class Ok(val username: String, val accessToken: String, val expiresInSeconds: Long) : Login5Reply {
+        override fun toString(): String =
+            "Ok(username=${hidden(username)}, accessToken=${hidden(accessToken)}, " +
+                "expiresInSeconds=$expiresInSeconds)"
+    }
 
     data class Challenge(val context: Bytes, val hashcash: HashcashChallenge) : Login5Reply
 
@@ -143,7 +155,7 @@ object Login {
                 if (!challenges.failed) return ClientTokenReply.Challenge(state, hashcash)
             }
         }
-        return ClientTokenReply.Failure("unexpected client token reply")
+        return ClientTokenReply.Failure("unexpected client token reply of ${body.size} bytes")
     }
 
     fun login5Request(
@@ -205,11 +217,11 @@ object Login {
                 LoginResponseFields.LOGIN_CONTEXT -> context = Bytes.of(reply.bytes())
             }
         }
-        if (reply.failed) return Login5Reply.Failure("malformed login5 reply")
+        if (reply.failed) return Login5Reply.Failure("malformed login5 reply of ${body.size} bytes")
         if (ok != null && ok.accessToken.isNotEmpty()) return ok
         if (error != null) return error
         if (hashcash != null) return Login5Reply.Challenge(context, hashcash)
-        return Login5Reply.Failure("unexpected login5 reply")
+        return Login5Reply.Failure("unexpected login5 reply of ${body.size} bytes")
     }
 
     private fun parseClientTokenHashcash(challenge: ProtoReader): HashcashChallenge? {

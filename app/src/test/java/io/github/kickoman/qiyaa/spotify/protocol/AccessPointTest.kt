@@ -39,13 +39,8 @@ class AccessPointTest {
             val client = client(session(0)).apply { start() }
             client.takeOutgoing()
             client.receive(u32(size), 0)
-            assertEquals(
-                "size $size",
-                listOf("failure"),
-                client.takeEvents().map {
-                    fieldsOf(it).getValue("event")
-                },
-            )
+            val reason = "bad handshake packet size $size, not 4..${AccessPoint.MAX_HANDSHAKE_PACKET}"
+            assertEquals(listOf(ApEvent.Failure(reason)), client.takeEvents())
             assertTrue(client.failed)
         }
         val waiting = client(session(0)).apply { start() }
@@ -67,11 +62,60 @@ class AccessPointTest {
     @Test
     fun `a packet whose MAC does not match ends the session`() {
         val case = session(0)
-        val client = loggedInUpTo(case, steps = 2)
+        val client = replayedUpTo(case, steps = 2)
         val welcome = case.list("steps")[2].list("incoming")[0].hex("wire")
         welcome[welcome.size - 1] = (welcome.last().toInt() xor 1).toByte()
         client.receive(welcome, 1_000)
-        assertEquals(listOf("failure"), client.takeEvents().map { fieldsOf(it).getValue("event") })
+        val size = welcome.size - 3 - Shannon.MAC_SIZE
+        assertEquals(
+            listOf(ApEvent.Failure("packet authentication failed: command 0xac, nonce 0, $size bytes")),
+            client.takeEvents(),
+        )
+        assertTrue(client.failed)
+        assertNull(client.deadline())
+    }
+
+    @Test
+    fun `an APLoginFailed in the handshake reply that breaks off counts as absent`() {
+        val case = session(0)
+        val client = client(case).apply { start() }
+        client.takeOutgoing()
+        val response = case.list("steps")[1].list("incoming")[0].hex("wire")
+        val body = response.copyOfRange(4, response.size) + byteArrayOf(0xf2.toByte(), 0x01, 0x01, 0x50)
+        client.receive(u32(4 + body.size) + body, 0)
+        assertEquals(emptyList<ApEvent>(), client.takeEvents())
+        assertFalse(client.failed)
+        assertTrue(client.takeOutgoing().isNotEmpty())
+    }
+
+    @Test
+    fun `an AuthFailure packet that breaks off is a refusal with code 0`() {
+        val case = session(0)
+        val client = replayedUpTo(case, steps = 2)
+        val serverToClient = case.obj("keys").hex("serverToClient")
+        client.receive(packet(serverToClient, 0, 0xad, byteArrayOf(0x50)), 1_000)
+        assertEquals(listOf(ApEvent.LoginFailed(LoginError.PROTOCOL_ERROR, "")), client.takeEvents())
+        assertTrue(client.failed)
+    }
+
+    @Test
+    fun `SPOT-18 a missed PongAck ends the session instead of sending another Pong`() {
+        val case = session(0)
+        val steps = case.list("steps")
+        val pong = steps.indexOfFirst { step -> step.list("outgoing").any { it.text("what") == "Pong" } }
+        val client = replayedUpTo(case, steps = pong + 1)
+        client.takeEvents()
+        val pongAt = steps[pong].long("nowMs")
+        assertEquals(pongAt + AccessPoint.PONG_ACK_MS, client.deadline())
+        client.advance(pongAt + AccessPoint.PONG_ACK_MS - 1)
+        assertEquals(emptyList<ApEvent>(), client.takeEvents())
+        client.advance(pongAt + AccessPoint.PONG_ACK_MS)
+        val due = pongAt + AccessPoint.PONG_ACK_MS
+        assertEquals(
+            listOf(ApEvent.Failure("the access point stopped answering: no PongAck by $due ms, now $due ms")),
+            client.takeEvents(),
+        )
+        assertEquals(0, client.takeOutgoing().size)
         assertTrue(client.failed)
         assertNull(client.deadline())
     }
@@ -79,7 +123,7 @@ class AccessPointTest {
     @Test
     fun `an AesKey of another length and an AesKeyError under six bytes are ignored`() {
         val case = session(0)
-        val client = loggedInUpTo(case, steps = 3)
+        val client = replayedUpTo(case, steps = 3)
         client.takeEvents()
         val serverToClient = case.obj("keys").hex("serverToClient")
         val nextNonce = case.list("steps")[2].list("incoming").size
@@ -111,8 +155,8 @@ class AccessPointTest {
             client.receive(apResponse(gs, signature), 0)
             assertEquals(refused, client.failed)
             assertEquals(refused, client.takeOutgoing().isEmpty())
-            val events = client.takeEvents().map { fieldsOf(it).getValue("event") }
-            assertEquals(if (refused) listOf("failure") else emptyList(), events)
+            val reason = "the access point's key of ${gs.size} bytes is not below the prime"
+            assertEquals(if (refused) listOf(ApEvent.Failure(reason)) else emptyList(), client.takeEvents())
         }
     }
 
@@ -242,10 +286,10 @@ class AccessPointTest {
         )
     }
 
-    private fun loggedInUpTo(case: Vector, steps: Int): AccessPoint {
+    private fun replayedUpTo(case: Vector, steps: Int): AccessPoint {
         val client = client(case)
         for (step in case.list("steps").take(steps)) {
-            when (step.text("call")) {
+            when (val call = step.text("call")) {
                 "start" -> client.start()
 
                 "receive" -> client.receive(
@@ -253,7 +297,14 @@ class AccessPointTest {
                     step.long("nowMs"),
                 )
 
-                else -> fail("only start and receive lead to the login")
+                "advance" -> client.advance(step.long("nowMs"))
+
+                "requestAudioKey" -> client.requestAudioKey(
+                    Bytes.of(step.hex("track")),
+                    Bytes.of(step.hex("file")),
+                )
+
+                else -> fail("unknown call $call")
             }
             client.takeOutgoing()
         }
