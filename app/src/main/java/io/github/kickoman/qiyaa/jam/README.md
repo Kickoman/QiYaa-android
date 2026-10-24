@@ -58,8 +58,8 @@ object JamCodec {
     fun decodeServer(text: String): Decoded<ServerMessage>
     fun decodeClient(text: String): Decoded<ClientMessage>
     fun isUnknownReason(decoded: Decoded<ServerMessage>): Boolean
-    fun isListenUrl(url: String): Boolean          // ссылка на файл хранилища Яндекса (LISTEN-04), ≤ 400 кодовых точек
-    fun isCoverUri(template: String): Boolean      // шаблон обложки с %%, ≤ 300 кодовых точек
+    fun isListenUrl(url: String): Boolean            // ссылка на файл хранилища Яндекса (LISTEN-04), ≤ 400 кодовых точек
+    fun isCoverUri(template: String): Boolean        // шаблон обложки с %%, ≤ 300 кодовых точек
 }
 sealed interface Decoded<out T> { Message(message); UnknownType; Invalid(problem) }
 ```
@@ -92,8 +92,8 @@ U+205F, U+3000, U+FEFF, но не U+0085. Из этой строки собра�
   `"source":"yandex"`; треки, которые строит само приложение, — без ключа.
 - `\s` одной и той же регулярки JVM и телефон читают по-разному: на JVM тестов это ASCII-пробелы, на Android
   (`java.util.regex` поверх ICU) — Unicode White_Space, с U+0085 и без U+FEFF. Ни то ни другое не ECMAScript.
-  Поэтому в шаблонах `JamCodec` и `JamNames` нет `\s`, `\S`, `\p{…}`, а заодно `\d`, `\w` и `\b`, которые тоже читаются по-разному, а пробелы берутся из
-  `ECMASCRIPT_SPACES`: тогда JVM-тесты описывают и телефон. `isBlank()` и `trim()` Kotlin тоже не считают
+  Поэтому в шаблонах `JamCodec` и `JamNames` нет `\s`, `\S` и `\p{…}`, как нет и `\d`, `\w`, `\b`: их JVM и ICU
+  тоже читают по-разному. Пробелы берутся из `ECMASCRIPT_SPACES`, и JVM-тесты описывают телефон. `isBlank()` и `trim()` Kotlin тоже не считают
   U+FEFF пробелом: имена перед отправкой чистит `JamNames`.
 
 ## `JamClient`
