@@ -6,6 +6,7 @@ import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import io.github.kickoman.qiyaa.track.Track
+import io.github.kickoman.qiyaa.track.TrackSource
 
 object MediaItems {
     const val SCHEME = "qiyaa"
@@ -16,6 +17,9 @@ object MediaItems {
     private const val EXTRA_ARTISTS = "artists"
     private const val EXTRA_COVER_URL = "cover"
     private const val EXTRA_TITLE = "title"
+    private const val EXTRA_BITRATE_KBPS = "kbps"
+    private const val LOCAL_PREFIX = "local:"
+    private const val LOCAL_URI = "content://media/external/audio/media/"
 
     fun uriText(trackId: String, revision: Int = 0): String {
         require(revision >= 0) { "The revision of track $trackId is $revision" }
@@ -23,7 +27,20 @@ object MediaItems {
         return if (revision == 0) plain else "$plain?$PARAM_REVISION=$revision"
     }
 
-    fun uriFor(track: Track): Uri = uriText(track.id).toUri()
+    fun uriTextFor(track: Track): String = when (track.source) {
+        TrackSource.YANDEX -> uriText(track.id)
+        TrackSource.LOCAL -> LOCAL_URI + track.id
+    }
+
+    fun mediaIdOf(track: Track): String = when (track.source) {
+        TrackSource.YANDEX -> track.id
+        TrackSource.LOCAL -> LOCAL_PREFIX + track.id
+    }
+
+    fun sourceOf(mediaId: String): TrackSource =
+        if (mediaId.startsWith(LOCAL_PREFIX)) TrackSource.LOCAL else TrackSource.YANDEX
+
+    fun idOf(mediaId: String): String = mediaId.removePrefix(LOCAL_PREFIX)
 
     fun revised(item: MediaItem, trackId: String, revision: Int): MediaItem =
         item.buildUpon().setUri(uriText(trackId, revision)).build()
@@ -39,6 +56,7 @@ object MediaItems {
                 putStringArrayList(EXTRA_ARTISTS, ArrayList(track.artists))
                 putString(EXTRA_COVER_URL, track.coverUrl)
                 putString(EXTRA_TITLE, track.title)
+                putInt(EXTRA_BITRATE_KBPS, track.bitrateKbps)
             }
         val metadata =
             MediaMetadata.Builder()
@@ -48,8 +66,8 @@ object MediaItems {
                 .setExtras(extras)
                 .build()
         return MediaItem.Builder()
-            .setMediaId(track.id)
-            .setUri(uriFor(track))
+            .setMediaId(mediaIdOf(track))
+            .setUri(uriTextFor(track))
             .setMediaMetadata(metadata)
             .build()
     }
@@ -57,12 +75,14 @@ object MediaItems {
     fun toTrack(item: MediaItem): Track {
         val extras = item.mediaMetadata.extras ?: Bundle()
         return Track(
-            id = extras.getString(EXTRA_ID) ?: item.mediaId,
+            id = extras.getString(EXTRA_ID) ?: idOf(item.mediaId),
             title = extras.getString(EXTRA_TITLE) ?: item.mediaMetadata.title?.toString().orEmpty(),
             artists = extras.getStringArrayList(EXTRA_ARTISTS) ?: emptyList(),
             albumId = extras.getString(EXTRA_ALBUM_ID).orEmpty(),
             durationMs = extras.getLong(EXTRA_DURATION_MS),
             coverUrl = extras.getString(EXTRA_COVER_URL),
+            source = sourceOf(item.mediaId),
+            bitrateKbps = extras.getInt(EXTRA_BITRATE_KBPS),
         )
     }
 }

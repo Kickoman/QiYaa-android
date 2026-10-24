@@ -301,15 +301,22 @@ fun PlayerScreen(viewModel: PlayerViewModel, onJam: (() -> Unit)? = null) {
             }
         }
 
-        val isLiked = track != null && track.id in liked
+        val likeable = track?.isYandex == true
+        val isLiked = likeable && track.id in liked
         Row(
             Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp).fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            LikeButton(isLiked, Modifier.weight(1f), onClick = viewModel::toggleLikeCurrent)
+            LikeButton(
+                isLiked,
+                Modifier.weight(1f),
+                enabled = likeable,
+                onClick = viewModel::toggleLikeCurrent,
+            )
             IconWideButton(
                 stringResource(R.string.player_dislike_skip),
                 Modifier.weight(1f),
+                enabled = likeable,
                 onClick = viewModel::dislikeCurrent,
             ) {
                 PathIcon(IconPaths.THUMB_DOWN, 22.dp, colors.muted, strokeWidth = IconPaths.OUTLINE)

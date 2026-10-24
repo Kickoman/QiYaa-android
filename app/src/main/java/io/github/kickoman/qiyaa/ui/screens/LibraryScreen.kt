@@ -405,16 +405,24 @@ private fun YandexSources(
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
     )
-    val isLiked = track != null && track.id in liked
+    val likeable = track?.isYandex == true
+    val isLiked = likeable && track.id in liked
     Row(
         Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp).fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        LikeButton(isLiked, Modifier.weight(1f), height = 48.dp, onClick = player::toggleLikeCurrent)
+        LikeButton(
+            isLiked,
+            Modifier.weight(1f),
+            height = 48.dp,
+            enabled = likeable,
+            onClick = player::toggleLikeCurrent,
+        )
         IconWideButton(
             stringResource(R.string.library_dislike),
             Modifier.weight(1f),
             height = 48.dp,
+            enabled = likeable,
             onClick = player::dislikeCurrent,
         ) {
             PathIcon(IconPaths.THUMB_DOWN, 22.dp, colors.muted, strokeWidth = IconPaths.OUTLINE)
@@ -424,6 +432,7 @@ private fun YandexSources(
                 R.string.library_open,
             ),
             Modifier.weight(1f),
+            enabled = track?.webUrl != null,
             height = 48.dp,
             onClick = {
                 track?.webUrl?.let { url -> context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri())) }

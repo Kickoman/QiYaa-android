@@ -76,6 +76,22 @@ class QueueSnapshotCodecTest {
     }
 
     @Test
+    fun `a local track's bitrate and a queue without a vibe from history survive, written only then`() {
+        val local = Track("42", "Свой файл", source = TrackSource.LOCAL, bitrateKbps = 1411)
+        val files = snapshot.copy(
+            tracks = listOf(local),
+            batchIds = listOf(""),
+            index = 0,
+            waveFromHistory = false,
+        )
+        val text = QueueSnapshotCodec.encode(files)
+        assertTrue(text, "\"bitrateKbps\":1411" in text && "\"waveFromHistory\":false" in text)
+        assertEquals(files, QueueSnapshotCodec.decode(text))
+        val plain = QueueSnapshotCodec.encode(snapshot)
+        assertFalse(plain, "bitrateKbps" in plain || "waveFromHistory" in plain)
+    }
+
+    @Test
     fun `a source this build does not know gives no snapshot, not a Yandex track`() {
         val local = Track("42", "Свой файл", source = TrackSource.LOCAL)
         val text = QueueSnapshotCodec.encode(snapshot.copy(tracks = listOf(local), batchIds = listOf("")))

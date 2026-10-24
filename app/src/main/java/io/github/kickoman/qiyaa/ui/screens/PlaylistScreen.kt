@@ -98,7 +98,11 @@ fun PlaylistScreen(viewModel: PlayerViewModel, jam: JamViewModel, onAdd: () -> U
                     color = colors.dim,
                     maxLines = 2,
                 )
-                OnOffPills(queue.continueWithVibe, onChange = viewModel::setQueueContinuesWithVibe)
+                OnOffPills(
+                    queue.continueWithVibe,
+                    enabled = queue.waveFromHistory,
+                    onChange = viewModel::setQueueContinuesWithVibe,
+                )
             }
         }
 
@@ -306,31 +310,33 @@ fun TrackActionsSheet(actions: TrackActions, viewModel: PlayerViewModel) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            TrackActionRow(
-                stringResource(if (actions.liked) R.string.playlist_unlike else R.string.player_like),
-                onClick = viewModel::likeOrUnlikePicked,
-            ) {
-                if (actions.liked) {
-                    PathIcon(IconPaths.HEART, 22.dp, colors.accent)
-                } else {
-                    PathIcon(IconPaths.HEART, 22.dp, colors.muted, strokeWidth = IconPaths.OUTLINE)
-                }
-            }
-            val dislikeText =
-                if (actions.isCurrent) R.string.player_dislike_skip else R.string.library_dislike
-            TrackActionRow(stringResource(dislikeText), onClick = viewModel::dislikePicked) {
-                PathIcon(IconPaths.THUMB_DOWN, 22.dp, colors.muted, strokeWidth = IconPaths.OUTLINE)
-            }
-            TrackActionRow(
-                stringResource(R.string.playlist_open),
-                onClick = {
-                    viewModel.closeTrackActions()
-                    track.webUrl?.let { url ->
-                        context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
+            if (track.isYandex) {
+                TrackActionRow(
+                    stringResource(if (actions.liked) R.string.playlist_unlike else R.string.player_like),
+                    onClick = viewModel::likeOrUnlikePicked,
+                ) {
+                    if (actions.liked) {
+                        PathIcon(IconPaths.HEART, 22.dp, colors.accent)
+                    } else {
+                        PathIcon(IconPaths.HEART, 22.dp, colors.muted, strokeWidth = IconPaths.OUTLINE)
                     }
-                },
-            ) {
-                PathIcon(IconPaths.OPEN_OUTSIDE, 22.dp, colors.muted, strokeWidth = IconPaths.OUTLINE)
+                }
+                val dislikeText =
+                    if (actions.isCurrent) R.string.player_dislike_skip else R.string.library_dislike
+                TrackActionRow(stringResource(dislikeText), onClick = viewModel::dislikePicked) {
+                    PathIcon(IconPaths.THUMB_DOWN, 22.dp, colors.muted, strokeWidth = IconPaths.OUTLINE)
+                }
+                TrackActionRow(
+                    stringResource(R.string.playlist_open),
+                    onClick = {
+                        viewModel.closeTrackActions()
+                        track.webUrl?.let { url ->
+                            context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
+                        }
+                    },
+                ) {
+                    PathIcon(IconPaths.OPEN_OUTSIDE, 22.dp, colors.muted, strokeWidth = IconPaths.OUTLINE)
+                }
             }
         }
     }

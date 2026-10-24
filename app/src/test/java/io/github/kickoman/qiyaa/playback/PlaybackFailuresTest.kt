@@ -1,6 +1,10 @@
 package io.github.kickoman.qiyaa.playback
 
+import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.TrackGroup
+import androidx.media3.common.Tracks
 import io.github.kickoman.qiyaa.queue.FailureKind
 import io.github.kickoman.qiyaa.yandex.ErrorKind
 import io.github.kickoman.qiyaa.yandex.HttpException
@@ -9,6 +13,8 @@ import io.github.kickoman.qiyaa.yandex.NetworkException
 import java.io.IOException
 import java.net.UnknownHostException
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PlaybackFailuresTest {
@@ -129,4 +135,25 @@ class PlaybackFailuresTest {
 
     private fun classify(errorCode: Int, cause: Throwable? = null) =
         PlaybackFailures.classify(errorCode, cause)
+
+    @Test
+    fun `LOCAL-13 audio that no decoder takes is a failure, while audio that one takes, or none, is not`() {
+        assertTrue(
+            PlaybackFailures.hasNoPlayableAudio(tracks(audio("audio/alac", C.FORMAT_UNSUPPORTED_SUBTYPE))),
+        )
+        assertFalse(PlaybackFailures.hasNoPlayableAudio(tracks(audio("audio/flac", C.FORMAT_HANDLED))))
+        assertFalse(
+            PlaybackFailures.hasNoPlayableAudio(tracks(audio("audio/flac", C.FORMAT_EXCEEDS_CAPABILITIES))),
+        )
+        assertFalse(PlaybackFailures.hasNoPlayableAudio(Tracks.EMPTY))
+    }
+
+    private fun audio(mimeType: String, support: Int): Tracks.Group = Tracks.Group(
+        TrackGroup(Format.Builder().setSampleMimeType(mimeType).build()),
+        false,
+        intArrayOf(support),
+        booleanArrayOf(false),
+    )
+
+    private fun tracks(vararg groups: Tracks.Group) = Tracks(groups.toList())
 }

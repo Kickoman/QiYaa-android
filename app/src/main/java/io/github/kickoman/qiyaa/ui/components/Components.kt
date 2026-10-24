@@ -20,6 +20,7 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
@@ -105,15 +106,17 @@ fun IconWideButton(
     description: String,
     modifier: Modifier = Modifier,
     height: Dp = 44.dp,
+    enabled: Boolean = true,
     onClick: () -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
     Box(
         modifier
             .height(height)
+            .alpha(if (enabled) 1f else DISABLED_ALPHA)
             .clip(RoundedCornerShape(8.dp))
             .background(Qi.colors.surface)
-            .tap(onClick = onClick)
+            .tap(enabled = enabled, onClick = onClick)
             .semantics {
                 contentDescription = description
                 role = Role.Button
@@ -125,11 +128,18 @@ fun IconWideButton(
 
 /** Like or unlike the current track: an outlined heart, filled in the accent colour once liked. */
 @Composable
-fun LikeButton(liked: Boolean, modifier: Modifier = Modifier, height: Dp = 44.dp, onClick: () -> Unit) {
+fun LikeButton(
+    liked: Boolean,
+    modifier: Modifier = Modifier,
+    height: Dp = 44.dp,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
     IconWideButton(
         stringResource(if (liked) R.string.player_liked else R.string.player_like),
         modifier,
         height,
+        enabled,
         onClick,
     ) {
         if (liked) {
@@ -160,14 +170,15 @@ fun IconActionButton(
 }
 
 @Composable
-fun PillToggle(text: String, active: Boolean, onClick: () -> Unit) {
+fun PillToggle(text: String, active: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
     val colors = Qi.colors
     Box(
         Modifier
             .height(32.dp)
+            .alpha(if (enabled) 1f else DISABLED_ALPHA)
             .clip(RoundedCornerShape(16.dp))
             .background(if (active) colors.accentBackground else colors.surface)
-            .tap(onClick = onClick)
+            .tap(enabled = enabled, onClick = onClick)
             .padding(horizontal = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -180,10 +191,11 @@ fun OnOffPills(
     value: Boolean,
     onText: String = stringResource(R.string.toggle_on),
     offText: String = stringResource(R.string.toggle_off),
+    enabled: Boolean = true,
     onChange: (Boolean) -> Unit,
 ) {
-    PillToggle(onText.uppercase(), value) { if (!value) onChange(true) }
-    PillToggle(offText.uppercase(), !value) { if (value) onChange(false) }
+    PillToggle(onText.uppercase(), value, enabled) { if (!value) onChange(true) }
+    PillToggle(offText.uppercase(), !value, enabled) { if (value) onChange(false) }
 }
 
 @Composable
@@ -239,3 +251,5 @@ fun Chip(text: String, active: Boolean, onLongClick: (() -> Unit)? = null, onCli
         QiText(text, sans(13.sp, 500), color = color, maxLines = 1)
     }
 }
+
+private const val DISABLED_ALPHA = 0.35f

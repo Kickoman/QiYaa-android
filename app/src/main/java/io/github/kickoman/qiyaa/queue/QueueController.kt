@@ -32,6 +32,7 @@ data class QueueState(
     val selected: Set<Int> = emptySet(),
     val activeSourceId: String? = null,
     val continueWithVibe: Boolean = false,
+    val waveFromHistory: Boolean = true,
 ) {
     val tracks: List<Track> = entries.map(QueueEntry::track)
 }
@@ -281,8 +282,8 @@ class QueueController(
         val current = engine ?: return
         if (current.itemCount == 0 || current.isEnded) return
         val next = naturalNext(current)?.takeIf { it != current.currentIndex } ?: return
-        val nextId = mutableState.value.tracks.getOrNull(next)?.id ?: return
-        if (outdated(nextId)) current.reload(next)
+        val nextTrack = mutableState.value.tracks.getOrNull(next)?.takeIf(Track::isYandex) ?: return
+        if (outdated(nextTrack.id)) current.reload(next)
     }
 
     private fun skipForward(current: PlayerEngine, target: Int) {
@@ -336,12 +337,13 @@ class QueueController(
 
     private fun onStarted(track: Track) {
         mutableActivity.tryEmit(QueueActivity.TrackStarted)
-        if (jam == null) reportPlay(track)
-        val entry = currentEntry()?.takeIf { it.track.id == track.id }
+        val entry = currentEntry()?.takeIf { it.track.key == track.key }
+        val yandex = (entry?.track ?: track).isYandex
+        if (jam == null && yandex) reportPlay(track)
         val context = entry?.takeIf(::learnsFrom)?.wave
         openWaveContext = context
         if (context != null) sendFeedback(context, WaveEvent.TRACK_STARTED, track, 0.0)
-        if (entry != null && entry.part != EntryPart.CONTINUATION) history.note(track.id)
+        if (yandex && entry != null && entry.part != EntryPart.CONTINUATION) history.note(track.id)
         if (!mutableState.value.isWave) engine?.let(::maybeLoadMore)
     }
 
@@ -608,7 +610,7 @@ class QueueController(
 
     fun setContinueWithVibe(on: Boolean) {
         val state = mutableState.value
-        if (state.isWave || state.continueWithVibe == on) return
+        if (state.isWave || !state.waveFromHistory || state.continueWithVibe == on) return
         mutableState.update { it.copy(continueWithVibe = on) }
         if (on) {
             stalled = false
@@ -630,13 +632,15 @@ class QueueController(
         title: String,
         sourceId: String? = null,
         autoplay: Boolean = true,
+        waveFromHistory: Boolean = true,
+        limit: Int = Int.MAX_VALUE,
         loader: suspend () -> List<Track>,
     ) {
         val ticket = newSourceRequest()
         loadJob?.cancel()
         loadJob =
             scope.launch {
-                val tracks =
+                val found =
                     try {
                         withContext(io) { loader() }
                     } catch (failed: Exception) {
@@ -644,12 +648,14 @@ class QueueController(
                         return@launch
                     }
                 if (!isLatest(ticket)) return@launch
-                if (tracks.none { it.available }) {
+                val available = found.filter { it.available }
+                if (available.isEmpty()) {
                     emit(QueueEvent.SourceEmpty(title))
                     return@launch
                 }
-                setQueue(tracks, title, isWave = false, autoplay = autoplay, sourceId = sourceId)
-                emit(QueueEvent.SourceLoaded(title, tracks.count { it.available }))
+                val tracks = available.take(limit)
+                setQueue(tracks, title, isWave = false, autoplay, sourceId, waveFromHistory)
+                emit(QueueEvent.SourceLoaded(title, tracks.size, cut = available.size > tracks.size))
             }
     }
 
@@ -716,9 +722,16 @@ class QueueController(
             }
     }
 
-    fun setQueue(tracks: List<Track>, title: String, isWave: Boolean, autoplay: Boolean, sourceId: String?) {
+    fun setQueue(
+        tracks: List<Track>,
+        title: String,
+        isWave: Boolean,
+        autoplay: Boolean,
+        sourceId: String?,
+        waveFromHistory: Boolean = true,
+    ) {
         val part = EntryPart.defaultFor(isWave)
-        replaceQueue(tracks.map { QueueEntry(it, part) }, title, isWave, autoplay, sourceId)
+        replaceQueue(tracks.map { QueueEntry(it, part) }, title, isWave, autoplay, sourceId, waveFromHistory)
     }
 
     private fun replaceQueue(
@@ -727,9 +740,10 @@ class QueueController(
         isWave: Boolean,
         autoplay: Boolean,
         sourceId: String?,
+        waveFromHistory: Boolean = true,
     ) {
         if (jam != null) {
-            replaceBase(entries, title, isWave, sourceId)
+            replaceBase(entries, title, isWave, sourceId, waveFromHistory)
             return
         }
         val current = engine
@@ -750,7 +764,8 @@ class QueueController(
                 title = title,
                 isWave = isWave,
                 activeSourceId = sourceId,
-                continueWithVibe = continueWithVibeByDefault(),
+                continueWithVibe = waveFromHistory && continueWithVibeByDefault(),
+                waveFromHistory = waveFromHistory,
             )
         inHead = playable.any { it.part == EntryPart.HEAD }
         headMark = -1
@@ -766,7 +781,13 @@ class QueueController(
         save()
     }
 
-    private fun replaceBase(entries: List<QueueEntry>, title: String, isWave: Boolean, sourceId: String?) {
+    private fun replaceBase(
+        entries: List<QueueEntry>,
+        title: String,
+        isWave: Boolean,
+        sourceId: String?,
+        waveFromHistory: Boolean = true,
+    ) {
         val current = engine
         val before = mutableState.value.entries
         val dropsHeld = holding && before.getOrNull(cursorIndex(current))?.isWaiting == false
@@ -788,7 +809,8 @@ class QueueController(
                 isWave = isWave,
                 selected = emptySet(),
                 activeSourceId = sourceId,
-                continueWithVibe = continueWithVibeByDefault(),
+                continueWithVibe = waveFromHistory && continueWithVibeByDefault(),
+                waveFromHistory = waveFromHistory,
             )
         }
         queueGeneration++
@@ -940,6 +962,7 @@ class QueueController(
     }
 
     fun setLiked(track: Track, liked: Boolean) {
+        if (!track.isYandex) return
         scope.launch {
             try {
                 withContext(io) { source.setLiked(track.id, liked) }
@@ -951,7 +974,8 @@ class QueueController(
     }
 
     fun dislike(track: Track) {
-        val skips = !holding && currentTrack()?.id == track.id
+        if (!track.isYandex) return
+        val skips = !holding && currentTrack()?.key == track.key
         if (skips) dislikeAndSkip(track) else sendDislike(track, QueueEvent.Disliked)
     }
 
@@ -1054,7 +1078,9 @@ class QueueController(
                 title = snapshot.title,
                 isWave = snapshot.isWave,
                 activeSourceId = snapshot.sourceId,
-                continueWithVibe = snapshot.continueWithVibe ?: continueWithVibeByDefault(),
+                continueWithVibe =
+                    snapshot.waveFromHistory && (snapshot.continueWithVibe ?: continueWithVibeByDefault()),
+                waveFromHistory = snapshot.waveFromHistory,
             )
         shuffleRule.onUserChanged(snapshot.shuffle, locked = false)
         repeatRule.onUserChanged(snapshot.repeat, locked = false)
@@ -1118,6 +1144,7 @@ class QueueController(
                 seedsVersions = if (seedsVersions.all { it == null }) emptyList() else seedsVersions,
                 continueWithVibe = state.continueWithVibe,
                 history = history.ids,
+                waveFromHistory = state.waveFromHistory,
             )
         saves.trySend(QueueSnapshotCodec.encode(snapshot))
     }
@@ -1132,7 +1159,7 @@ class QueueController(
         if (remaining(current) > LOAD_MORE_WHEN_LEFT) return
         val fits = own || sessionFitsHint()
         val start = if (session == null || waveSessionStale || !fits) newSessionStart(own) else null
-        val recent = state.tracks.takeLast(WAVE_HISTORY).map { it.id }
+        val recent = state.tracks.takeLast(WAVE_HISTORY).filter(Track::isYandex).map { it.id }
         val version = start?.version ?: waveSeedsVersion
         val request: suspend () -> WaveBatch =
             when {

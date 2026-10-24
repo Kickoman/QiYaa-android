@@ -12,22 +12,27 @@ grep -rln --include='*.kt' '^import io\.github\.kickoman\.qiyaa\.' app/src/main/
 
 | Файл | Содержит |
 |---|---|
-| `Track.kt` | `Track`, `TrackSource` |
+| `Track.kt` | `Track`, `TrackSource`, `TrackKey` |
 
 ## `Track`, `TrackSource`
 
 ```kotlin
 enum class TrackSource(val key: String) { YANDEX("yandex"), LOCAL("local");  companion object { fun fromKey(key: String): TrackSource? } }
+data class TrackKey(val source: TrackSource, val id: String)
 
 data class Track(
     val id: String, val title: String, val artists: List<String> = emptyList(), val albumId: String = "",
     val durationMs: Long = 0, val available: Boolean = true, val coverUrl: String? = null,
-    val source: TrackSource = TrackSource.YANDEX,
+    val source: TrackSource = TrackSource.YANDEX, val bitrateKbps: Int = 0,
 ) {
+    val key: TrackKey          // источник и id: так сравниваются треки
+    val isYandex: Boolean      // when (source) без else
     val artistLine: String     // исполнители через ", "
     val displayTitle: String   // "исполнители - название", без исполнителей — название
 }
 ```
+
+`bitrateKbps` — известный заранее битрейт файла (свой файл: оценка по размеру и длительности, как на ПК), `0` — неизвестен; у трека Яндекса его сообщает подпись ссылки (`playback/CurrentBitrate`).
 
 `source` — откуда трек, как `Core::TrackKey::source` на ПК. Трек один и тот же, только когда совпадают и `source`, и
 `id`: `id` своего у каждого источника, и id трека Яндекса может совпасть с id трека другого источника.

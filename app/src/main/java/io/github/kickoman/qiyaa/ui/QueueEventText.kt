@@ -11,7 +11,11 @@ fun QueueEvent.render(context: Context): String = when (this) {
     is QueueEvent.SearchStarted -> context.getString(R.string.queue_searching, title)
 
     is QueueEvent.SourceLoaded ->
-        context.resources.getQuantityString(R.plurals.queue_loaded, trackCount, title, trackCount)
+        if (cut) {
+            context.resources.getQuantityString(R.plurals.queue_loaded_first, trackCount, title, trackCount)
+        } else {
+            context.resources.getQuantityString(R.plurals.queue_loaded, trackCount, title, trackCount)
+        }
 
     is QueueEvent.SourceEmpty -> context.getString(R.string.queue_empty, title)
 
