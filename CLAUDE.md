@@ -93,6 +93,7 @@ Writing rules for READMEs:
   |---|---|---|
   | `track` | The track model shared by sources, the queue and playback: `Track`, `TrackSource`, `TrackKey` | — (pure JVM) |
   | `yandex` | Yandex Music HTTP API, OAuth, link signing | `track` (pure JVM) |
+  | `spotify` | Spotify client; so far `protocol/`, the sans-IO core: access point handshake and packets, login messages, hashcash, audio keys, file decryption | `track` (pure JVM); `protocol/` imports nothing from the app, nor OkHttp, coroutines or `java.net` |
   | `audio` | DSP: equalizer, FFT, spectrum, visualizer ring, PCM | — (pure JVM) |
   | `data` | Persistence: settings and token | `audio` |
   | `jam` | Jam client: protocol codec, connection, the host's stored session | — (pure JVM) |
@@ -104,14 +105,17 @@ Writing rules for READMEs:
   | `telemetry` | Anonymous statistics and crash reports: events, the crash handler, the run's files, sending, the schedule and the switch | — (pure JVM; only root imports it) |
   | root | `AppGraph`, `QiYaaApp` (composition root), `NetworkMonitor` (platform signals), `AppTelemetry`, `TelemetryCodes` (telemetry wiring), `YandexLyrics`, `SourceLyrics` (lyrics sources: Yandex's, and the choice by the track's source) | everything |
 
-  Dependencies point down the table only. `track`, `yandex` and `audio` are pure JVM
+  Dependencies point down the table only. `track`, `yandex`, `spotify` and `audio` are pure JVM
   and must not import `android.*` or `androidx.*`; that keeps them testable on
   the JVM without Robolectric:
 
   ```bash
-  grep -rlnE --include='*.kt' '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiyaa/{track,yandex,audio,queue,jam,telemetry,lyrics}/   # must print nothing
-  grep -rln --include='*.kt' 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/{track,yandex,audio,data,queue,playback,lyrics}/    # must print nothing
-  grep -rlnE --include='*.kt' 'qiyaa\.(track|yandex|audio|data|jam|queue|playback|ui|local|lyrics)\.' app/src/main/java/io/github/kickoman/qiyaa/telemetry/   # must print nothing
+  grep -rlnE --include='*.kt' '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiyaa/{track,yandex,spotify,audio,queue,jam,telemetry,lyrics}/   # must print nothing
+  grep -rln --include='*.kt' 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/{track,yandex,spotify,audio,data,queue,playback,lyrics}/    # must print nothing
+  grep -rlnE --include='*.kt' 'qiyaa\.(yandex|audio|data|jam|lyrics|local|queue|playback|ui|telemetry)\.' app/src/main/java/io/github/kickoman/qiyaa/spotify/   # must print nothing
+  grep -rnE --include='*.kt' '^import (okhttp3|kotlinx\.coroutines|java\.net)\.' app/src/main/java/io/github/kickoman/qiyaa/spotify/protocol/                 # must print nothing: sans-IO
+  grep -rn --include='*.kt' '^import io\.github\.kickoman\.qiyaa\.' app/src/main/java/io/github/kickoman/qiyaa/spotify/protocol/ | grep -v 'qiyaa\.spotify\.protocol\.'   # must print nothing
+  grep -rlnE --include='*.kt' 'qiyaa\.(track|yandex|spotify|audio|data|jam|queue|playback|ui|local|lyrics)\.' app/src/main/java/io/github/kickoman/qiyaa/telemetry/   # must print nothing
   grep -rlnE --include='*.kt' 'qiyaa\.(yandex|audio|data|jam|local|queue|playback|ui|telemetry)\.' app/src/main/java/io/github/kickoman/qiyaa/lyrics/   # must print nothing
   grep -rln --include='*.kt' '^import io\.github\.kickoman\.qiyaa\.' app/src/main/java/io/github/kickoman/qiyaa/track/   # must print nothing
   grep -rlnE --include='*.kt' 'qiyaa\.(yandex|audio|data|jam|queue|playback|ui|telemetry)\.' app/src/main/java/io/github/kickoman/qiyaa/local/   # must print nothing
