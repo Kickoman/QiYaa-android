@@ -1,5 +1,6 @@
 package io.github.kickoman.qiyaa.local
 
+import io.github.kickoman.qiyaa.support.localRow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

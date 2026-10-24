@@ -72,7 +72,7 @@ class NaturalOrder(locale: Locale = Locale.getDefault()) : Comparator<String> { 
 - **«Все треки»** и **папка** — по пути; папка берётся с подпапками (как LOCAL-02), а в списке папок — те, где лежит хотя бы один файл, по пути; ключ папки — том и путь, так что `Music/` во внутренней памяти и на SD-карте — разные папки;
 - **альбом** — по `TRACK` (диск × 1000 + номер), потом по названию, потом по пути; **исполнитель** — по названию альбома, альбомы одного названия — по `ALBUM_ID`, потом как альбом; списки альбомов и исполнителей — по имени (исполнитель без имени — `""`, первым), альбомы одного имени — по `ALBUM_ID`, так что порядок полный и не зависит от порядка строк медиатеки.
 
-`LocalPicks` сортирует всё в конструкторе: на 10 000 строках с `Collator` это заметное время, поэтому строить его не на главном потоке.
+`LocalPicks` сортирует всё в конструкторе: n log n сравнений с `Collator`, поэтому строить его не на главном потоке; время на 10 000 строк — в проверке на телефоне (#118).
 
 Предел в 10 000 (LOCAL-12) режет очередь: `queue.loadSource(…, limit = 10_000)`, и событие говорит «первые N».
 
@@ -86,7 +86,7 @@ LOCAL-14. После старта `AppGraph.checkRestoredLocalQueue` на `Dispa
 
 ## Тесты
 
-`app/src/test/.../local/`: `NaturalOrderTest`, `LocalPicksTest` (LOCAL-11), `LocalTracksTest` (LOCAL-04, LOCAL-05, LOCAL-13), `LocalCheckTest` (LOCAL-14); строки для них — `LocalRows.kt`. Очистку очереди проверяет `queue/QueueLocalTest` (LOCAL-14). `LocalLibrary` — запрос к системе — проверяется на телефоне (Kickoman/QiYaa-android#118).
+`app/src/test/.../local/`: `NaturalOrderTest`, `LocalPicksTest` (LOCAL-11), `LocalTracksTest` (LOCAL-04, LOCAL-05, LOCAL-13), `LocalCheckTest` (LOCAL-14); строки для них — `support/LocalRows.kt`. Очистку очереди проверяет `queue/QueueLocalTest` (LOCAL-14). `LocalLibrary` — запрос к системе — проверяется на телефоне (Kickoman/QiYaa-android#118).
 
 ## Not here
 

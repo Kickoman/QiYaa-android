@@ -1,5 +1,6 @@
 package io.github.kickoman.qiyaa.local
 
+import io.github.kickoman.qiyaa.support.localRow
 import io.github.kickoman.qiyaa.track.TrackSource
 import java.util.Locale
 import org.junit.Assert.assertEquals

@@ -1,5 +1,8 @@
 package io.github.kickoman.qiyaa.local
 
+import io.github.kickoman.qiyaa.support.CARD
+import io.github.kickoman.qiyaa.support.PRIMARY
+import io.github.kickoman.qiyaa.support.localRow
 import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -76,10 +79,11 @@ class LocalPicksTest {
         assertEquals(listOf(LocalArtist("", 3), LocalArtist("Band", 2)), picks.artists)
         val twins =
             listOf(
-                localRow(1, "x", "Greatest Hits", 20, 1, "B", file = "1.mp3"),
-                localRow(2, "y", "Greatest Hits", 10, 1, "A", file = "2.mp3"),
+                localRow(1, "x", "Greatest Hits", 20, 1, "A", file = "1.mp3", artist = "Band"),
+                localRow(2, "y", "Greatest Hits", 10, 1, "B", file = "2.mp3", artist = "Band"),
             )
-        val albums = LocalPicks(twins, NaturalOrder(Locale.ROOT)).albums
-        assertEquals(listOf(10L, 20L), albums.map(LocalAlbum::id))
+        val picks = LocalPicks(twins, NaturalOrder(Locale.ROOT))
+        assertEquals(listOf(10L, 20L), picks.albums.map(LocalAlbum::id))
+        assertEquals(listOf(2L, 1L), picks.rowsOf(LocalPick.Artist("Band")).map(LocalRow::id))
     }
 }
