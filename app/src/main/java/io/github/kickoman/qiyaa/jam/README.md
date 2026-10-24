@@ -13,7 +13,7 @@
 
 ```bash
 grep -rlnE '^import (android|androidx|io\.github\.kickoman)' app/src/main/java/io/github/kickoman/qiyaa/jam/   # ничего не печатает
-grep -nE '\\\\[sSpP]' app/src/main/java/io/github/kickoman/qiyaa/jam/{JamCodec,JamNames}.kt               # ничего не печатает: «Ловушки» JamCodec
+grep -nE '\\\\[sSpPdDwWbB]' app/src/main/java/io/github/kickoman/qiyaa/jam/{JamCodec,JamNames}.kt         # ничего не печатает: «Ловушки» JamCodec
 ```
 
 | Файл | Содержит |
@@ -58,6 +58,8 @@ object JamCodec {
     fun decodeServer(text: String): Decoded<ServerMessage>
     fun decodeClient(text: String): Decoded<ClientMessage>
     fun isUnknownReason(decoded: Decoded<ServerMessage>): Boolean
+    fun isListenUrl(url: String): Boolean          // ссылка на файл хранилища Яндекса (LISTEN-04), ≤ 400 кодовых точек
+    fun isCoverUri(template: String): Boolean      // шаблон обложки с %%, ≤ 300 кодовых точек
 }
 sealed interface Decoded<out T> { Message(message); UnknownType; Invalid(problem) }
 ```
@@ -90,7 +92,7 @@ U+205F, U+3000, U+FEFF, но не U+0085. Из этой строки собра�
   `"source":"yandex"`; треки, которые строит само приложение, — без ключа.
 - `\s` одной и той же регулярки JVM и телефон читают по-разному: на JVM тестов это ASCII-пробелы, на Android
   (`java.util.regex` поверх ICU) — Unicode White_Space, с U+0085 и без U+FEFF. Ни то ни другое не ECMAScript.
-  Поэтому в шаблонах `JamCodec` и `JamNames` нет `\s`, `\S` и `\p{…}`, а пробелы берутся из
+  Поэтому в шаблонах `JamCodec` и `JamNames` нет `\s`, `\S`, `\p{…}`, а заодно `\d`, `\w` и `\b`, которые тоже читаются по-разному, а пробелы берутся из
   `ECMASCRIPT_SPACES`: тогда JVM-тесты описывают и телефон. `isBlank()` и `trim()` Kotlin тоже не считают
   U+FEFF пробелом: имена перед отправкой чистит `JamNames`.
 

@@ -9,8 +9,8 @@ import io.github.kickoman.qiyaa.yandex.TrackParsing
 object JamTracks {
     const val MAX_ARTISTS = 10
     const val MAX_NAME = 64
-    const val MAX_COVER = 300
     const val MAX_TITLE = 150
+    const val MAX_COVER = 300
     const val MAX_DURATION_MS = 86_400_000L
     private val CATALOG_ID = Regex("^[0-9A-Za-z_-]{1,64}$")
     private val CONTROL = Regex("[\\u0000-\\u001F\\u007F]")

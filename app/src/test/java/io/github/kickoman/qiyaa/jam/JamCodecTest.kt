@@ -50,7 +50,7 @@ class JamCodecTest {
     }
 
     @Test
-    fun `a name ending in any ECMAScript white space is refused, one ending in U+0085 passes`() {
+    fun `ECMAScript white space at an edge of a name is refused, inside it passes, so does U+0085`() {
         for (space in ECMASCRIPT_SPACES) {
             val label = "U+%04X".format(space.code)
             assertFalse(label, decodes(Create("h1", "Маша$space")))
@@ -73,18 +73,24 @@ class JamCodecTest {
     }
 
     @Test
-    fun `a cover template, a listen link and a join link with ECMAScript white space are refused`() {
+    fun `a cover template and a join link with ECMAScript white space are refused`() {
         val track = JamTrack("1695498", "168137", "Что такое осень", listOf("ДДТ"), 297_700)
         val cover = "avatars.yandex.net/get-music-content/34131/73fed284.a.168137-2/%%"
         val joinUrl = "https://jam.example.org/party/j/7k3m9q2x#WDkyFgMr5iV3hKwManPvsg"
         assertTrue(decodes(Add("q1", track = track.copy(coverUri = cover))))
-        assertTrue(JamCodec.isListenUrl(LISTEN_URL))
         assertTrue(decodes(created(joinUrl)))
         for (space in listOf("\u2028", "\u3000", "\uFEFF")) {
             val label = "U+%04X".format(space.single().code)
             assertFalse(label, decodes(Add("q1", track = track.copy(coverUri = cover + space))))
-            assertFalse(label, JamCodec.isListenUrl("$LISTEN_URL$space"))
             assertFalse(label, decodes(created(joinUrl.replace("/party/", "/par${space}ty/"))))
+        }
+    }
+
+    @Test
+    fun `LISTEN-04 a listen link with ECMAScript white space in its path is not a file of the storage`() {
+        assertTrue(JamCodec.isListenUrl(LISTEN_URL))
+        for (space in listOf("\u00A0", "\u2028", "\u3000", "\uFEFF")) {
+            assertFalse("U+%04X".format(space.single().code), JamCodec.isListenUrl("$LISTEN_URL$space"))
         }
     }
 
