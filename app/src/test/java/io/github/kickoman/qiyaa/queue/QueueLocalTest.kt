@@ -144,6 +144,33 @@ class QueueLocalTest {
             assertFalse(QueueHarness(this).controller.clearIfRestored())
         }
 
+    @Test
+    fun `LOCAL-14 HOST-23 a restored queue is not cleared during a jam, nor after one`() = runTest {
+        val h = QueueHarness(this)
+        h.controller.loadSource("Files") { listOf(local("42"), local("43")) }
+        runCurrent()
+        val during = QueueHarness(this, store = FakeQueueStore(h.store.text))
+        during.controller.startJam(Silent, waveFeedback = false)
+        assertFalse(during.controller.clearIfRestored())
+        assertEquals(listOf("42", "43"), during.controller.state.value.tracks.map { it.id })
+        val after = QueueHarness(this, store = FakeQueueStore(h.store.text))
+        after.controller.startJam(Silent, waveFeedback = false, afterRestart = true)
+        after.controller.onJamQueue(listOf(JamEntry("i1", yandex("X"), "g1")), emptyList(), 0)
+        after.controller.endJam()
+        runCurrent()
+        val left = after.controller.state.value.tracks.map { it.id }
+        assertFalse(after.controller.clearIfRestored())
+        assertEquals(left, after.controller.state.value.tracks.map { it.id })
+    }
+
+    private object Silent : JamPlaybackListener {
+        override fun onItemStarted(itemId: String) = Unit
+
+        override fun onPlayback(playback: JamPlayback) = Unit
+
+        override fun onRemoveItems(itemIds: List<String>) = Unit
+    }
+
     private fun yandex(id: String) = Track(id = id, title = "T$id")
 
     private fun local(id: String) = Track(id = id, title = "Свой $id", source = TrackSource.LOCAL)

@@ -110,7 +110,7 @@ Writing rules for READMEs:
   ```bash
   grep -rlnE --include='*.kt' '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiyaa/{track,yandex,audio,queue,jam,telemetry}/   # must print nothing
   grep -rln --include='*.kt' 'qiyaa\.ui\.' app/src/main/java/io/github/kickoman/qiyaa/{track,yandex,audio,data,queue,playback}/           # must print nothing
-  grep -rlnE --include='*.kt' 'qiyaa\.(track|yandex|audio|data|jam|queue|playback|ui)\.' app/src/main/java/io/github/kickoman/qiyaa/telemetry/   # must print nothing
+  grep -rlnE --include='*.kt' 'qiyaa\.(track|yandex|audio|data|jam|queue|playback|ui|local)\.' app/src/main/java/io/github/kickoman/qiyaa/telemetry/   # must print nothing
   grep -rln --include='*.kt' '^import io\.github\.kickoman\.qiyaa\.' app/src/main/java/io/github/kickoman/qiyaa/track/   # must print nothing
   grep -rlnE --include='*.kt' 'qiyaa\.(yandex|audio|data|jam|queue|playback|ui|telemetry)\.' app/src/main/java/io/github/kickoman/qiyaa/local/   # must print nothing
   ```

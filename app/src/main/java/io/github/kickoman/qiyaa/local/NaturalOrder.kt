@@ -3,7 +3,7 @@ package io.github.kickoman.qiyaa.local
 import java.text.Collator
 import java.util.Locale
 
-class NaturalOrder(private val locale: Locale = Locale.getDefault()) : Comparator<String> {
+class NaturalOrder(locale: Locale = Locale.getDefault()) : Comparator<String> {
     private val collator = Collator.getInstance(locale)
 
     override fun compare(a: String, b: String): Int {
@@ -32,7 +32,7 @@ class NaturalOrder(private val locale: Locale = Locale.getDefault()) : Comparato
             aDigits && bDigits -> compareNumbers(a, b)
             aDigits -> -1
             bDigits -> 1
-            else -> collator.compare(a.lowercase(locale), b.lowercase(locale))
+            else -> collator.compare(a.lowercase(Locale.ROOT), b.lowercase(Locale.ROOT))
         }
     }
 

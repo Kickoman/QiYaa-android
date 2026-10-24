@@ -6,7 +6,6 @@ import android.content.pm.PackageManager
 import android.database.Cursor
 import android.media.MediaCodecList
 import android.media.MediaFormat
-import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import androidx.core.content.ContextCompat
@@ -28,32 +27,29 @@ class LocalLibrary(private val context: Context) {
     fun hasPermission(): Boolean =
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 
-    fun rows(): List<LocalRow> = query(MUSIC, emptyArray())
+    fun rows(): List<LocalRow> = query(MUSIC, emptyArray()).filter {
+        LocalTracks.isTaken(it.mimeType, flacDecodes)
+    }
 
     fun rowsById(ids: List<Long>): Map<Long, LocalRow> = ids.chunked(IDS_PER_QUERY).flatMap { chunk ->
         val marks = chunk.joinToString(",") { "?" }
-        query(
-            "$MUSIC AND ${MediaStore.Audio.Media._ID} IN ($marks)",
-            chunk.map(Long::toString).toTypedArray(),
-        )
+        query("${MediaStore.Audio.Media._ID} IN ($marks)", chunk.map(Long::toString).toTypedArray())
     }.associateBy(LocalRow::id)
 
     private fun query(selection: String, arguments: Array<String>): List<LocalRow> {
         val rows = ArrayList<LocalRow>()
-        context.contentResolver.query(collection(), projection(), selection, arguments, null)?.use { cursor ->
-            val columns = Columns(cursor)
-            while (cursor.moveToNext()) {
-                val row = columns.read(cursor)
-                if (LocalTracks.isTaken(row.mimeType, flacDecodes)) rows += row
-            }
+        val resolver = context.contentResolver
+        resolver.query(
+            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+            projection(),
+            selection,
+            arguments,
+            null,
+        )?.use {
+            val columns = Columns(it)
+            while (it.moveToNext()) rows += columns.read(it)
         }
         return rows
-    }
-
-    private fun collection(): Uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
-    } else {
-        MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
     }
 
     private fun projection(): Array<String> {
@@ -74,7 +70,6 @@ class LocalLibrary(private val context: Context) {
             columns += MediaStore.Audio.Media.VOLUME_NAME
             columns += MediaStore.Audio.Media.RELATIVE_PATH
         } else {
-            @Suppress("DEPRECATION") // The only folder column before Android 10; still readable there.
             columns += MediaStore.Audio.Media.DATA
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) columns += MediaStore.Audio.Media.BITRATE

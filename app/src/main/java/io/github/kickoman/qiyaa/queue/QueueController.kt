@@ -1292,6 +1292,7 @@ class QueueController(
 
     fun startJam(listener: JamPlaybackListener, waveFeedback: Boolean, afterRestart: Boolean = false) {
         if (jam != null) return
+        restoredTicket = null
         if (afterRestart) replaceBase(emptyList(), title = "", isWave = false, sourceId = null)
         val run = JamRun(listener, waveFeedback)
         jam = run

@@ -23,7 +23,7 @@ data class LocalFolder(val volume: String, val path: List<String>)
 object LocalTracks {
     const val UNKNOWN = "<unknown>"
     const val FLAC = "audio/flac"
-    private const val COVER_URI = "content://media/external/audio/media/%d/albumart"
+    private const val MEDIA_URI = "content://media/external/audio/media/"
     private val TAKEN =
         setOf(
             "audio/mpeg",
@@ -48,7 +48,7 @@ object LocalTracks {
         title = title(row),
         artists = listOfNotNull(row.artist?.takeIf { it.isNotBlank() && it != UNKNOWN }),
         durationMs = row.durationMs.coerceAtLeast(0),
-        coverUrl = COVER_URI.format(row.id),
+        coverUrl = "$MEDIA_URI${row.id}/albumart",
         source = TrackSource.LOCAL,
         bitrateKbps = bitrateKbps(row),
     )
