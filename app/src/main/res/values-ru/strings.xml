@@ -362,7 +362,7 @@
     <string name="lyrics_from_lrc">Файл LRC</string>
     <string name="lyrics_from_tags">Теги файла</string>
     <string name="lyrics_from_lrclib">LRCLIB</string>
-    <string name="lyrics_better">ищу текст с метками…</string>
+    <string name="lyrics_better">ещё ищу…</string>
     <string name="lyrics_title">ТЕКСТЫ</string>
     <string name="lyrics_lrclib_title">Тексты из LRCLIB</string>
     <string name="lyrics_lrclib_note">По умолчанию выключено. LRCLIB — открытая база текстов: она узнаёт название и первого исполнителя каждого трека, о котором её спрашивают, и адрес телефона.</string>

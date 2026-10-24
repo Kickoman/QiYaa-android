@@ -374,7 +374,7 @@
     <string name="lyrics_from_lrc">LRC file</string>
     <string name="lyrics_from_tags">File tags</string>
     <string name="lyrics_from_lrclib">LRCLIB</string>
-    <string name="lyrics_better">looking for synced lyrics…</string>
+    <string name="lyrics_better">still looking…</string>
     <string name="lyrics_title">LYRICS</string>
     <string name="lyrics_lrclib_title">Lyrics from LRCLIB</string>
     <string name="lyrics_lrclib_note">Off by default. LRCLIB is an open database of lyrics: it learns the title and the first artist of each track it is asked about, and the phone’s address.</string>

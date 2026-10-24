@@ -2,6 +2,7 @@ package io.github.kickoman.qiyaa.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -28,10 +30,12 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -76,13 +80,22 @@ fun LyricsPanel(
     Column(modifier) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
             val lyrics = view.lyrics
-            when {
-                view.phase == LyricsPhase.SHOWN && lyrics?.kind == LyricsKind.SYNCED ->
-                    SyncedLines(lyrics, currentLine(lyrics, view, place), place.canSeek, onSeek)
+            key(view.track?.key, lyrics) {
+                when {
+                    view.phase == LyricsPhase.SHOWN && lyrics?.kind == LyricsKind.SYNCED ->
+                        SyncedLines(lyrics, currentLine(lyrics, view, place), place.canSeek, onSeek)
 
-                view.phase == LyricsPhase.SHOWN && lyrics != null -> PlainLines(lyrics, onCover)
+                    view.phase == LyricsPhase.SHOWN && lyrics != null -> PlainLines(lyrics, onCover)
 
-                else -> LyricsStatus(view.phase, canSearchThirdParty, onCover, onSearchThirdParty)
+                    else ->
+                        LyricsStatus(
+                            view.phase,
+                            hasTrack = place.current != null,
+                            canSearchThirdParty,
+                            onCover,
+                            onSearchThirdParty,
+                        )
+                }
             }
         }
         LyricsFooter(view, onCover)
@@ -166,9 +179,15 @@ private fun SyncedLines(lyrics: Lyrics, current: Int, canSeek: Boolean, onSeek: 
         }
     }
     LaunchedEffect(current, follow) {
-        if (!follow || current < 0) return@LaunchedEffect
-        val viewport = listState.layoutInfo.viewportEndOffset - listState.layoutInfo.viewportStartOffset
-        listState.animateScrollToItem(current, -viewport / 2)
+        if (!follow) return@LaunchedEffect
+        if (current < 0) {
+            listState.animateScrollToItem(0)
+            return@LaunchedEffect
+        }
+        val layout = listState.layoutInfo
+        val viewport = layout.viewportEndOffset - layout.viewportStartOffset
+        val size = layout.visibleItemsInfo.firstOrNull { it.index == current }?.size ?: 0
+        listState.animateScrollToItem(current, -(viewport - size) / 2)
     }
     LazyColumn(
         Modifier.fillMaxSize().padding(horizontal = 12.dp),
@@ -183,6 +202,7 @@ private fun SyncedLines(lyrics: Lyrics, current: Int, canSeek: Boolean, onSeek: 
                 Modifier
                     .fillMaxWidth()
                     .tap(enabled = canSeek && time != null) { time?.let(onSeek) }
+                    .semantics { selected = index == current }
                     .padding(vertical = 6.dp),
                 color = if (index == current) colors.accent else colors.muted,
                 textAlign = TextAlign.Center,
@@ -197,7 +217,7 @@ private fun PlainLines(lyrics: Lyrics, onCover: () -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
-            .tap(onClick = onCover)
+            .pointerInput(onCover) { detectTapGestures { onCover() } }
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -217,6 +237,7 @@ private fun PlainLines(lyrics: Lyrics, onCover: () -> Unit) {
 @Composable
 private fun LyricsStatus(
     phase: LyricsPhase,
+    hasTrack: Boolean,
     canSearchThirdParty: Boolean,
     onCover: () -> Unit,
     onSearchThirdParty: () -> Unit,
@@ -224,7 +245,7 @@ private fun LyricsStatus(
     val colors = Qi.colors
     val text =
         when (phase) {
-            LyricsPhase.IDLE -> R.string.lyrics_nothing
+            LyricsPhase.IDLE -> if (hasTrack) null else R.string.lyrics_nothing
             LyricsPhase.LOADING -> R.string.lyrics_loading
             LyricsPhase.MISSING, LyricsPhase.SHOWN -> R.string.lyrics_missing
             LyricsPhase.INSTRUMENTAL -> R.string.lyrics_instrumental
@@ -232,11 +253,11 @@ private fun LyricsStatus(
             LyricsPhase.NO_ACCOUNT -> R.string.lyrics_no_account
         }
     Column(
-        Modifier.fillMaxSize().tap(onClick = onCover).padding(16.dp),
+        Modifier.fillMaxSize().pointerInput(onCover) { detectTapGestures { onCover() } }.padding(16.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        QiText(stringResource(text), HintStyle, color = colors.dim, textAlign = TextAlign.Center)
+        text?.let { QiText(stringResource(it), HintStyle, color = colors.dim, textAlign = TextAlign.Center) }
         val noText =
             phase == LyricsPhase.MISSING || phase == LyricsPhase.NO_ACCOUNT || phase == LyricsPhase.FAILED
         if (noText && canSearchThirdParty) {

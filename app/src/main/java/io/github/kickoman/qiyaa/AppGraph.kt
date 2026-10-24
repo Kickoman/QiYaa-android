@@ -221,7 +221,7 @@ class AppGraph(val context: Context) {
 
     val lyricsFinder =
         LyricsFinder(
-            scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+            scope = mainScope,
             source = SourceLyrics(
                 YandexLyrics(api::lyricsText) {
                     session.state.value.signedIn

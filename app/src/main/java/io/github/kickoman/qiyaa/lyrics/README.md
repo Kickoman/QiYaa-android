@@ -126,7 +126,7 @@ class Lrclib(client: OkHttpClient, appVersion: String, baseUrl: String = "https:
 
 ## В приложении
 
-`AppGraph` держит один `LyricsFinder` на процесс (память переживает пересоздание активности) на своём `CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)` — однопоточном, как он требует (`applicationScope` графа многопоточный и не годится):
+`AppGraph` держит один `LyricsFinder` на процесс (память переживает пересоздание активности) на своём `mainScope` (`SupervisorJob() + Dispatchers.Main.immediate`) — однопоточном, как он требует (`applicationScope` графа многопоточный и не годится):
 - `source` — корневой `SourceLyrics`: `when (track.source)` без `else` — `YandexLyrics` для Яндекса, `local/LocalLyrics` для своих файлов, так что Spotify (#113) остановит компиляцию здесь;
 - `thirdParty` — `Lrclib(httpClient, BuildConfig.VERSION_NAME)`;
 - `currentTrack` — `AppGraph.lyricsTrack` (его пишет `PlayerViewModel`), `active` — `lyricsShown && lyricsOnScreen`, `thirdPartyEnabled` — `Settings.lyricsThirdParty`, `connectivity` — `NetworkMonitor.available`, `signedIn` — `Session.state.signedIn` (токен API ставится раньше, чем состояние становится «вошёл», поэтому первый запрос после входа уже с ним);
