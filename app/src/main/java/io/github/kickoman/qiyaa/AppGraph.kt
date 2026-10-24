@@ -16,6 +16,8 @@ import io.github.kickoman.qiyaa.jam.JamGuest
 import io.github.kickoman.qiyaa.jam.JamGuestStore
 import io.github.kickoman.qiyaa.jam.JamSessionStore
 import io.github.kickoman.qiyaa.jam.JamStore
+import io.github.kickoman.qiyaa.local.LocalCheck
+import io.github.kickoman.qiyaa.local.LocalLibrary
 import io.github.kickoman.qiyaa.playback.JamCatalog
 import io.github.kickoman.qiyaa.playback.JamHost
 import io.github.kickoman.qiyaa.playback.JamHostConfig
@@ -45,6 +47,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 
 class AppGraph(val context: Context) {
@@ -105,6 +108,28 @@ class AppGraph(val context: Context) {
                 settings.shuffleAlgorithm.collect { controller.setShuffleAlgorithm(algorithmOf(it)) }
             }
         }
+
+    val localLibrary = LocalLibrary(context)
+
+    init {
+        mainScope.launch { checkRestoredLocalQueue() }
+    }
+
+    private suspend fun checkRestoredLocalQueue() {
+        val saved = queue.state.value.tracks
+        val ids = LocalCheck.localIds(saved)
+        if (ids.isEmpty() || !localLibrary.hasPermission()) return
+        val found =
+            try {
+                withContext(Dispatchers.IO) { localLibrary.rowsById(ids) }
+            } catch (failed: Exception) {
+                Log.w(LOG_TAG, "Checking the restored local queue failed", failed)
+                return
+            }
+        if (LocalCheck.renumbered(saved, found) && queue.clearIfRestored()) {
+            Log.i(LOG_TAG, "The media library was renumbered: the restored local queue is cleared (LOCAL-14)")
+        }
+    }
 
     val qualityInEffect: StateFlow<Quality> =
         combine(
