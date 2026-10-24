@@ -1,11 +1,11 @@
 # `local/` — свои файлы из медиатеки телефона
 
-Свои файлы пользователя — из медиатеки телефона (`MediaStore`), а не открытием файлов и папок, как на ПК (`spec/player/local.md`, LOCAL-10…14). Пакет читает медиатеку, раскладывает её на выборы («Все треки», альбомы, исполнители, папки) в порядке ПК и сверяет восстановленную очередь с медиатекой. Он ничего не играет: свой трек — `track.Track` с `TrackSource.LOCAL`, а играет его `playback/` (`content://`, `LocalMediaSources`). Экран и разрешение — `ui/`. Очередь получает выбор через `queue.loadSource`, как альбом: своего `MusicSource` у медиатеки нет.
+Свои файлы пользователя — из медиатеки телефона (`MediaStore`), а не открытием файлов и папок, как на ПК (`spec/player/local.md`, LOCAL-10…14). Пакет читает медиатеку, раскладывает её на выборы («Все треки», альбомы, исполнители, папки) в порядке ПК, сверяет восстановленную очередь с медиатекой и читает тексты своих файлов (`.lrc` и теги, LYR-10) — как источник для `lyrics/`. Он ничего не играет: свой трек — `track.Track` с `TrackSource.LOCAL`, а играет его `playback/` (`content://`, `LocalMediaSources`). Экран и разрешение — `ui/`. Очередь получает выбор через `queue.loadSource`, как альбом: своего `MusicSource` у медиатеки нет.
 
 Андроидный пакет (`LocalLibrary` — `ContentResolver`), но всё, что решает, — чистые функции в отдельных файлах, их тесты идут на JVM:
 
 ```bash
-grep -lE '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiyaa/local/{NaturalOrder,LocalTracks,LocalPicks,LocalCheck}.kt   # ничего не печатает
+grep -lE '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiyaa/local/{NaturalOrder,LocalTracks,LocalPicks,LocalCheck,LocalLyricsFiles}.kt   # ничего не печатает
 ```
 
 | Файл | Содержит |
@@ -15,6 +15,9 @@ grep -lE '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiyaa
 | `LocalPicks.kt` | `LocalPick`, `LocalAlbum`, `LocalArtist`, `LocalFolderPick`, `LocalPicks` — выборы и их порядок |
 | `NaturalOrder.kt` | `NaturalOrder` — естественный порядок имён и путей, как на ПК |
 | `LocalCheck.kt` | `LocalCheck` — сверка восстановленной очереди (LOCAL-14) |
+| `LocalLyrics.kt` | `LocalLyrics` — текст своего файла как `lyrics.LyricsSource` (LYR-10): где файл, `.lrc` рядом, теги |
+| `LocalLyricsFiles.kt` | `LocalLyricsFiles` — имя `.lrc`, его кодировка, кадр USLT, чанк `id3 ` у WAV, порядок `.lrc` и тегов |
+| `TagLyrics.kt` | `TagLyrics` — текст из записей метаданных Media3 (ID3, MP4, Vorbis) |
 
 ## `LocalLibrary`
 
@@ -87,9 +90,45 @@ object LocalCheck { fun localIds(tracks: List<Track>): List<Long>;  fun renumber
 
 LOCAL-14. `AppGraph.checkRestoredLocalQueue` один раз за процесс, как только есть разрешение (на старте или когда его выдали, `ui/README.md`), на `Dispatchers.IO` спрашивает медиатеку о `_ID` своих треков восстановленной очереди (`rowsById`). Спрашивает без `IS_MUSIC` и без фильтра форматов: после пересборки старый `_ID` может указать на запись диктофона, будильник или `.amr`, а отброшенная строка выглядела бы как пропавший файл, и очередь сыграла бы чужой файл под старым названием. Если медиатека даёт хоть одному из них другое название (по тому же правилу `title`) или длительность, база перенумерована, и `queue.clearIfRestored()` очищает очередь — только если её никто не заменил после восстановления. Пропавший файл (строки нет) очереди не трогает: он упадёт при игре (LOCAL-07). Пока разрешения нет, сверки нет. `MediaStore.getVersion` для этого не годится: на API 26–28 это версия самого провайдера (очистка данных её не меняет), а на 29+ она меняется и при обновлении модуля, когда `_ID` живы.
 
+## `LocalLyrics`, `LocalLyricsFiles`, `TagLyrics` — тексты своих файлов (LYR-10)
+
+```kotlin
+class LocalLyrics(context: Context) : LyricsSource          // всё на Dispatchers.IO
+object LocalLyricsFiles {
+    const val MAX_TAG_CHUNK_BYTES = 64 * 1024 * 1024
+    fun lrcNameFor(audioName: String, names: List<String>): String?   // то же имя, ".lrc" в любом регистре; первое по имени
+    fun decodeLrc(bytes: ByteArray): String                            // BOM UTF-8/UTF-16, иначе строгий UTF-8, иначе windows-1251
+    fun usltText(frame: ByteArray): String?                            // тело USLT/ULT: кодировка 0–3, язык, описание, текст
+    fun riffId3(input: InputStream): ByteArray?                        // чанк "id3 "/"ID3 " WAV-файла
+    fun readLimited(input: InputStream, limit: Int): ByteArray?        // null — больше limit
+    fun choose(lrc: Lyrics?, tags: Lyrics?): LyricsAnswer
+}
+@UnstableApi object TagLyrics { fun textOf(entries: List<Metadata.Entry>): String?;  fun entriesOf(metadata: Metadata?): List<Metadata.Entry> }
+```
+
+Порт `src/sources/local/lyrics.cpp` десктопа; правило — `spec/player/lyrics.md`, LYR-10, с оговорками Android ниже.
+
+1. **Где файл.** Запрос к `MediaStore.Audio.Media` по `_ID`: `DISPLAY_NAME`, `MIME_TYPE`, с API 29 — `VOLUME_NAME` и `RELATIVE_PATH`, до него — `DATA`.
+2. **`.lrc` рядом** — то же имя, расширение `.lrc` в любом регистре, первое по имени (`lrcNameFor`, как `LrcPathOf` десктопа):
+   - API 30+: `MediaStore.Files` того же тома и `RELATIVE_PATH` с `MEDIA_TYPE_SUBTITLE` (5): `.lrc` медиатека считает субтитрами и с правом на аудио отдаёт. Имя сравнивается в коде, не `LIKE`: тот не различает регистр только в ASCII, а `_` и `%` в имени пришлось бы экранировать. Читается через content URI.
+   - API 26–28: список папки `File(DATA).parentFile`, право на чтение хранилища это даёт.
+   - API 29: не читается: `.lrc` там `MEDIA_TYPE_NONE`, а чужие немедийные файлы scoped storage не отдаёт. `requestLegacyExternalStorage` не взят: он меняет всё хранилище ради одного случая. На Android 10 — только теги.
+   - Больше 256 КиБ (LYR-11) — не читается: `readLimited` останавливается на 256 КиБ + 1 байте, у папки ещё раньше — по `File.length`.
+   - Кодировка (`decodeLrc`): BOM UTF-8 или UTF-16, иначе строгий UTF-8, иначе windows-1251. «Системная кодовая страница» ПК на Android пуста (`Charset.defaultCharset()` — всегда UTF-8), слушатели — be/ru; цена — однобайтовый западный текст (cp1252) выйдет кириллицей.
+3. **Теги:**
+   - WAV (`audio/wav`, `audio/x-wav`, `audio/wave`, `audio/vnd.wave`): `WavExtractor` Media3 1.11.1 чанк `id3 ` пропускает, поэтому `riffId3` идёт по чанкам сам — `data` проматывает (`skip`), размер чанка проверяет до выделения памяти (64 МиБ, как `kMaxReadBytes` десктопа: в `id3 ` бывают картинки), нечётный размер — с байтом выравнивания — и отдаёт найденный `Id3Decoder().decode`.
+   - Остальное: `MetadataRetriever` из `media3-inspector` (`retrieveTrackGroups().await()`), записи `Format.metadata` всех дорожек.
+   - `TagLyrics.textOf` берёт первое из: `BinaryFrame` `USLT` (ID3v2.3/2.4) или `ULT` (ID3v2.2) — `usltText`, описание не важно; `TextInformationFrame` `USLT` — так Media3 отдаёт `©lyr` из MP4; `VorbisComment` `LYRICS` в любом регистре (FLAC, Ogg).
+4. **Порядок** (`choose`): синхронный `.lrc` — сразу, теги тогда не читаются; иначе текст тегов (синхронный, если в нём метки времени), `FILE_TAGS`; иначе обычный `.lrc`, `LRC_FILE`; иначе `Missing`. Файл, который не открылся (`IOException`, `SecurityException`), — `Missing`, никогда не `Failed`: повтор при сети ему не поможет.
+
+**Traps:**
+- `Id3Decoder` на JVM не работает: `ParsableByteArray` при первой загрузке читает `Build.FINGERPRINT`, а в заглушке android.jar это `null`. Поэтому JVM-тесты кормят `TagLyrics` готовыми кадрами, а что USLT приходит `BinaryFrame`, сверено по байткоду Media3 1.11.1 и проверяется на телефоне (#118).
+- `TextInformationFrame.value` устарел — `values.firstOrNull()`.
+- `MetadataRetriever` открывает файл через `DefaultMediaSourceFactory`, со своим потоком; вызов на `Dispatchers.IO`, ожидание — `await` из `kotlinx-coroutines-guava`. Его 8 с держит `lyrics.LyricsFinder`, а не он.
+
 ## Тесты
 
-`app/src/test/.../local/`: `NaturalOrderTest`, `LocalPicksTest` (LOCAL-11), `LocalTracksTest` (LOCAL-04, LOCAL-05, LOCAL-13), `LocalCheckTest` (LOCAL-14); строки для них — `support/LocalRows.kt`. Очистку очереди проверяет `queue/QueueLocalTest` (LOCAL-14). `LocalLibrary` — запрос к системе — проверяется на телефоне (Kickoman/QiYaa-android#118).
+`app/src/test/.../local/`: `NaturalOrderTest`, `LocalPicksTest` (LOCAL-11), `LocalTracksTest` (LOCAL-04, LOCAL-05, LOCAL-13), `LocalCheckTest` (LOCAL-14), `LocalLyricsFilesTest` и `TagLyricsTest` (LYR-10, LYR-11); строки для них — `support/LocalRows.kt`. Очистку очереди проверяет `queue/QueueLocalTest` (LOCAL-14). `LocalLibrary` и `LocalLyrics` — запросы к системе — проверяются на телефоне (Kickoman/QiYaa-android#118).
 
 ## Not here
 
