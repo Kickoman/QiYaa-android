@@ -17,6 +17,20 @@ class JamLinkTest {
     }
 
     @Test
+    fun `a link's url is found as the same link, with or without its secret`() {
+        val links =
+            listOf(
+                JamLink("https://jam.example.org:8443/party", ROOM, SECRET),
+                JamLink("https://qiyaa.kanstancin.net", ROOM, null),
+            )
+        for (link in links) assertEquals(link, JamLink.find(link.url))
+        assertEquals(
+            "https://qiyaa.kanstancin.net/j/$ROOM#$SECRET",
+            JamLink("https://qiyaa.kanstancin.net", ROOM, SECRET).url,
+        )
+    }
+
+    @Test
     fun `GUEST-01 the first link is found inside the host's share text`() {
         val expected = JamLink("https://qiyaa.kanstancin.net", ROOM, SECRET)
         assertEquals(expected, JamLink.find("Join my jam: https://qiyaa.kanstancin.net/j/$ROOM#$SECRET"))

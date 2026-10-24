@@ -145,6 +145,7 @@ interface JamHandler { fun onWelcome(); fun onMessage(message: ServerMessage) }
 
 ```kotlin
 data class JamLink(val serverUrl: String, val roomId: String, val joinSecret: String?) {
+    val url: String                                        // ссылка обратно: find(url) == this
     companion object { fun find(text: String): JamLink? }   // null — в тексте нет ссылки на джем
 }
 ```

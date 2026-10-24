@@ -77,7 +77,13 @@ private const val END_CONFIRM_MS = 3_000L
 private val ROW_BUTTON_WIDTH = 76.dp
 
 @Composable
-fun JamScreen(viewModel: JamViewModel, onSettings: () -> Unit, onJoinLink: (String) -> Boolean) {
+fun JamScreen(
+    viewModel: JamViewModel,
+    signedIn: Boolean,
+    onSettings: () -> Unit,
+    onJoinLink: (String) -> Boolean,
+    onSignIn: () -> Unit,
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         ScreenHeader(stringResource(R.string.jam_title)) {
@@ -90,8 +96,19 @@ fun JamScreen(viewModel: JamViewModel, onSettings: () -> Unit, onJoinLink: (Stri
             )
         }
         when (state.phase) {
-            JamHostPhase.NONE -> StartJam(viewModel, onSettings, onJoinLink)
+            JamHostPhase.NONE ->
+                if (signedIn) {
+                    StartJam(
+                        viewModel,
+                        onSettings,
+                        onJoinLink,
+                    )
+                } else {
+                    SignInToHost(onSignIn, onJoinLink)
+                }
+
             JamHostPhase.CREATING -> Connecting(viewModel)
+
             JamHostPhase.ACTIVE -> ActiveJam(viewModel, state)
         }
     }
@@ -151,6 +168,32 @@ private fun StartJam(viewModel: JamViewModel, onSettings: () -> Unit, onJoinLink
         color = colors.deep,
         height = 48.dp,
         onClick = viewModel::start,
+    )
+    JoinJamSection(onJoinLink)
+}
+
+@Composable
+private fun SignInToHost(onSignIn: () -> Unit, onJoinLink: (String) -> Boolean) {
+    val colors = Qi.colors
+    QiText(
+        stringResource(R.string.jam_intro),
+        sans(14.sp, 400, lineHeight = 20.sp),
+        Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp),
+        color = colors.textSecondary,
+    )
+    QiText(
+        stringResource(R.string.jam_needs_login),
+        HintStyle,
+        Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp),
+        color = colors.muted,
+    )
+    ActionButton(
+        stringResource(R.string.library_sign_in).uppercase(),
+        Modifier.padding(16.dp).fillMaxWidth(),
+        background = colors.accent,
+        color = colors.deep,
+        height = 48.dp,
+        onClick = onSignIn,
     )
     JoinJamSection(onJoinLink)
 }

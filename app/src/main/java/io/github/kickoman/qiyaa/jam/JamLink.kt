@@ -1,6 +1,8 @@
 package io.github.kickoman.qiyaa.jam
 
 data class JamLink(val serverUrl: String, val roomId: String, val joinSecret: String?) {
+    val url: String get() = "$serverUrl/j/$roomId" + joinSecret?.let { "#$it" }.orEmpty()
+
     companion object {
         private const val DEFAULT_PORT = "443"
         private const val TRAILING_PUNCTUATION = ".,;:!?)]}>'\"»"

@@ -60,6 +60,7 @@ import io.github.kickoman.qiyaa.ui.theme.QiYaaTheme
 import io.github.kickoman.qiyaa.ui.theme.ReadoutStyle
 import io.github.kickoman.qiyaa.ui.theme.mono
 import io.github.kickoman.qiyaa.yandex.SessionState
+import io.github.kickoman.qiyaa.yandex.signedIn
 
 private val MiniPlayerStyle = mono(12.sp, 500, 0.5.sp)
 private val TabStyle = mono(10.sp, 500, 1.5.sp)
@@ -90,7 +91,9 @@ fun AppRoot(
         val guestOn = guestState.phase.isSession
         val openLink = { text: String -> app.openJamLink(text) }
         val backTarget = screen.backTarget
-        BackHandler(enabled = backTarget != null) { backTarget?.let(app::go) }
+        BackHandler(enabled = backTarget != null) {
+            if (screen == Screen.LOGIN) app.leaveLogin() else backTarget?.let(app::go)
+        }
 
         Box(Modifier.fillMaxSize().background(colors.background)) {
             Column(
@@ -129,8 +132,10 @@ fun AppRoot(
 
                         Screen.JAM -> JamScreen(
                             jam,
+                            signedIn = sessionState.signedIn,
                             onSettings = { app.go(Screen.JAM_SETTINGS) },
                             onJoinLink = openLink,
+                            onSignIn = { app.openLogin(returnTo = Screen.JAM) },
                         )
 
                         Screen.JAM_SETTINGS -> JamSettingsScreen(jam, onDone = { app.go(Screen.JAM) })
@@ -160,7 +165,7 @@ fun AppRoot(
                 if (screen != Screen.LOGIN) TabBar(screen, app::go)
             }
 
-            if (screen != Screen.LOGIN && jamState.storedSession) {
+            if (screen != Screen.LOGIN && sessionState.signedIn && jamState.storedSession) {
                 JamContinueDialog(onContinue = jam::continueStored, onEnd = jam::discardStored)
             }
 

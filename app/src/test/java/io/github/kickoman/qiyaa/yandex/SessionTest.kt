@@ -1,15 +1,20 @@
 package io.github.kickoman.qiyaa.yandex
 
 import java.io.IOException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -27,6 +32,22 @@ class SessionTest {
         runCurrent()
         assertEquals(SessionState.LoggedOut, session.state.value)
         assertEquals(0, gateway.connectCalls.size)
+    }
+
+    @Test
+    fun `start with a token is Connecting at once, before any coroutine runs`() = runTest {
+        val session = Session(FakeGateway { account }, MutableStateFlow(true), backgroundScope)
+        session.start()
+        assertEquals(SessionState.Connecting, session.state.value)
+    }
+
+    @Test
+    fun `signed in means a token the server has not rejected, online or not`() {
+        assertEquals(false, SessionState.LoggedOut.signedIn)
+        assertEquals(false, SessionState.Expired.signedIn)
+        assertEquals(true, SessionState.Connecting.signedIn)
+        assertEquals(true, SessionState.Offline.signedIn)
+        assertEquals(true, SessionState.Online(account).signedIn)
     }
 
     @Test
@@ -166,6 +187,31 @@ class SessionTest {
         runCurrent()
         assertEquals(1, gateway.preloadCalls)
     }
+
+    @Test
+    fun `a sign-in canceled while its request still runs leaves the token of a later sign-in alone`() =
+        runTest {
+            val firstReturns = CompletableDeferred<Unit>()
+            lateinit var gateway: FakeGateway
+            gateway =
+                FakeGateway(token = "") {
+                    val token = gateway.token
+                    if (token == "first-token") withContext(NonCancellable) { firstReturns.await() }
+                    currentCoroutineContext().ensureActive()
+                    account
+                }
+            val session = Session(gateway, MutableStateFlow(true), backgroundScope)
+            session.start()
+            val first = launch { session.signIn("first-token") }
+            runCurrent()
+            first.cancel()
+            assertEquals(account, session.signIn("second-token"))
+            firstReturns.complete(Unit)
+            runCurrent()
+            assertTrue(first.isCancelled)
+            assertEquals("second-token", gateway.token)
+            assertEquals(SessionState.Online(account), session.state.value)
+        }
 
     @Test
     fun `a failed signIn clears the token, stays LoggedOut and rethrows`() = runTest {

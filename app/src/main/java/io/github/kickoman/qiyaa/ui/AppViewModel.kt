@@ -22,6 +22,8 @@ import io.github.kickoman.qiyaa.yandex.Station
 import io.github.kickoman.qiyaa.yandex.TokenNormalizer
 import io.github.kickoman.qiyaa.yandex.WheelWave
 import io.github.kickoman.qiyaa.yandex.YandexException
+import io.github.kickoman.qiyaa.yandex.signedIn
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -30,16 +32,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-
-enum class Screen { LOGIN, PLAYER, PLAYLIST, EQ, LIBRARY, JAM, JAM_SETTINGS, JAM_GUEST, JAM_GUEST_ADD }
-
-val Screen.backTarget: Screen?
-    get() = when (this) {
-        Screen.LOGIN, Screen.PLAYER -> null
-        Screen.PLAYLIST, Screen.EQ, Screen.LIBRARY, Screen.JAM, Screen.JAM_GUEST -> Screen.PLAYER
-        Screen.JAM_SETTINGS -> Screen.JAM
-        Screen.JAM_GUEST_ADD -> Screen.JAM_GUEST
-    }
 
 enum class LibrarySection { FOR_YOU, WHEEL, STATIONS, PLAYLISTS, ARTISTS, ALBUMS }
 
@@ -60,6 +52,8 @@ data class LoginUi(
     val tokenInput: String = "",
     val tokenError: Boolean = false,
     val notice: String? = null,
+    val noticeIsError: Boolean = false,
+    val jamPageUrl: String? = null,
 )
 
 data class LibraryUi(val wheelMatchesCurrent: Boolean = false, val searchText: String = "")
@@ -76,8 +70,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private val jamGuest = graph.jamGuest
     private var pendingLink: JamLink? = null
+    private var loginReturn = Screen.LIBRARY
 
-    private val mutableScreen = MutableStateFlow(startScreen())
+    private val mutableScreen = MutableStateFlow(startScreen(isSignedIn) { jamGuest.restore() })
     val screen: StateFlow<Screen> = mutableScreen.asStateFlow()
 
     private val mutableSection = MutableStateFlow<LibrarySection?>(null)
@@ -124,14 +119,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 if (mutableScreen.value == Screen.JAM_GUEST_ADD && !inRoom) go(Screen.JAM_GUEST)
             }
         }
-        if (mutableScreen.value == Screen.LOGIN) startDeviceLogin()
     }
 
-    private fun startScreen(): Screen = when {
-        tokenStore.load().isEmpty() -> Screen.LOGIN
-        jamGuest.restore() -> Screen.JAM_GUEST
-        else -> Screen.PLAYER
-    }
+    private val isSignedIn: Boolean get() = session.state.value.signedIn
 
     fun openJamLink(text: String, launchedFromHistory: Boolean = false): Boolean =
         follow(routeLink(JamLink.find(text), launchedFromHistory))
@@ -147,7 +137,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 storedSession = host.storedSession,
             ),
             GuestSide(guest.serverUrl, guest.roomId, guest.phase),
-            signedIn = tokenStore.load().isNotEmpty(),
+            signedIn = isSignedIn,
             launchedFromHistory = launchedFromHistory,
         )
     }
@@ -169,7 +159,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 return false
             }
 
-            is LinkAction.AskSignIn -> pendingLink = action.link
+            is LinkAction.AskSignIn -> {
+                openLogin(string(R.string.jam_join_needs_login), jamPage = action.link)
+                pendingLink = action.link
+            }
 
             LinkAction.OpenHostJam -> go(Screen.JAM)
 
@@ -194,8 +187,42 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun go(screen: Screen) {
+        if (mutableScreen.value == Screen.LOGIN && screen != Screen.LOGIN) {
+            loginJob?.cancel()
+            pendingLink = null
+        }
         mutableScreen.value = screen
         mutableSection.value = null
+    }
+
+    fun openLogin(
+        notice: String? = null,
+        jamPage: JamLink? = null,
+        returnTo: Screen = Screen.LIBRARY,
+        noticeIsError: Boolean = false,
+    ) {
+        if (mutableScreen.value == Screen.LOGIN) {
+            mutableLogin.update {
+                it.copy(notice = notice, noticeIsError = noticeIsError, jamPageUrl = jamPage?.url)
+            }
+            return
+        }
+        loginReturn = returnTo
+        mutableLogin.value =
+            LoginUi(notice = notice, noticeIsError = noticeIsError, jamPageUrl = jamPage?.url)
+        go(Screen.LOGIN)
+        startDeviceLogin()
+    }
+
+    fun leaveLogin() = go(loginReturn)
+
+    private fun finishLogin(): JamLink? {
+        val link = pendingLink
+        pendingLink = null
+        loginJob = null
+        mutableLogin.value = LoginUi()
+        go(loginReturn)
+        return link
     }
 
     fun openSection(section: LibrarySection) {
@@ -262,7 +289,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
         loginJob?.cancel()
         mutableLogin.update { it.copy(status = LoginStatus.SigningIn) }
-        viewModelScope.launch { applyToken(token) }
+        loginJob = viewModelScope.launch { applyToken(token) }
     }
 
     /** Stores the interface language and applies it to the app's resources; the screen recreates the activity. */
@@ -282,7 +309,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun setTelemetryEnabled(on: Boolean) = settings.setTelemetryEnabled(on)
 
     fun signOut() {
-        leaveSession(notice = null, forgetJams = true)
+        leaveSession(expired = false)
     }
 
     fun loadLibraryLists() {
@@ -347,34 +374,38 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun handleExpired() {
-        leaveSession(notice = string(R.string.login_expired), forgetJams = false)
+        leaveSession(expired = true)
     }
 
-    private fun leaveSession(notice: String?, forgetJams: Boolean) {
-        graph.jamHost.end() // guests search through this account: no account, no jam
-        if (forgetJams) jamGuest.forgetAll() else jamGuest.leave()
+    private fun leaveSession(expired: Boolean) {
+        graph.jamHost.cancelCreate()
+        graph.jamHost.end()
+        if (expired) jamGuest.leave() else jamGuest.forgetAll()
         pendingLink = null
         queue.clear()
         session.signOut()
         tokenStore.clear()
         for (list in lists + wheel) list.reset()
         mutableLibraryUi.value = LibraryUi()
-        mutableLogin.value = LoginUi(notice = notice)
-        go(Screen.LOGIN)
-        startDeviceLogin()
+        when (screenAfterSignOut(expired)) {
+            Screen.LOGIN -> openLogin(string(R.string.login_expired), noticeIsError = true)
+
+            else -> {
+                mutableLogin.value = LoginUi()
+                go(Screen.LIBRARY)
+            }
+        }
     }
 
     private suspend fun applyToken(token: String) {
         try {
             val account = session.signIn(token)
             tokenStore.save(token)
-            mutableLogin.value = LoginUi()
-            go(Screen.LIBRARY)
+            val link = finishLogin()
             say(string(R.string.login_signed_in, account.login.ifEmpty { account.displayName }))
-            pendingLink?.let { link ->
-                pendingLink = null
-                follow(routeLink(link, launchedFromHistory = false))
-            }
+            link?.let { follow(routeLink(it, launchedFromHistory = false)) }
+        } catch (failed: CancellationException) {
+            throw failed
         } catch (failed: Exception) {
             val error = kindOf("Sign-in", failed)
             mutableLogin.update { it.copy(status = LoginStatus.Failed(error), tokenError = false) }

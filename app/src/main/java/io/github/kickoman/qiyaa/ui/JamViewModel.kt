@@ -12,6 +12,7 @@ import io.github.kickoman.qiyaa.jam.JamSettingsPatch
 import io.github.kickoman.qiyaa.playback.JamHost
 import io.github.kickoman.qiyaa.yandex.ErrorKind
 import io.github.kickoman.qiyaa.yandex.Track
+import io.github.kickoman.qiyaa.yandex.signedIn
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -62,6 +63,10 @@ class JamViewModel(application: Application) : AndroidViewModel(application) {
     fun setHostName(name: String) = mutableUi.update { it.copy(hostName = JamNames.cut(name)) }
 
     fun start() {
+        if (!graph.session.state.value.signedIn) {
+            notice(string(R.string.jam_needs_login))
+            return
+        }
         if (graph.jamGuest.state.value.phase.isSession) {
             notice(string(R.string.jam_host_while_guest))
             return
