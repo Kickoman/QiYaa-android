@@ -76,6 +76,9 @@ fun LibrarySectionScreen(viewModel: AppViewModel, section: LibrarySection) {
                 LibrarySection.PLAYLISTS -> R.string.library_sub_playlists
                 LibrarySection.ARTISTS -> R.string.library_sub_artists
                 LibrarySection.ALBUMS -> R.string.library_sub_albums
+                LibrarySection.LOCAL_ALBUMS -> R.string.local_albums
+                LibrarySection.LOCAL_ARTISTS -> R.string.local_artists
+                LibrarySection.LOCAL_FOLDERS -> R.string.local_folders
             },
         )
     val stationGroupNames =
@@ -178,6 +181,11 @@ fun LibrarySectionScreen(viewModel: AppViewModel, section: LibrarySection) {
                     ChipItem("album:${album.id}", album.name) { viewModel.playAlbum(album) }
                 }
                 listOf(ChipGroup(stringResource(R.string.library_group_liked), items))
+            }
+
+            LibrarySection.LOCAL_ALBUMS, LibrarySection.LOCAL_ARTISTS, LibrarySection.LOCAL_FOLDERS -> {
+                listState = ListState.Idle
+                emptyList()
             }
         }
 

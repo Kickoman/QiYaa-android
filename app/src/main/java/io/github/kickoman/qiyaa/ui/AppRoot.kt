@@ -49,6 +49,7 @@ import io.github.kickoman.qiyaa.ui.screens.JamScreen
 import io.github.kickoman.qiyaa.ui.screens.JamSettingsScreen
 import io.github.kickoman.qiyaa.ui.screens.LibraryScreen
 import io.github.kickoman.qiyaa.ui.screens.LibrarySectionScreen
+import io.github.kickoman.qiyaa.ui.screens.LocalSectionScreen
 import io.github.kickoman.qiyaa.ui.screens.LoginScreen
 import io.github.kickoman.qiyaa.ui.screens.PlayerScreen
 import io.github.kickoman.qiyaa.ui.screens.PlaylistScreen
@@ -121,7 +122,9 @@ fun AppRoot(
 
                         Screen.EQ -> EqScreen(player)
 
-                        Screen.LIBRARY -> section?.let { LibrarySectionScreen(app, it) }
+                        Screen.LIBRARY -> section?.let {
+                            if (it.isLocal) LocalSectionScreen(app, it) else LibrarySectionScreen(app, it)
+                        }
                             ?: LibraryScreen(
                                 app,
                                 player,

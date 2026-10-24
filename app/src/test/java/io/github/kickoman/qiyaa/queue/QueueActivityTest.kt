@@ -142,7 +142,7 @@ class QueueActivityTest {
     }
 
     @Test
-    fun `HOST-36 ERR-04 a held item that breaks on pause is one failure, the next item waits on pause`() =
+    fun `HOST-36 ERR-10 a held item that breaks on pause is one failure, the next item waits on pause`() =
         runTest {
             val harness = held(this)
             val seen = activity(harness)

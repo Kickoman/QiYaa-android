@@ -21,6 +21,8 @@ sealed interface LocalPick {
 class LocalPicks(rows: List<LocalRow>, private val order: NaturalOrder = NaturalOrder()) {
     private val rows = rows.sortedWith(::compareByPath)
 
+    val trackCount: Int get() = rows.size
+
     val albums: List<LocalAlbum> =
         this.rows.groupBy { it.albumId }
             .map { (id, tracks) -> LocalAlbum(id, tracks.first().album.orEmpty(), tracks.size) }
