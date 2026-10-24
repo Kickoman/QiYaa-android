@@ -39,9 +39,10 @@ grep -nE '\\\\[sSpPdDwWbB]' app/src/main/java/io/github/kickoman/qiyaa/jam/{JamC
   сыграть только хозяин, например свой файл десктопа или телефона (протокол, «Tracks»; HOST-37, LISTEN-14).
   `null` при кодировании пропадает (`explicitNulls = false`), так что трек каталога уходит без ключа
   `source`, как и раньше, и старый сервер его не видит. `JamTrack.isCatalog` — не `HOST`. Хозяин на
-  Android сам `host`-треков не шлёт: он играет только каталог Яндекса (`playback/JamTracks.toJam`
-  оставляет `source` пустым). `host`-треки приходят только от хозяина на десктопе; гость в приложении
-  показывает их без обложки и ссылки (GUEST-14) и сам не добавляет (`JamGuest.add`, ROOM-66).
+  Android шлёт `host`-трек только для трека базы не из Яндекса, то есть своего файла
+  (`playback/JamTracks.baseTrack`, HOST-37); трек каталога `playback/JamTracks.toJam` строит без `source`.
+  Гость в приложении показывает `host`-треки без обложки и ссылки (GUEST-14) и сам не добавляет
+  (`JamGuest.add`, ROOM-66).
 - `Rejected.reason` — строка, а не enum: причину, которой приложение не знает, показываем как общую
   ошибку (протокол, «Reasons»). Известные — `JamCodec.REASONS`.
 - `Resume.snapshot` и `Snapshot.data` — `JsonElement`: снимок хозяин не читает, только хранит и
