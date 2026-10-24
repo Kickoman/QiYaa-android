@@ -10,6 +10,8 @@ enum class TrackSource(val key: String) {
     }
 }
 
+data class TrackKey(val source: TrackSource, val id: String)
+
 data class Track(
     val id: String,
     val title: String,
@@ -19,7 +21,15 @@ data class Track(
     val available: Boolean = true,
     val coverUrl: String? = null,
     val source: TrackSource = TrackSource.YANDEX,
+    val bitrateKbps: Int = 0,
 ) {
+    val key: TrackKey get() = TrackKey(source, id)
+
+    val isYandex: Boolean get() = when (source) {
+        TrackSource.YANDEX -> true
+        TrackSource.LOCAL -> false
+    }
+
     val artistLine: String get() = artists.joinToString(", ")
 
     val displayTitle: String

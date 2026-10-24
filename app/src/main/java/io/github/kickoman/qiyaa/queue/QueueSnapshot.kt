@@ -23,6 +23,7 @@ data class QueueSnapshot(
     val seedsVersions: List<Int?> = emptyList(),
     val continueWithVibe: Boolean? = null,
     val history: List<String> = emptyList(),
+    val waveFromHistory: Boolean = true,
 )
 
 object QueueSnapshotCodec {
@@ -47,6 +48,7 @@ object QueueSnapshotCodec {
                 repeat = snapshot.repeat,
                 continueWithVibe = snapshot.continueWithVibe,
                 history = snapshot.history,
+                waveFromHistory = snapshot.waveFromHistory.takeIf { !it },
                 tracks =
                     snapshot.tracks.mapIndexed { i, track ->
                         val item = snapshot.items.getOrNull(i)
@@ -61,6 +63,7 @@ object QueueSnapshotCodec {
                             available = track.available,
                             coverUrl = track.coverUrl,
                             source = track.source.takeIf { it != TrackSource.YANDEX }?.key,
+                            bitrateKbps = track.bitrateKbps.takeIf { it > 0 },
                             batchId = snapshot.batchIds.getOrElse(i) { "" },
                             part = part?.takeIf { it != defaultPart }?.key,
                             itemId = item?.itemId,
@@ -86,7 +89,17 @@ object QueueSnapshotCodec {
         if (file.version != VERSION) return null
         val tracks = file.tracks.map {
             val source = TrackSource.fromKey(it.source ?: TrackSource.YANDEX.key) ?: return null
-            Track(it.id, it.title, it.artists, it.albumId, it.durationMs, it.available, it.coverUrl, source)
+            Track(
+                it.id,
+                it.title,
+                it.artists,
+                it.albumId,
+                it.durationMs,
+                it.available,
+                it.coverUrl,
+                source,
+                it.bitrateKbps ?: 0,
+            )
         }
         val index = if (tracks.isEmpty()) 0 else file.index.coerceIn(0, tracks.lastIndex)
         val default = EntryPart.defaultFor(file.isWave)
@@ -113,6 +126,7 @@ object QueueSnapshotCodec {
             seedsVersions = if (seedsVersions.all { it == null }) emptyList() else seedsVersions,
             continueWithVibe = file.continueWithVibe,
             history = file.history,
+            waveFromHistory = file.waveFromHistory ?: true,
         )
     }
 
@@ -130,6 +144,7 @@ object QueueSnapshotCodec {
         val repeat: Boolean,
         val continueWithVibe: Boolean? = null,
         val history: List<String> = emptyList(),
+        val waveFromHistory: Boolean? = null,
         val tracks: List<TrackEntry>,
     )
 
@@ -143,6 +158,7 @@ object QueueSnapshotCodec {
         val available: Boolean = true,
         val coverUrl: String? = null,
         val source: String? = null,
+        val bitrateKbps: Int? = null,
         val batchId: String = "",
         val part: String? = null,
         val itemId: String? = null,

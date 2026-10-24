@@ -121,6 +121,12 @@
         <item quantity="many">%1$s: %2$d трэкаў</item>
         <item quantity="other">%1$s: %2$d трэка</item>
     </plurals>
+    <plurals name="queue_loaded_first">
+        <item quantity="one">%1$s: першы %2$d трэк</item>
+        <item quantity="few">%1$s: першыя %2$d трэкі</item>
+        <item quantity="many">%1$s: першыя %2$d трэкаў</item>
+        <item quantity="other">%1$s: першыя %2$d трэка</item>
+    </plurals>
     <string name="queue_empty">%1$s: пуста</string>
     <string name="queue_wave_started">%1$s: хваля пачалася</string>
     <string name="queue_nothing_found">Нічога не знойдзена</string>

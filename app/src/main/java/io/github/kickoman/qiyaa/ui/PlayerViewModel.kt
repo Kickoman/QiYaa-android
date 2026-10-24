@@ -181,8 +181,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         mutableTrackActions.value =
             TrackActions(
                 track = track,
-                liked = track.id in library.likedIds.value,
-                isCurrent = track.id == mutableUi.value.current?.id,
+                liked = track.isYandex && track.id in library.likedIds.value,
+                isCurrent = track.key == mutableUi.value.current?.key,
             )
     }
 

@@ -7,7 +7,7 @@ sealed interface QueueEvent {
 
     data class SearchStarted(val title: String) : QueueEvent
 
-    data class SourceLoaded(val title: String, val trackCount: Int) : QueueEvent
+    data class SourceLoaded(val title: String, val trackCount: Int, val cut: Boolean = false) : QueueEvent
 
     data class SourceEmpty(val title: String) : QueueEvent
 

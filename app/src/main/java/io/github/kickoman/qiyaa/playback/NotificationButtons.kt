@@ -17,7 +17,14 @@ object NotificationButtons {
     fun withCustomCommands(commands: SessionCommands): SessionCommands =
         commands.buildUpon().add(like).add(dislike).build()
 
-    fun layout(context: Context, liked: Boolean): List<CommandButton> = listOf(
+    fun layout(context: Context, liked: Boolean, likeable: Boolean = true): List<CommandButton> =
+        if (!likeable) {
+            emptyList()
+        } else {
+            likeButtons(context, liked)
+        }
+
+    private fun likeButtons(context: Context, liked: Boolean): List<CommandButton> = listOf(
         CommandButton.Builder(
             if (liked) CommandButton.ICON_HEART_FILLED else CommandButton.ICON_HEART_UNFILLED,
         )

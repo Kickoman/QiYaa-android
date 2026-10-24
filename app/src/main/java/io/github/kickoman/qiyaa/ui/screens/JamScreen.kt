@@ -450,7 +450,7 @@ private fun RoomSettings(viewModel: JamViewModel, room: JamRoom, enabled: Boolea
                 settings.joinOpen,
                 stringResource(R.string.jam_join_open),
                 stringResource(R.string.jam_join_closed),
-                viewModel::setJoinOpen,
+                onChange = viewModel::setJoinOpen,
             )
         }
     }

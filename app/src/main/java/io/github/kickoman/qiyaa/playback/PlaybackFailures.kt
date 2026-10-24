@@ -1,6 +1,8 @@
 package io.github.kickoman.qiyaa.playback
 
+import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.Tracks
 import androidx.media3.datasource.HttpDataSource
 import io.github.kickoman.qiyaa.queue.FailureKind
 import io.github.kickoman.qiyaa.yandex.ErrorKind
@@ -43,6 +45,9 @@ object PlaybackFailures {
     }
 
     fun audioFailure(errorCode: Int): AudioFailure? = AUDIO_FAILURES[errorCode]
+
+    fun hasNoPlayableAudio(tracks: Tracks): Boolean =
+        tracks.containsType(C.TRACK_TYPE_AUDIO) && !tracks.isTypeSupported(C.TRACK_TYPE_AUDIO, true)
 
     fun errorKind(errorCode: Int, cause: Throwable?): ErrorKind = when (classify(errorCode, cause)) {
         FailureKind.SESSION -> ErrorKind.TokenRejected
