@@ -128,7 +128,8 @@ ktlint {
 tasks.withType<Test>().configureEach {
     val specDir = rootProject.file("spec")
     systemProperty("qiyaa.spec.dir", specDir.absolutePath)
-    val specParts = listOf("fixtures/**", "expected/**", "dsp/**", "player/**", "jam/**", "telemetry/**")
+    val specParts =
+        listOf("fixtures/**", "expected/**", "dsp/**", "player/**", "jam/**", "telemetry/**", "spotify/**")
     inputs.files(fileTree(specDir) { include(specParts) })
         .withPropertyName("spec")
         .withPathSensitivity(PathSensitivity.RELATIVE)
