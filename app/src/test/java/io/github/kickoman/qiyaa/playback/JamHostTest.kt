@@ -22,6 +22,7 @@ import io.github.kickoman.qiyaa.jam.JamSessionStore
 import io.github.kickoman.qiyaa.jam.JamStatus
 import io.github.kickoman.qiyaa.jam.JamStore
 import io.github.kickoman.qiyaa.jam.JamTrack
+import io.github.kickoman.qiyaa.jam.JamTrackSource
 import io.github.kickoman.qiyaa.jam.LinkRotated
 import io.github.kickoman.qiyaa.jam.NowPlayingSource
 import io.github.kickoman.qiyaa.jam.OutboxEntry
@@ -53,6 +54,7 @@ import io.github.kickoman.qiyaa.support.FakeQueueStore
 import io.github.kickoman.qiyaa.support.QueueHarness
 import io.github.kickoman.qiyaa.support.Spec
 import io.github.kickoman.qiyaa.track.Track
+import io.github.kickoman.qiyaa.track.TrackSource
 import io.github.kickoman.qiyaa.yandex.HttpException
 import java.io.File
 import java.io.IOException
@@ -107,6 +109,64 @@ class JamHostTest {
         assertEquals(listOf("11", "22", "33"), h.queue.engine.ids())
         assertEquals(base(second), h.sent().last())
         assertEquals(listOf(Started("i1")), h.sent().filterIsInstance<Started>())
+    }
+
+    @Test
+    fun `HOST-37 a local base track goes out as the host's own track, with the same id on every report`() =
+        runTest {
+            val h = Harness(this)
+            val first =
+                Track(id = "42", title = "Свой файл", artists = listOf("Гурт"), source = TrackSource.LOCAL)
+            val second = first.copy(id = "43", title = "Другі файл")
+            h.queue.controller.setQueue(
+                listOf(first, second),
+                "Files",
+                false,
+                autoplay = true,
+                sourceId = null,
+            )
+            h.created()
+            val sent = h.sent().last() as Playing
+            assertEquals(
+                Playing(NowPlayingSource.WAVE, track = hostTrack(first), positionMs = 0, paused = true),
+                sent,
+            )
+            assertEquals(JamTrackSource.HOST, sent.track?.source)
+            assertTrue(JamCodec.decodeClient(JamCodec.encode(sent)) is Decoded.Message)
+            h.host.onPlayback(JamPlayback(JamPlayback.Kind.BASE, null, first, 5_000, paused = false))
+            assertEquals(sent.track?.id, (h.sent().last() as Playing).track?.id)
+            h.queue.engine.finishTrack()
+            assertEquals(hostTrack(second), (h.sent().last() as Playing).track)
+            assertTrue(hostTrack(first)?.id != hostTrack(second)?.id)
+        }
+
+    @Test
+    fun `HOST-37 HOST-23 after a restart the local base track keeps its source and its id`() = runTest {
+        val local =
+            Track(id = "42", title = "Свой файл", artists = listOf("Гурт"), source = TrackSource.LOCAL)
+        val queueFile =
+            QueueSnapshotCodec.encode(
+                QueueSnapshot(
+                    tracks = listOf(local),
+                    batchIds = listOf(""),
+                    title = "Files",
+                    sourceId = null,
+                    isWave = false,
+                    waveSessionId = "",
+                    waveStationId = "",
+                    index = 0,
+                    positionMs = 0,
+                    shuffle = false,
+                    repeat = false,
+                ),
+            )
+        val h = Harness(this, JamSession(ROOM, HOST_SECRET, JOIN_URL, null, emptyList()), queueFile)
+        h.host.continueStored()
+        h.open()
+        h.receive(Resumed("r1", restored = true))
+        val sent = h.sent().last() as Playing
+        assertEquals(JamTrackSource.HOST, sent.track?.source)
+        assertEquals(hostTrack(local)?.id, sent.track?.id)
     }
 
     @Test
@@ -440,6 +500,56 @@ class JamHostTest {
     }
 
     @Test
+    fun `HOST-20 ROOM-66 a local track is not added or played next, even with a guest's item of its id`() =
+        runTest {
+            val h = Harness(this)
+            h.created()
+            h.state(1, item("i1", "42"))
+            val sentBefore = h.sent().size
+            val local = Track(id = "42", title = "Свой файл", source = TrackSource.LOCAL)
+            assertFalse(h.host.add(local))
+            assertFalse(h.host.playNext(local))
+            assertEquals(sentBefore, h.sent().size)
+        }
+
+    @Test
+    fun `LISTEN-14 sharing on, a local current track carries no links, a local next one no next link`() =
+        runTest {
+            val h = Harness(this)
+            h.created()
+            h.config = h.config.copy(shareAudio = true)
+            val file = { name: String ->
+                "https://s1.storage.yandex.net/get-mp3/0123456789abcdef0123456789abcdef/65cd937b03427/$name.mp3"
+            }
+            h.signed["11"] = file("a")
+            h.signed["22"] = file("b")
+            h.signed["42"] = file("c")
+            h.signed["43"] = file("d")
+            val yandex = Track(id = "11", title = "A")
+            val yandexNext = Track(id = "22", title = "B")
+            val local = Track(id = "42", title = "Свой файл", source = TrackSource.LOCAL)
+            val localNext = Track(id = "43", title = "Другі файл", source = TrackSource.LOCAL)
+            fun report(track: Track, next: Track): Playing {
+                h.host.onPlayback(
+                    JamPlayback(JamPlayback.Kind.BASE, null, track, 0, paused = false, nextTrack = next),
+                )
+                return h.sent().last() as Playing
+            }
+            val localFirst = report(local, yandexNext)
+            assertEquals(null to null, localFirst.listenUrl to localFirst.listenNextUrl)
+            assertTrue(JamCodec.decodeClient(JamCodec.encode(localFirst)) is Decoded.Message)
+            val yandexFirst = report(yandex, localNext)
+            assertEquals(file("a") to null, yandexFirst.listenUrl to yandexFirst.listenNextUrl)
+            val bothLocal = report(local, localNext)
+            assertEquals(null to null, bothLocal.listenUrl to bothLocal.listenNextUrl)
+            h.host.onPlayback(
+                JamPlayback(JamPlayback.Kind.ITEM, "i1", yandex, 0, paused = false, nextTrack = local),
+            )
+            val item = h.sent().last() as Playing
+            assertEquals(file("a") to null, item.listenUrl to item.listenNextUrl)
+        }
+
+    @Test
     fun `the connection lives with the playback service`() = runTest {
         val h = Harness(this)
         h.created()
@@ -495,6 +605,8 @@ class JamHostTest {
             h.host.onPlayback(JamPlayback(JamPlayback.Kind.IDLE, null, null, 0, paused = true))
             assertEquals(Playing(NowPlayingSource.IDLE, positionMs = 0, paused = true), h.sent().last())
         }
+
+    private fun hostTrack(track: Track) = JamTracks.baseTrack(track, HOST_SECRET)
 
     private fun base(track: Track) =
         Playing(NowPlayingSource.WAVE, track = JamTracks.toJam(track), positionMs = 0, paused = true)

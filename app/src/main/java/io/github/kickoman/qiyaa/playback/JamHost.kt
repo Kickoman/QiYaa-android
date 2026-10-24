@@ -48,6 +48,7 @@ import io.github.kickoman.qiyaa.queue.JamPlayback
 import io.github.kickoman.qiyaa.queue.JamPlaybackListener
 import io.github.kickoman.qiyaa.queue.QueueController
 import io.github.kickoman.qiyaa.track.Track
+import io.github.kickoman.qiyaa.track.TrackSource
 import io.github.kickoman.qiyaa.yandex.ErrorKind
 import java.util.UUID
 import kotlin.coroutines.CoroutineContext
@@ -233,9 +234,9 @@ class JamHost(
 
     /** "Play next": `pin` for a track already waiting, otherwise `add`, then `pin` once it is there. */
     fun playNext(track: Track): Boolean {
+        val jamTrack = JamTracks.toJam(track) ?: return false
         val waiting = mutableState.value.room?.queue?.firstOrNull { it.track.id == track.id }
         if (waiting != null) return pin(waiting.itemId)
-        val jamTrack = JamTracks.toJam(track) ?: return false
         val id = newId()
         if (!connected || !client.send(Add(id, track = jamTrack))) return false
         pendingPin = track.id
@@ -333,6 +334,7 @@ class JamHost(
 
     override fun onPlayback(playback: JamPlayback) {
         if (!connected) return // HOST-25: playing is not queued
+        val hostSecret = session?.hostSecret ?: return
         val message =
             when (playback.kind) {
                 JamPlayback.Kind.ITEM -> Playing(
@@ -345,7 +347,7 @@ class JamHost(
                 JamPlayback.Kind.BASE -> Playing(
                     NowPlayingSource.WAVE,
                     // A wave track the protocol cannot carry is not reported at all.
-                    track = playback.track?.let(JamTracks::toJam) ?: return,
+                    track = playback.track?.let { JamTracks.baseTrack(it, hostSecret) } ?: return,
                     positionMs = playback.positionMs,
                     paused = playback.paused,
                 )
@@ -366,11 +368,15 @@ class JamHost(
     /** LISTEN-01 to LISTEN-04: with sharing on, the Yandex files of this track and the next. */
     private fun withListenUrls(message: Playing, playback: JamPlayback): Playing {
         if (!config().shareAudio) return message
-        fun link(trackId: String?) = trackId?.let(signedLink)?.takeIf(JamCodec::isListenUrl)
-        return message.copy(
-            listenUrl = link(playback.track?.id),
-            listenNextUrl = link(playback.nextTrack?.id),
-        )
+        if (playback.track?.let(::isYandex) == false) return message
+        fun link(track: Track?) =
+            track?.takeIf(::isYandex)?.id?.let(signedLink)?.takeIf(JamCodec::isListenUrl)
+        return message.copy(listenUrl = link(playback.track), listenNextUrl = link(playback.nextTrack))
+    }
+
+    private fun isYandex(track: Track): Boolean = when (track.source) {
+        TrackSource.YANDEX -> true
+        TrackSource.LOCAL -> false
     }
 
     private fun request(build: (String) -> ClientMessage): Boolean = connected && client.send(build(newId()))
