@@ -30,7 +30,7 @@ class NavigationTest {
     }
 
     @Test
-    fun `Back from the sign-in screen goes to the library, so the sign-in can be left`() {
+    fun `Back from the sign-in screen is the app's, so the sign-in can be left`() {
         assertEquals(Screen.LIBRARY, Screen.LOGIN.backTarget)
     }
 
