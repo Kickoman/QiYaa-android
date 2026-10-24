@@ -86,6 +86,10 @@ class Settings(context: Context, defaultJamServer: String = "") {
         MutableStateFlow(preferences.getBoolean(KEY_CONTINUE_WITH_VIBE, true))
     val continueWithVibe: StateFlow<Boolean> = mutableContinueWithVibe.asStateFlow()
 
+    private val mutableLocalPermissionAsked =
+        MutableStateFlow(preferences.getBoolean(KEY_LOCAL_PERMISSION_ASKED, false))
+    val localPermissionAsked: StateFlow<Boolean> = mutableLocalPermissionAsked.asStateFlow()
+
     private val mutableTelemetryEnabled =
         MutableStateFlow(preferences.getBoolean(KEY_TELEMETRY_ENABLED, true))
     val telemetryEnabled: StateFlow<Boolean> = mutableTelemetryEnabled.asStateFlow()
@@ -168,6 +172,11 @@ class Settings(context: Context, defaultJamServer: String = "") {
         preferences.edit { putBoolean(KEY_CONTINUE_WITH_VIBE, value) }
     }
 
+    fun setLocalPermissionAsked() {
+        mutableLocalPermissionAsked.value = true
+        preferences.edit { putBoolean(KEY_LOCAL_PERMISSION_ASKED, true) }
+    }
+
     fun setTelemetryEnabled(value: Boolean) {
         mutableTelemetryEnabled.value = value
         preferences.edit { putBoolean(KEY_TELEMETRY_ENABLED, value) }
@@ -225,6 +234,7 @@ class Settings(context: Context, defaultJamServer: String = "") {
         const val KEY_CONTINUE_WITH_VIBE = "playback/continueWithVibe"
         const val KEY_SHUFFLE_ALGORITHM = "shuffle/algorithm"
         const val KEY_TELEMETRY_ENABLED = "telemetry/enabled"
+        const val KEY_LOCAL_PERMISSION_ASKED = "local/permissionAsked"
         const val KEY_TELEMETRY_MACHINE = "telemetry/machine"
         const val KEY_TELEMETRY_FIRST_START = "telemetry/firstStart"
         const val DEFAULT_VOLUME = 75

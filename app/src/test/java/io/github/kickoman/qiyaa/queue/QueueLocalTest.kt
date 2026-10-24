@@ -94,6 +94,22 @@ class QueueLocalTest {
         }
 
     @Test
+    fun `LOCAL-12 LOCAL-03 a pick with no file the app takes leaves the queue and playback as they were`() =
+        runTest {
+            val h = QueueHarness(this)
+            h.controller.loadSource("Liked") { listOf(yandex("1"), yandex("2")) }
+            runCurrent()
+            h.engine.startPlaying()
+            h.events.clear()
+            h.controller.loadSource("Files", waveFromHistory = false, limit = 10_000) { emptyList() }
+            runCurrent()
+            assertEquals(listOf(QueueEvent.SourceEmpty("Files")), h.events)
+            assertEquals(listOf("1", "2"), h.engine.ids())
+            assertTrue(h.engine.playing)
+            assertTrue(h.controller.state.value.waveFromHistory)
+        }
+
+    @Test
     fun `QUAL-05 a local next track is never asked about or loaded again`() = runTest {
         val h = QueueHarness(this)
         h.controller.loadSource("Files") { listOf(local("1"), local("2")) }
