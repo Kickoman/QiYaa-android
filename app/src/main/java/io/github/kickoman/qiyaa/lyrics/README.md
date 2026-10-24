@@ -87,9 +87,9 @@ data class LyricsLookup(val shown: LyricsShown, val thirdPartyFailed: Boolean)
 
 **Traps:**
 - Всё состояние меняется в корутинах одного `scope`. Многопоточный диспетчер сломает его: номера запросов и флаги — обычные поля.
-- Подписки на потоки стартуют в `init` и живут, пока жив `scope`. В приложении это `AppGraph` (часть 3): память переживает пересоздание активности.
-- `LyricsSource`, который бросит, уронит корутину `scope`. Источники ловят свои ошибки сами (`YandexLyrics`, `Lrclib`).
-- `lookups` шлёт через `tryEmit`: без подписчика или при полном буфере (16) событие теряется. Подписчик — телеметрия в `AppGraph` (часть 3).
+- Подписки на потоки стартуют в `init` и живут, пока жив `scope`. В приложении это `AppGraph` («В приложении» ниже): память переживает пересоздание активности.
+- `LyricsSource`, который бросит, уронит корутину `scope`. Источники ловят свои ошибки сами (`YandexLyrics`, `Lrclib`, `local/LocalLyrics`).
+- `lookups` шлёт через `tryEmit`: без подписчика или при полном буфере (16) событие теряется. Подписчик — `AppTelemetry` (`countLyrics`).
 
 ## `LrclibSearch`, `Lrclib`
 
@@ -116,13 +116,7 @@ class Lrclib(client: OkHttpClient, appVersion: String, baseUrl: String = "https:
 
 ## Тесты
 
-`app/src/test/.../lyrics/`: `LyricsTextTest` (LYR-11, LYR-12, `spec/lyrics/lrc.json`, сдвиг `[offset]`), `LrclibSearchTest` и `LrclibTest` (LYR-04, LYR-09: отмена запроса, LYR-11), `LyricsFinderTest` (LYR-01, 03, 05, 09, 14–17, ожидание 8 с и источник, который не замечает отмены, `lookups`). Ответ Яндекса — `YandexLyricsTest` в корне и `yandex/TrackLyricsTest`. LYR-06…08, 10 и 13 — экран и свои файлы, части 2 и 3.
-
-## Not here
-
-- Запрос текста Яндекса и его фикстуры — `yandex/README.md` (`lyricsText`); что из него видит пользователь — корневой `YandexLyrics`.
-- Текст своего файла (`.lrc`, теги) — `local/README.md`, «Тексты своих файлов».
-- Экран текста, переключатель «текст вместо обложки» и настройка LRCLIB — `ui/README.md`, «Текст песни»; счётчики и `feature` — `telemetry/README.md`.
+`app/src/test/.../lyrics/`: `LyricsTextTest` (LYR-11, LYR-12, `spec/lyrics/lrc.json`, сдвиг `[offset]`), `LrclibSearchTest` и `LrclibTest` (LYR-04, LYR-09: отмена запроса, LYR-11), `LyricsFinderTest` (LYR-01, 03, 05, 09, 14–17, ожидание 8 с и источник, который не замечает отмены, `lookups`). Ответ Яндекса — `YandexLyricsTest` в корне и `yandex/TrackLyricsTest`. LYR-06…08 и 13 — экран (`ui/README.md`, «Текст песни»), LYR-10 — `local/README.md`, «Тексты своих файлов»; на телефоне — Kickoman/QiYaa-android#118.
 
 ## В приложении
 
@@ -131,3 +125,9 @@ class Lrclib(client: OkHttpClient, appVersion: String, baseUrl: String = "https:
 - `thirdParty` — `Lrclib(httpClient, BuildConfig.VERSION_NAME)`;
 - `currentTrack` — `AppGraph.lyricsTrack` (его пишет `PlayerViewModel`), `active` — `lyricsShown && lyricsOnScreen`, `thirdPartyEnabled` — `Settings.lyricsThirdParty`, `connectivity` — `NetworkMonitor.available`, `signedIn` — `Session.state.signedIn` (токен API ставится раньше, чем состояние становится «вошёл», поэтому первый запрос после входа уже с ним);
 - `lookups` слушает `AppTelemetry` (`countLyrics`).
+
+## Not here
+
+- Запрос текста Яндекса и его фикстуры — `yandex/README.md` (`lyricsText`); что из него видит пользователь — корневой `YandexLyrics`.
+- Текст своего файла (`.lrc`, теги) — `local/README.md`, «Тексты своих файлов».
+- Экран текста, переключатель «текст вместо обложки» и настройка LRCLIB — `ui/README.md`, «Текст песни»; счётчики и `feature` — `telemetry/README.md`.
