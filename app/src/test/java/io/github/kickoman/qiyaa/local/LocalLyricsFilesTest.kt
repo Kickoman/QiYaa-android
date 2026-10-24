@@ -97,7 +97,7 @@ class LocalLyricsFilesTest {
     }
 
     @Test
-    fun `LYR-11 an id3 chunk over 64 MiB is not read at all`() {
+    fun `LYR-11 an id3 chunk over 16 MiB is not read at all`() {
         val header = riff() + utf8("id3 ") + le(LocalLyricsFiles.MAX_TAG_CHUNK_BYTES + 1)
         var read = 0L
         val endless =

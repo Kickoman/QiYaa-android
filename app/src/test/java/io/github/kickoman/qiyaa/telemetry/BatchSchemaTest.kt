@@ -101,6 +101,44 @@ class BatchSchemaTest {
     }
 
     @Test
+    fun `TEL-17 the exit with lyrics counts is encoded exactly as in android-exit-lyrics json`() {
+        val expected = example("android-exit-lyrics.json").last()
+        val lyrics =
+            LyricsCounts(
+                sourceSynced = 2,
+                thirdPartySynced = 3,
+                sourceText = 1,
+                thirdPartyText = 1,
+                instrumental = 1,
+                none = 1,
+                thirdPartyFailed = 1,
+            )
+        val exit =
+            Event.Exit(
+                Instant.parse(expected.string("at")),
+                expected.string("session"),
+                "0.6.0",
+                Counts(3_600, 15, 52, 0, 0, lyrics),
+            )
+        assertEquals(expected, EventCodec.encode(exit))
+    }
+
+    @Test
+    fun `TEL-17 an exit after no lyrics lookup carries no lyrics counts`() {
+        val exit = Event.Exit(
+            Instant.EPOCH,
+            "33691813-d7ab-47ec-b621-747be6192eee",
+            "0.6.0",
+            Counts(60, 1, 1, 0, 0),
+        )
+        val encoded = EventCodec.encode(exit)
+        assertEquals(emptyList<String>(), encoded!!.keys.filter { it.startsWith("lyrics") })
+        val failedOnly = Counts(lyrics = LyricsCounts(thirdPartyFailed = 2))
+        val withFailures = EventCodec.encode(exit.copy(counts = failedOnly))
+        assertEquals(emptyList<String>(), withFailures!!.keys.filter { it.startsWith("lyrics") })
+    }
+
+    @Test
     fun `every batch of a scripted session validates against the spec schema`() = runTest {
         val telemetry = TelemetryHarness(this, File(folder.root, "telemetry"), server.sender())
         val store = telemetry.store

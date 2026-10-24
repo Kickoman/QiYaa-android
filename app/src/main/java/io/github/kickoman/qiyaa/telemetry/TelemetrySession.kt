@@ -66,6 +66,10 @@ class TelemetrySession(
         reporter?.countJam()
     }
 
+    fun countLyrics(outcome: LyricsOutcome, thirdPartyFailed: Boolean) {
+        reporter?.countLyrics(outcome, thirdPartyFailed)
+    }
+
     private suspend fun turnOn() {
         val created = newReporter()
         created.install()

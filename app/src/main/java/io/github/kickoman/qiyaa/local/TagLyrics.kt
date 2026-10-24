@@ -8,7 +8,6 @@ import androidx.media3.extractor.metadata.id3.Id3Decoder
 import androidx.media3.extractor.metadata.id3.TextInformationFrame
 import androidx.media3.extractor.metadata.vorbis.VorbisComment
 import java.io.InputStream
-import java.util.Locale
 
 @OptIn(UnstableApi::class)
 object TagLyrics {
@@ -51,8 +50,10 @@ object TagLyrics {
     fun entriesOf(metadata: Metadata?): List<Metadata.Entry> =
         metadata?.let { found -> List(found.length()) { found.get(it) } }.orEmpty()
 
-    private fun keyOf(description: String): String =
-        if (description.isEmpty()) LYRICS else "$LYRICS:${description.uppercase(Locale.ROOT)}"
+    private fun keyOf(description: String): String {
+        val upper = description.map { if (it in 'a'..'z') it - ('a' - 'A') else it }.joinToString("")
+        return if (upper.isEmpty() || upper == LYRICS) LYRICS else "$LYRICS:$upper"
+    }
 
     private fun isLyricsFrame(majorVersion: Int, id0: Int, id1: Int, id2: Int, id3: Int): Boolean =
         if (majorVersion == 2) {

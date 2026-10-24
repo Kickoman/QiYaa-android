@@ -160,6 +160,25 @@ class ReporterTest {
     }
 
     @Test
+    fun `TEL-17 lyrics lookups are counted by outcome, a service failure apart, and kept with the run`() =
+        runTest {
+            val telemetry = harness()
+            val reporter = telemetry.reporter()
+            reporter.begin(StartFields(), MACHINE, emptyMap())
+            reporter.countLyrics(LyricsOutcome.SOURCE_SYNCED, thirdPartyFailed = false)
+            reporter.countLyrics(LyricsOutcome.THIRD_PARTY_TEXT, thirdPartyFailed = false)
+            reporter.countLyrics(LyricsOutcome.NONE, thirdPartyFailed = true)
+            reporter.saveMarker()
+            runCurrent()
+            val lyrics = telemetry.store.readMarker(reporter.session)!!.counts.lyrics
+            assertEquals(
+                LyricsCounts(sourceSynced = 1, thirdPartyText = 1, none = 1, thirdPartyFailed = 1),
+                lyrics,
+            )
+            assertEquals(3L, lyrics.lookups)
+        }
+
+    @Test
     fun `TEL-07 errors after the 50th are only counted in errorsDropped`() = runTest {
         val telemetry = harness()
         val reporter = telemetry.reporter()

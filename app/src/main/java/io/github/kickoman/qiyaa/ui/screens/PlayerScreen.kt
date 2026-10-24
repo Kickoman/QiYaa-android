@@ -31,10 +31,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.Player
 import coil3.compose.AsyncImage
 import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.audio.AudioBus
@@ -62,6 +68,7 @@ import kotlin.math.roundToInt
 
 private val QueueLabelStyle = mono(11.sp, 500, 1.sp)
 private val TransportLabelStyle = mono(10.sp, 500, 1.sp)
+private val LYRICS_STRIP_SPACE = 64.dp
 
 fun marqueeText(index: Int, track: Track): String =
     "${index + 1}. ${track.artistLine} — ${track.title} (${formatTime(track.durationMs)})"
@@ -84,6 +91,24 @@ fun PlayerScreen(viewModel: PlayerViewModel, onJam: (() -> Unit)? = null) {
     val bitrate by viewModel.audioBus.bitrateKbps.collectAsStateWithLifecycle()
     val sampleRate by viewModel.audioBus.sampleRate.collectAsStateWithLifecycle()
     val channels by viewModel.audioBus.channels.collectAsStateWithLifecycle()
+
+    val lyricsShown by viewModel.lyricsShown.collectAsStateWithLifecycle()
+    val lyrics by viewModel.lyrics.collectAsStateWithLifecycle()
+    val thirdParty by viewModel.settings.lyricsThirdParty.collectAsStateWithLifecycle()
+    var consent by remember { mutableStateOf(false) }
+    LifecycleStartEffect(Unit) {
+        viewModel.setLyricsOnScreen(true)
+        onStopOrDispose { viewModel.setLyricsOnScreen(false) }
+    }
+    if (consent) {
+        LrclibConsentDialog(
+            onAccept = {
+                consent = false
+                viewModel.searchLyricsThirdParty()
+            },
+            onCancel = { consent = false },
+        )
+    }
 
     val track = ui.current
     val positionLabel = if (track !=
@@ -127,16 +152,35 @@ fun PlayerScreen(viewModel: PlayerViewModel, onJam: (() -> Unit)? = null) {
                 .background(colors.surface)
                 .border(1.dp, colors.border, RoundedCornerShape(10.dp)),
         ) {
-            StripedPlaceholder(Modifier.fillMaxSize())
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                QiText(stringResource(R.string.player_cover_placeholder), ReadoutStyle, color = colors.dim)
-            }
-            if (track?.coverUrl != null) {
-                AsyncImage(
-                    model = track.coverUrl,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
+            if (lyricsShown) {
+                Box(Modifier.fillMaxSize().background(colors.deep))
+            } else {
+                StripedPlaceholder(Modifier.fillMaxSize())
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    QiText(
+                        stringResource(R.string.player_cover_placeholder),
+                        ReadoutStyle,
+                        color = colors.dim,
+                    )
+                }
+                if (track?.coverUrl != null) {
+                    AsyncImage(
+                        model = track.coverUrl,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                }
+                val showLyrics = stringResource(R.string.lyrics_show)
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(bottom = LYRICS_STRIP_SPACE)
+                        .tap { viewModel.showLyrics(true) }
+                        .semantics {
+                            role = Role.Button
+                            contentDescription = showLyrics
+                        },
                 )
             }
             Box(
@@ -150,6 +194,18 @@ fun PlayerScreen(viewModel: PlayerViewModel, onJam: (() -> Unit)? = null) {
                         ),
                     ),
             )
+            if (lyricsShown) {
+                val canSeek = ui.playbackState != Player.STATE_IDLE && ui.playbackState != Player.STATE_ENDED
+                LyricsPanel(
+                    view = lyrics,
+                    place = LyricsPlace(track?.key, ui.positionMs, canSeek),
+                    canSearchThirdParty = !thirdParty,
+                    onSeek = viewModel::seekTo,
+                    onCover = { viewModel.showLyrics(false) },
+                    onSearchThirdParty = { consent = true },
+                    modifier = Modifier.fillMaxSize().padding(bottom = LYRICS_STRIP_SPACE),
+                )
+            }
             VisualizerStrip(
                 mode = visualizerMode,
                 playing = ui.isPlaying,

@@ -50,6 +50,7 @@ class Reporter(
     private var errorsDropped = 0L
     private var tracks = 0L
     private var jams = 0L
+    private var lyrics = LyricsCounts()
     private val inUse = Stopwatch(uptimeMs)
     private val playing = Stopwatch(uptimeMs)
     private var queueChanged = false
@@ -129,6 +130,10 @@ class Reporter(
 
     fun countJam() {
         synchronized(lock) { jams++ }
+    }
+
+    fun countLyrics(outcome: LyricsOutcome, thirdPartyFailed: Boolean) {
+        synchronized(lock) { lyrics = lyrics.counted(outcome, thirdPartyFailed) }
     }
 
     fun setPlaying(on: Boolean) {
@@ -223,6 +228,7 @@ class Reporter(
             playMinutes = playing.ms() / MS_PER_MINUTE,
             jams = jams,
             errorsDropped = errorsDropped,
+            lyrics = lyrics,
         ),
     )
 

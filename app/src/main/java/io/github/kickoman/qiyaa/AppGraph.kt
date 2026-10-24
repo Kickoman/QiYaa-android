@@ -18,6 +18,9 @@ import io.github.kickoman.qiyaa.jam.JamSessionStore
 import io.github.kickoman.qiyaa.jam.JamStore
 import io.github.kickoman.qiyaa.local.LocalCheck
 import io.github.kickoman.qiyaa.local.LocalLibrary
+import io.github.kickoman.qiyaa.local.LocalLyrics
+import io.github.kickoman.qiyaa.lyrics.Lrclib
+import io.github.kickoman.qiyaa.lyrics.LyricsFinder
 import io.github.kickoman.qiyaa.playback.JamCatalog
 import io.github.kickoman.qiyaa.playback.JamHost
 import io.github.kickoman.qiyaa.playback.JamHostConfig
@@ -35,6 +38,7 @@ import io.github.kickoman.qiyaa.yandex.Library
 import io.github.kickoman.qiyaa.yandex.Quality
 import io.github.kickoman.qiyaa.yandex.Session
 import io.github.kickoman.qiyaa.yandex.YandexApi
+import io.github.kickoman.qiyaa.yandex.signedIn
 import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -42,9 +46,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -209,8 +215,37 @@ class AppGraph(val context: Context) {
             log = { message, failed -> Log.w(LOG_TAG, message, failed) },
         )
 
+    val lyricsShown = MutableStateFlow(false)
+    val lyricsOnScreen = MutableStateFlow(false)
+    val lyricsTrack = MutableStateFlow<Track?>(null)
+
+    val lyricsFinder =
+        LyricsFinder(
+            scope = mainScope,
+            source = SourceLyrics(
+                YandexLyrics(api::lyricsText) {
+                    session.state.value.signedIn
+                },
+                LocalLyrics(context),
+            ),
+            thirdParty = Lrclib(httpClient, BuildConfig.VERSION_NAME),
+            currentTrack = lyricsTrack,
+            active = combine(lyricsShown, lyricsOnScreen) { shown, onScreen -> shown && onScreen },
+            thirdPartyEnabled = settings.lyricsThirdParty,
+            connectivity = networkMonitor.available,
+            signedIn = session.state.map { it.signedIn },
+        )
+
     init {
-        telemetry?.connect(api, session.state, queue, jamHost, networkMonitor.available)
+        telemetry?.connect(
+            api,
+            session.state,
+            queue,
+            jamHost,
+            networkMonitor.available,
+            lyricsShown,
+            lyricsFinder.lookups,
+        )
     }
 
     companion object {
