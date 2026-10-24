@@ -15,7 +15,8 @@ grep -rlnE '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiy
 | `RequestFailure.kt` | `RequestFailure` — неудачный запрос для телеметрии: `NETWORK`, `HTTP` со статусом, `CONTENT` |
 | `JsonFields.kt` | мягкий доступ к JSON: `objectOrEmpty`, `arrayOrEmpty`, `string`, `int`, `long`, `boolean`, `scalarString`, `idString`, `parseJsonObjectOrNull` |
 | `Models.kt` | `Account`, `Track.webUrl` (страница трека в Яндекс Музыке; `null` у трека не из Яндекса; сам `Track` — `track/`), `NamedRef`, `PlaylistRef`, `Station`, `WheelWave`, `WaveBatch`, `SearchResult`, `DownloadVariant`, `DownloadInfo`, `ResolvedUrl`, `WaveEvent`, `WaveContext` |
-| `YandexApi.kt` | `YandexApi` — транспорт (OkHttp), конверт, `accountStatus`, `tracks`, `resolveTrackUrl`, `reportPlayStarted` |
+| `YandexApi.kt` | `YandexApi` — транспорт (OkHttp), конверт, `accountStatus`, `tracks`, `lyricsText`, `resolveTrackUrl`, `reportPlayStarted` |
+| `TrackLyrics.kt` | `TrackLyrics` — текст трека из ответа `/tracks/{id}/supplement` (LYR-02) |
 | `TrackParsing.kt` | `TrackParsing` — `JsonElement` → `Track` |
 | `TrackUrl.kt` | `TrackUrl` — выбор варианта и подпись ссылки на mp3 |
 | `FileInfo.kt` | `Quality`, `FileInfoRequest`, `FileDownloadInfo`, `FileInfo` — запрос `GET /get-file-info`, его подпись и разбор |
@@ -90,6 +91,7 @@ class YandexApi(
     suspend fun getText(fullUrl: String): String                 // без конверта, для download-info
     suspend fun accountStatus(): Account
     suspend fun tracks(ids: List<String>): List<Track>           // POST /tracks/, до 250 id за раз
+    suspend fun lyricsText(trackId: String): String?             // GET /tracks/{id}/supplement; null — текста нет
     suspend fun resolveTrackUrl(trackId: String, quality: Quality = Quality.STANDARD): ResolvedUrl   // "id" или "id:albumId"
     suspend fun reportPlayStarted(account: Account, track: Track, playId: String)
     companion object { fun formatSeconds(durationMs: Long): String }
@@ -119,6 +121,8 @@ data class RequestFailure(val kind: Kind, val status: Int? = null) {
 `resolveTrackUrl` при `Quality.STANDARD` делает два запроса: `GET /tracks/{id}/download-info` → список вариантов; затем `GET <downloadInfoUrl>?format=json` → `{host, path, ts, s}` → подпись (см. `TrackUrl`). `ResolvedUrl.codec` — кодек выбранного варианта.
 
 При `Quality.ECONOMY` сначала `GET /get-file-info` (см. `FileInfo`) с заголовками `Authorization` и `X-Yandex-Music-Client: YandexMusicDesktopAppWindows/5.95.0`. Пригодный ответ даёт `ResolvedUrl(url, bitrate, codec)`. Обрыв сети — `NetworkException` (QUAL-04: ждать сеть, как для любой ссылки). Всё остальное (любой HTTP-статус, ответ без `https`-ссылки, `encraw`, кодек не из запроса) — строка в `log` и тот же трек по стандартному пути (QUAL-03). Этот запрос идёт мимо `execute`: его 401 и 403 — отказ в подписи, а не в токене, и в `tokenRejections` не попадают (иначе экономия выкидывала бы на экран входа). `accountStatus` без `uid` в ответе — `AuthException` (токен не принят).
+
+`lyricsText` спрашивает `GET /tracks/{id}/supplement` (`id` без альбома) и отдаёт `result.lyrics.fullLyrics`, если он не пуст, а `hasRights` не `false` (`TrackLyrics.textOf`, фикстуры `spec/fixtures/yandex/tracks-supplement`). Ответ без `lyrics` — `null`, незнакомый id — 400 `validate`, то есть `HttpException`. Синхронных текстов Яндекса приложение не спрашивает (`spec/player/lyrics.md`, «Synced lyrics: not yet»). Что из этого видит пользователь, решает корневой `YandexLyrics` (`lyrics/README.md`).
 
 `reportPlayStarted` отправляет форму `POST /play-audio` с полями `track-id`, `album-id`, `from=web-own_tracks-track-track-main`, `play-id`, `uid`, `timestamp` и `client-now` (одно и то же значение, `yyyy-MM-dd'T'HH:mm:ss.SSS'Z'` в UTC), `track-length-seconds` (формат `QString::number`: `180`, `201.5`), `total-played-seconds=0`, `end-position-seconds=0`.
 

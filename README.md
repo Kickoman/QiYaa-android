@@ -61,6 +61,7 @@ Release-APK (R8, Media3 1.11) перед первым тегом проверя�
 | Пакет | Что делает | README |
 |---|---|---|
 | `track/` | Трек и его источник (`Track`, `TrackSource`): общая модель для источников, очереди, плеера и джема. Чистая JVM | [track/README.md](app/src/main/java/io/github/kickoman/qiyaa/track/README.md) |
+| `lyrics/` | Текст песни для экрана текста: разбор LRC, порядок «источник трека — сервис текстов», память на 10 треков, сервис LRCLIB. Чистая JVM | [lyrics/README.md](app/src/main/java/io/github/kickoman/qiyaa/lyrics/README.md) |
 | `local/` | Свои файлы из медиатеки телефона: запрос к `MediaStore`, выборы (все треки, альбомы, исполнители, папки) в порядке ПК, сверка восстановленной очереди | [local/README.md](app/src/main/java/io/github/kickoman/qiyaa/local/README.md) |
 | `yandex/` | API Яндекс Музыки, OAuth по коду устройства, подпись mp3-ссылки, источники библиотеки. Чистая JVM | [yandex/README.md](app/src/main/java/io/github/kickoman/qiyaa/yandex/README.md) |
 | `audio/` | Эквалайзер, FFT, спектр, кольцо визуализатора, PCM16. Чистая JVM | [audio/README.md](app/src/main/java/io/github/kickoman/qiyaa/audio/README.md) |
@@ -69,7 +70,7 @@ Release-APK (R8, Media3 1.11) перед первым тегом проверя�
 | `playback/` | ExoPlayer + MediaSession, адаптер Media3 для очереди, разрешение ссылок, аудиопроцессоры | [playback/README.md](app/src/main/java/io/github/kickoman/qiyaa/playback/README.md) |
 | `ui/` | Compose: экраны, view model, тема | [ui/README.md](app/src/main/java/io/github/kickoman/qiyaa/ui/README.md) |
 | `telemetry/` | Анонимная статистика и отчёты о падениях: события и их кодек, отчёт о падении, файлы запусков, отправка, расписание и выключатель. Чистая JVM, импортирует его только корень | [telemetry/README.md](app/src/main/java/io/github/kickoman/qiyaa/telemetry/README.md) |
-| корень | `AppGraph` (ручной граф зависимостей, один на процесс; `qualityInEffect` — действующее качество звука, поток), `QiYaaApp`, `NetworkMonitor` (есть ли сеть, питает `yandex/Session`; лимитная ли она — поток `metered` для качества звука), `AppLocale` (язык интерфейса — свой, не системный), `AppTelemetry` и `TelemetryCodes` (сигналы платформы и события модулей → `telemetry/`; описаны в его README) | — |
+| корень | `AppGraph` (ручной граф зависимостей, один на процесс; `qualityInEffect` — действующее качество звука, поток), `QiYaaApp`, `NetworkMonitor` (есть ли сеть, питает `yandex/Session`; лимитная ли она — поток `metered` для качества звука), `AppLocale` (язык интерфейса — свой, не системный), `AppTelemetry` и `TelemetryCodes` (сигналы платформы и события модулей → `telemetry/`; описаны в его README), `YandexLyrics` (текст Яндекса как источник для `lyrics/`, LYR-02, LYR-16; `lyrics/README.md`) | — |
 | `app/src/test/` | JVM-тесты | [test/README.md](app/src/test/README.md) |
 | `spec/` | Подмодуль [Kickoman/QiYaa-spec](https://github.com/Kickoman/QiYaa-spec): сценарии плеера, фикстуры API, эталоны DSP и таблица паритета, общие с десктопом. Меняется сначала там, потом здесь (`CLAUDE.md`) | [spec/README.md](spec/README.md) |
 

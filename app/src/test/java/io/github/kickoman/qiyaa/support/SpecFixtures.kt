@@ -30,15 +30,15 @@ object Spec {
         dir
     }
 
-    fun fixture(endpoint: String, case: String): Fixture {
-        val file = File(root, "fixtures/yandex/$endpoint/$case.json")
+    fun fixture(endpoint: String, case: String, service: String = YANDEX): Fixture {
+        val file = File(root, "fixtures/$service/$endpoint/$case.json")
         check(file.isFile) { "No fixture $file" }
         val status = statusPrefix.find(case)?.groupValues?.get(1)?.toInt() ?: 200
         return Fixture(endpoint, case, status, file.readText())
     }
 
-    fun expected(endpoint: String, case: String): JsonObject {
-        val file = File(root, "expected/yandex/$endpoint/$case.json")
+    fun expected(endpoint: String, case: String, service: String = YANDEX): JsonObject {
+        val file = File(root, "expected/$service/$endpoint/$case.json")
         check(file.isFile) { "No expected result $file" }
         return Json.parseToJsonElement(file.readText()).jsonObject
     }
@@ -49,11 +49,19 @@ object Spec {
         return Json.parseToJsonElement(file.readText()).jsonObject
     }
 
-    fun cases(endpoint: String): List<String> =
-        File(root, "fixtures/yandex/$endpoint").listFiles { file -> file.extension == "json" }
+    fun lyrics(): JsonObject {
+        val file = File(root, "lyrics/lrc.json")
+        check(file.isFile) { "No lyrics vectors $file" }
+        return Json.parseToJsonElement(file.readText()).jsonObject
+    }
+
+    fun cases(endpoint: String, service: String = YANDEX): List<String> =
+        File(root, "fixtures/$service/$endpoint").listFiles { file -> file.extension == "json" }
             .orEmpty()
             .map { it.nameWithoutExtension }
             .sorted()
 
+    const val YANDEX = "yandex"
+    const val LRCLIB = "lrclib"
     private const val SPEC_DIR_PROPERTY = "qiyaa.spec.dir"
 }
