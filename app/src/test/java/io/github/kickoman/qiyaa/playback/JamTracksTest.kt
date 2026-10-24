@@ -5,7 +5,11 @@ import io.github.kickoman.qiyaa.jam.Decoded
 import io.github.kickoman.qiyaa.jam.JamCodec
 import io.github.kickoman.qiyaa.jam.JamGuest
 import io.github.kickoman.qiyaa.jam.JamTrack
+import io.github.kickoman.qiyaa.jam.JamTrackSource
+import io.github.kickoman.qiyaa.jam.NowPlayingSource
+import io.github.kickoman.qiyaa.jam.Playing
 import io.github.kickoman.qiyaa.track.Track
+import io.github.kickoman.qiyaa.track.TrackSource
 import io.github.kickoman.qiyaa.yandex.TrackParsing
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -85,9 +89,88 @@ class JamTracksTest {
     }
 
     @Test
+    fun `HOST-37 a local base track is the host's own track, with title, artists and length only`() {
+        val local =
+            Track(
+                id = "42",
+                title = "Свой\u0007файл",
+                artists = listOf("Гурт", " "),
+                albumId = "5307396",
+                durationMs = 180_000,
+                coverUrl = "https://$template",
+                source = TrackSource.LOCAL,
+            )
+        val track = JamTracks.baseTrack(local, HOST_SECRET)
+        assertEquals(
+            JamTrack(
+                id = "654c01b48d75abaf",
+                title = "Свой файл",
+                artists = listOf("Гурт"),
+                durationMs = 180_000,
+                source = JamTrackSource.HOST,
+            ),
+            track,
+        )
+        assertTrue(JamCodec.decodeClient(JamCodec.encode(Add("q1", track = track))) is Decoded.Message)
+    }
+
+    @Test
+    fun `HOST-37 the host's id is 16 hex digits of HMAC-SHA256 of the source and id, keyed by the secret`() {
+        val first = Track(id = "/storage/emulated/0/Music/a.mp3", title = "A", source = TrackSource.LOCAL)
+        val second = first.copy(id = "/storage/emulated/0/Music/b.mp3")
+        val id = JamTracks.baseTrack(first, HOST_SECRET)!!.id
+        assertTrue(id, Regex("^[0-9a-f]{16}$").matches(id))
+        assertEquals(id, JamTracks.baseTrack(first.copy(title = "Renamed"), HOST_SECRET)?.id)
+        assertTrue(id != JamTracks.baseTrack(second, HOST_SECRET)?.id)
+        assertTrue(id != JamTracks.baseTrack(first, OTHER_SECRET)?.id)
+        assertEquals("654c01b48d75abaf", JamTracks.baseTrack(first.copy(id = "42"), HOST_SECRET)?.id)
+    }
+
+    @Test
+    fun `HOST-37 a local track is cut to the limits of a track`() {
+        val local =
+            Track(
+                id = "42",
+                title = "樂".repeat(200),
+                artists = List(12) { "藝".repeat(70) } + "",
+                durationMs = Long.MAX_VALUE,
+                source = TrackSource.LOCAL,
+            )
+        val track = JamTracks.baseTrack(local, HOST_SECRET)!!
+        assertEquals("樂".repeat(150), track.title)
+        assertEquals(List(10) { "藝".repeat(64) }, track.artists)
+        assertEquals(86_400_000L, track.durationMs)
+        val playing = Playing(NowPlayingSource.WAVE, track = track, positionMs = 0, paused = false)
+        assertTrue(JamCodec.decodeClient(JamCodec.encode(playing)) is Decoded.Message)
+    }
+
+    @Test
+    fun `HOST-37 a local track without a title after cleaning is not reported`() {
+        val local = Track(id = "42", title = " \u0001 ", source = TrackSource.LOCAL)
+        assertNull(JamTracks.baseTrack(local, HOST_SECRET))
+    }
+
+    @Test
+    fun `HOST-10 a Yandex base track is toJam's, and one the protocol cannot carry stays out`() {
+        val yandex = Track(id = "38633712", title = "Песня", artists = listOf("Гурт"), albumId = "5307396")
+        assertEquals(JamTracks.toJam(yandex), JamTracks.baseTrack(yandex, HOST_SECRET))
+        assertNull(JamTracks.baseTrack(yandex.copy(id = "a b"), HOST_SECRET))
+    }
+
+    @Test
+    fun `HOST-20 ROOM-66 a local track with an id like the catalog's is never a catalog track`() {
+        assertNull(JamTracks.toJam(Track(id = "42", title = "Свой файл", source = TrackSource.LOCAL)))
+    }
+
+    @Test
     fun `a cover URL without a size template gives no cover`() {
         assertEquals(template, JamTracks.coverUri("https://" + template.replace("%%", "400x400")))
         assertNull(JamTracks.coverUri("https://example.org/cover.jpg"))
         assertNull(JamTracks.coverUri(null))
+    }
+
+    private companion object {
+        const val HOST_SECRET = "R0CuY0ewFywBJU_1W65a_1GZ9ERuf21kPUAYWz9HUUU"
+        const val OTHER_SECRET = "Kq8Vb2nT5xWm9Lp3Rz7Yc1Hd6Gf4Js0Ne8Ua2Io5Pk3"
     }
 }

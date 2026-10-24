@@ -2,8 +2,12 @@ package io.github.kickoman.qiyaa.playback
 
 import io.github.kickoman.qiyaa.jam.JamCodec
 import io.github.kickoman.qiyaa.jam.JamTrack
+import io.github.kickoman.qiyaa.jam.JamTrackSource
 import io.github.kickoman.qiyaa.track.Track
+import io.github.kickoman.qiyaa.track.TrackSource
 import io.github.kickoman.qiyaa.yandex.TrackParsing
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
 /** The app's `Track` and the protocol's `JamTrack` (`spec/jam/protocol`, "Tracks"). */
 object JamTracks {
@@ -12,22 +16,50 @@ object JamTracks {
     const val MAX_TITLE = 150
     const val MAX_COVER = 300
     const val MAX_DURATION_MS = 86_400_000L
+    private const val HMAC = "HmacSHA256"
+    private const val HOST_ID_BYTES = 8
     private val CATALOG_ID = Regex("^[0-9A-Za-z_-]{1,64}$")
     private val CONTROL = Regex("[\\u0000-\\u001F\\u007F]")
 
-    /** null for a track the protocol cannot carry: an id of another shape or no title. */
-    fun toJam(track: Track): JamTrack? {
+    /** null for a track the protocol cannot carry: not Yandex's, an id of another shape or no title. */
+    fun toJam(track: Track): JamTrack? = when (track.source) {
+        TrackSource.YANDEX -> catalogTrack(track)
+        TrackSource.LOCAL -> null
+    }
+
+    fun baseTrack(track: Track, hostSecret: String): JamTrack? = when (track.source) {
+        TrackSource.YANDEX -> toJam(track)
+        TrackSource.LOCAL -> hostTrack(track, hostSecret)
+    }
+
+    private fun hostTrack(track: Track, hostSecret: String): JamTrack? =
+        within(track)?.copy(id = hostTrackId(track, hostSecret), source = JamTrackSource.HOST)
+
+    private fun hostTrackId(track: Track, hostSecret: String): String {
+        val mac = Mac.getInstance(HMAC)
+        mac.init(SecretKeySpec(hostSecret.toByteArray(Charsets.UTF_8), HMAC))
+        val digest = mac.doFinal("${track.source.key}\n${track.id}".toByteArray(Charsets.UTF_8))
+        return digest.take(HOST_ID_BYTES).joinToString("") { "%02x".format(it) }
+    }
+
+    private fun catalogTrack(track: Track): JamTrack? {
         if (!CATALOG_ID.matches(track.id)) return null
+        return within(track)?.copy(
+            id = track.id,
+            albumId = track.albumId.takeIf(CATALOG_ID::matches),
+            coverUri = coverUri(track.coverUrl),
+        )
+    }
+
+    private fun within(track: Track): JamTrack? {
         val title = cut(clean(track.title), MAX_TITLE)
         if (title.isBlank()) return null
         val artists = track.artists.map { cut(clean(it), MAX_NAME) }.filter(String::isNotBlank)
         return JamTrack(
-            id = track.id,
-            albumId = track.albumId.takeIf(CATALOG_ID::matches),
+            id = "",
             title = title,
             artists = artists.take(MAX_ARTISTS),
             durationMs = track.durationMs.coerceIn(0, MAX_DURATION_MS),
-            coverUri = coverUri(track.coverUrl),
         )
     }
 
