@@ -271,7 +271,7 @@ interface AccountGateway {
 class Session(gateway: AccountGateway, connectivity: Flow<Boolean>, scope: CoroutineScope) {
     val state: StateFlow<SessionState>
     fun start()                                  // пустой токен → LoggedOut, иначе сразу Connecting и цикл подключения
-    suspend fun signIn(token: String): Account   // ошибка → токен "", LoggedOut, исключение наружу
+    suspend fun signIn(token: String): Account   // ошибка → токен "" (если это последняя попытка), LoggedOut, исключение наружу
     fun signOut()                                // forget() и LoggedOut
     companion object { FIRST_RETRY_MS = 2_000; MAX_RETRY_MS = 60_000 }
 }
@@ -293,7 +293,7 @@ class Session(gateway: AccountGateway, connectivity: Flow<Boolean>, scope: Corou
 `Expired`: при `Connecting` и `Offline` аккаунт есть, нет только связи. Это единственное определение входа в
 приложении: по нему `ui/` выбирает стартовый экран, решает, куда ведёт ссылка на джем, и пускает к джему.
 
-`tokenRejections` в любом состоянии, кроме `LoggedOut`, останавливает цикл и ставит `Expired`. `signIn` проверяет новый токен в состоянии `LoggedOut`, поэтому неверный токен при входе даёт исключение, а не `Expired`.
+`tokenRejections` в любом состоянии, кроме `LoggedOut`, останавливает цикл и ставит `Expired`. `signIn` проверяет новый токен в состоянии `LoggedOut`, поэтому неверный токен при входе даёт исключение, а не `Expired`. Неудача стирает токен, только если после неё не начался другой вход: отменённый вход заканчивается не сразу (блокирующий запрос OkHttp внутри `withContext(Dispatchers.IO)` доходит до конца и лишь потом бросает `CancellationException`), и без этой проверки он стёр бы токен входа, начатого за это время (`SessionTest`).
 
 `connectivity` на устройстве — `NetworkMonitor.available` из корневого пакета (default network с `NET_CAPABILITY_INTERNET`); в тестах — `MutableStateFlow<Boolean>`.
 

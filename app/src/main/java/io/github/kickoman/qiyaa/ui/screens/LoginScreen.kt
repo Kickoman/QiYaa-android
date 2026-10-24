@@ -45,7 +45,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.ui.AppViewModel
 import io.github.kickoman.qiyaa.ui.LoginStatus
-import io.github.kickoman.qiyaa.ui.Screen
 import io.github.kickoman.qiyaa.ui.components.ActionButton
 import io.github.kickoman.qiyaa.ui.components.LanguageSwitch
 import io.github.kickoman.qiyaa.ui.components.LedDot
@@ -89,7 +88,7 @@ fun LoginScreen(viewModel: AppViewModel) {
                 QiText(
                     stringResource(R.string.login_later),
                     mono(11.sp, 500, 1.sp),
-                    Modifier.tap { viewModel.go(Screen.LIBRARY) },
+                    Modifier.tap { viewModel.leaveLogin() },
                     color = colors.muted,
                     maxLines = 1,
                 )
@@ -98,7 +97,7 @@ fun LoginScreen(viewModel: AppViewModel) {
         QiText(stringResource(R.string.login_title), sans(26.sp, 600, colors.text, lineHeight = 30.sp))
         login.notice?.let { notice ->
             Spacer(Modifier.height(12.dp))
-            QiText(notice, HintStyle, color = colors.error)
+            QiText(notice, HintStyle, color = if (login.noticeIsError) colors.error else colors.muted)
         }
         login.jamPageUrl?.let { url ->
             val noBrowser = stringResource(R.string.login_no_browser)

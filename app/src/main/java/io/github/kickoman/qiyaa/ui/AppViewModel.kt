@@ -52,6 +52,7 @@ data class LoginUi(
     val tokenInput: String = "",
     val tokenError: Boolean = false,
     val notice: String? = null,
+    val noticeIsError: Boolean = false,
     val jamPageUrl: String? = null,
 )
 
@@ -194,16 +195,26 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         mutableSection.value = null
     }
 
-    fun openLogin(notice: String? = null, jamPage: JamLink? = null, returnTo: Screen = Screen.LIBRARY) {
+    fun openLogin(
+        notice: String? = null,
+        jamPage: JamLink? = null,
+        returnTo: Screen = Screen.LIBRARY,
+        noticeIsError: Boolean = false,
+    ) {
         if (mutableScreen.value == Screen.LOGIN) {
-            mutableLogin.update { it.copy(notice = notice, jamPageUrl = jamPage?.url) }
+            mutableLogin.update {
+                it.copy(notice = notice, noticeIsError = noticeIsError, jamPageUrl = jamPage?.url)
+            }
             return
         }
         loginReturn = returnTo
-        mutableLogin.value = LoginUi(notice = notice, jamPageUrl = jamPage?.url)
+        mutableLogin.value =
+            LoginUi(notice = notice, noticeIsError = noticeIsError, jamPageUrl = jamPage?.url)
         go(Screen.LOGIN)
         startDeviceLogin()
     }
+
+    fun leaveLogin() = go(loginReturn)
 
     private fun finishLogin(): JamLink? {
         val link = pendingLink
@@ -377,7 +388,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         for (list in lists + wheel) list.reset()
         mutableLibraryUi.value = LibraryUi()
         when (screenAfterSignOut(expired)) {
-            Screen.LOGIN -> openLogin(string(R.string.login_expired))
+            Screen.LOGIN -> openLogin(string(R.string.login_expired), noticeIsError = true)
 
             else -> {
                 mutableLogin.value = LoginUi()

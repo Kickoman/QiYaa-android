@@ -1,5 +1,6 @@
 package io.github.kickoman.qiyaa.yandex
 
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -47,6 +48,7 @@ class Session(
 
     @Volatile
     private var job: Job? = null
+    private val signIns = AtomicInteger()
 
     init {
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -67,6 +69,7 @@ class Session(
     }
 
     suspend fun signIn(token: String): Account {
+        val attempt = signIns.incrementAndGet()
         job?.cancel()
         mutableState.value = SessionState.LoggedOut
         gateway.token = token
@@ -74,7 +77,7 @@ class Session(
             try {
                 gateway.connectAccount()
             } catch (failed: Exception) {
-                gateway.token = ""
+                if (signIns.get() == attempt) gateway.token = ""
                 throw failed
             }
         mutableState.value = SessionState.Online(account)

@@ -91,7 +91,9 @@ fun AppRoot(
         val guestOn = guestState.phase.isSession
         val openLink = { text: String -> app.openJamLink(text) }
         val backTarget = screen.backTarget
-        BackHandler(enabled = backTarget != null) { backTarget?.let(app::go) }
+        BackHandler(enabled = backTarget != null) {
+            if (screen == Screen.LOGIN) app.leaveLogin() else backTarget?.let(app::go)
+        }
 
         Box(Modifier.fillMaxSize().background(colors.background)) {
             Column(
