@@ -141,14 +141,16 @@ git push origin v0.1.0
 - Тег без секретов не публикуется: job `build` падает на шаге «Release signing key» с именем недостающего секрета, `release` не запускается.
 - Секреты недоступны в PR из форков; такие PR собираются неподписанными, как и любая ветка.
 - Перевыпустить тот же тег: удалить релиз и тег на GitHub (`git push --delete origin v0.1.0`), затем поставить тег заново.
-- Первый релиз с телеметрией примет только сервер QiYaa-jam, который знает пакеты `app: "android"`: PR Kickoman/QiYaa-jam#19 (ждёт Kickoman/QiYaa-jam#17; на 2026-10-17 не смержен и не задеплоен). Пока на `qiyaa.kanstancin.net` старый сервер, каждый пакет получает 400, а 400 приложение по спеке выбрасывает: события и отчёты о падениях этого периода теряются молча, ничего не ломается и не повторяется. Перед тегом проверить сервер (204 — принимает, 400 — ещё нет):
+- Релиз с телеметрией примет только сервер QiYaa-jam, который знает пакеты этой версии: `app: "android"` — с v0.8.2 (Kickoman/QiYaa-jam#19), `exit` со счётчиками текстов песен — с v0.9.1 (QiYaa-spec#34; на `qiyaa.kanstancin.net` с 2026-10-24). Пока там старый сервер, такой пакет получает 400, а 400 приложение по спеке выбрасывает целиком, вместе со `start` и отчётами о падениях: события этого периода теряются молча, ничего не ломается и не повторяется. Перед тегом проверить сервер обоими примерами (204 — принимает, 400 — ещё нет):
 
   ```sh
-  curl -s -o /dev/null -w '%{http_code}\n' -H 'content-type: application/json' \
-      --data @spec/telemetry/examples/android-start.json https://qiyaa.kanstancin.net/api/telemetry
+  for example in android-start android-exit-lyrics; do
+      curl -s -o /dev/null -w "$example %{http_code}\n" -H 'content-type: application/json' \
+          --data @spec/telemetry/examples/$example.json https://qiyaa.kanstancin.net/api/telemetry
+  done
   ```
 
-  Проверка оставляет на сервере одно событие примера под машиной примеров спеки.
+  Проверка оставляет на сервере события примеров под машиной примеров спеки.
 
 ## App Links
 
