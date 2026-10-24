@@ -1,5 +1,6 @@
 package io.github.kickoman.qiyaa.playback
 
+import io.github.kickoman.qiyaa.jam.JamCodec
 import io.github.kickoman.qiyaa.jam.JamTrack
 import io.github.kickoman.qiyaa.yandex.Track
 import io.github.kickoman.qiyaa.yandex.TrackParsing
@@ -8,8 +9,8 @@ import io.github.kickoman.qiyaa.yandex.TrackParsing
 object JamTracks {
     const val MAX_ARTISTS = 10
     const val MAX_NAME = 64
-    const val MAX_TITLE = 150
     const val MAX_COVER = 300
+    const val MAX_TITLE = 150
     const val MAX_DURATION_MS = 86_400_000L
     private val CATALOG_ID = Regex("^[0-9A-Za-z_-]{1,64}$")
     private val CONTROL = Regex("[\\u0000-\\u001F\\u007F]")
@@ -45,7 +46,9 @@ object JamTracks {
         val bare = coverUrl.removePrefix("https://").removePrefix("http://")
         val size = TrackParsing.COVER_SIZE
         val template = if (bare.endsWith(size)) bare.dropLast(size.length) + "%%" else bare
-        return template.takeIf { "%%" in it && it.length <= MAX_COVER && !CONTROL.containsMatchIn(it) }
+        return template.takeIf {
+            it.length <= MAX_COVER && JamCodec.isCoverUri(it) && !CONTROL.containsMatchIn(it)
+        }
     }
 
     private fun clean(text: String): String = text.replace(CONTROL, " ").trim()

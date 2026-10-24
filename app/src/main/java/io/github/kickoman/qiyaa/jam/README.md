@@ -13,6 +13,7 @@
 
 ```bash
 grep -rlnE '^import (android|androidx|io\.github\.kickoman)' app/src/main/java/io/github/kickoman/qiyaa/jam/   # ничего не печатает
+grep -nE '\\\\[sSpP]' app/src/main/java/io/github/kickoman/qiyaa/jam/{JamCodec,JamNames}.kt               # ничего не печатает: «Ловушки» JamCodec
 ```
 
 | Файл | Содержит |
@@ -23,7 +24,8 @@ grep -rlnE '^import (android|androidx|io\.github\.kickoman)' app/src/main/java/i
 | `JamSessionStore.kt` | `JamSession`, `JamSessionStore`, `JamSessionCodec`, `JamStore` |
 | `JamLink.kt` | `JamLink` — ссылка для входа гостя: сервер, комната, секрет |
 | `JamGuestStore.kt` | `GuestRoom`, `GuestMembership`, `GuestMemory`, `JamGuestStore`, `JamGuestCodec` — членства гостя на диске |
-| `JamGuest.kt` | `JamGuest`, `JamGuestState`, `GuestPhase`, `GuestAdd`, `GuestAddResult`, `AddAction`, `JamGuestEvent`, `GuestNames`, `positionMsAt` — сессия гостя |
+| `JamGuest.kt` | `JamGuest`, `JamGuestState`, `GuestPhase`, `GuestAdd`, `GuestAddResult`, `AddAction`, `JamGuestEvent`, `positionMsAt` — сессия гостя |
+| `JamNames.kt` | `JamNames` — имя хозяина и гостя по правилу `name` протокола |
 
 ## `Protocol.kt`
 
@@ -51,6 +53,7 @@ grep -rlnE '^import (android|androidx|io\.github\.kickoman)' app/src/main/java/i
 object JamCodec {
     val json: Json                                   // ignoreUnknownKeys, classDiscriminator = "type", explicitNulls = false, encodeDefaults
     val REASONS: Set<String>;  val CLIENT_TYPES: Set<String>;  val SERVER_TYPES: Set<String>
+    const val ECMASCRIPT_SPACES: String              // `\s` ECMAScript как тело класса символов регулярки
     fun encode(message: ClientMessage): String
     fun decodeServer(text: String): Decoded<ServerMessage>
     fun decodeClient(text: String): Decoded<ClientMessage>
@@ -67,6 +70,12 @@ sealed interface Decoded<out T> { Message(message); UnknownType; Invalid(problem
 пропускаются. Тест прогоняет все `spec/jam/protocol/examples`: правильные разбираются, `invalid-*` —
 нет.
 
+Шаблоны схем — регулярки ECMAScript с флагом `u` (`spec/jam/protocol/README.md`, «pattern»), и
+`JamCodec` читает их так же: по всей строке (`Regex.matches`), а `\s` и `\S` — пробелы ECMAScript,
+`ECMASCRIPT_SPACES`: U+0009–U+000D, пробел, U+00A0, U+1680, U+2000–U+200A, U+2028, U+2029, U+202F,
+U+205F, U+3000, U+FEFF, но не U+0085. Из этой строки собраны шаблоны `coverUri`, `listenUrl`,
+`joinUrl`, имени и текста поиска.
+
 Треки (`track.schema.json`): у `host`-трека нет `albumId` и `coverUri`. Только треки каталога
 (`#/$defs/catalogTrack` в схемах) допускаются в `searchResults.tracks`, `searchResult.tracks`,
 `validateResult.results[].track` и в `queue[]` и `recent[]` комнаты в `state`. Рядом с `host`-треком
@@ -79,9 +88,11 @@ sealed interface Decoded<out T> { Message(message); UnknownType; Invalid(problem
 - У `source` три значения в Kotlin (`null`, `YANDEX`, `HOST`) на два смысла. Сравнивать через
   `isCatalog`, а не `== null` или `== YANDEX`. Принятый `"source": "yandex"` уйдёт обратно как
   `"source":"yandex"`; треки, которые строит само приложение, — без ключа.
-- `\s` в регулярках Java — только ASCII-пробелы, у Ajv на сервере — все пробелы Юникода. Имя с
-  неразрывным пробелом на краю сервер отвергнет, а `JamCodec` пропустит. Поэтому имя гостя сначала чистит
-  `GuestNames.clean`.
+- `\s` одной и той же регулярки JVM и телефон читают по-разному: на JVM тестов это ASCII-пробелы, на Android
+  (`java.util.regex` поверх ICU) — Unicode White_Space, с U+0085 и без U+FEFF. Ни то ни другое не ECMAScript.
+  Поэтому в шаблонах `JamCodec` и `JamNames` нет `\s`, `\S` и `\p{…}`, а пробелы берутся из
+  `ECMASCRIPT_SPACES`: тогда JVM-тесты описывают и телефон. `isBlank()` и `trim()` Kotlin тоже не считают
+  U+FEFF пробелом: имена перед отправкой чистит `JamNames`.
 
 ## `JamClient`
 
@@ -222,7 +233,7 @@ class JamGuest(transport: JamTransport, connectivity: Flow<Boolean>, store: JamG
                log: (String, Throwable?) -> Unit = { _, _ -> }) : JamHandler {
     val state: StateFlow<JamGuestState>;  val events: SharedFlow<JamGuestEvent>
     fun open(link: JamLink)                   // GUEST-01, -02, -04, -05
-    fun join(name: String): Boolean           // false — не NeedName, или имя не проходит GuestNames.clean и JamCodec
+    fun join(name: String): Boolean           // false — не NeedName, или имя не проходит JamNames.clean и JamCodec
     fun restore(): Boolean                    // GUEST-19; true — сессия уже есть или восстановлена
     fun add(track: JamTrack): GuestAddResult  // SENT, NOT_CONNECTED, HOST_OFFLINE, INVALID
     fun remove(itemId: String): Boolean       // только свой ждущий элемент (GUEST-10)
@@ -239,7 +250,6 @@ data class JamGuestState(val phase: GuestPhase, val serverUrl: String?, val room
 }
 sealed interface JamGuestEvent { data class Refused(val reason: String) }   // отказ в remove, skip, без id
 fun JamNowPlaying.positionMsAt(serverNow: Long): Long
-object GuestNames { const val MAX_NAME = 24; fun clean(name: String): String?; fun prefill(name: String): String }
 ```
 
 Гость в чужой комнате (`spec/jam/guest.md`). Один на процесс: `AppGraph.jamGuest`, свой `OkHttpJamTransport`,
@@ -314,16 +324,12 @@ object GuestNames { const val MAX_NAME = 24; fun clean(name: String): String?; f
 `queue-limit` (их показывает очередь); иначе `Add`.
 
 `positionMsAt(serverNow)` — `positionMs`, а при игре плюс `serverNow − reportedAt`, в пределах `0…durationMs`;
-без трека — 0 (GUEST-14). `GuestNames.clean` обрезает края и сворачивает каждую серию пробелов в один; пробел —
-любой знак `\s` JavaScript (`\t \n \v \f \r`, пробел, U+00A0, U+1680, U+2000–U+200A, U+2028, U+2029, U+202F,
-U+205F, U+3000, U+FEFF); результат — 1…24 кодовые точки или `null`. `GuestNames.prefill` — то же для поля имени
-(GUEST-02): чистит так же, но длинное имя обрезает до 24 кодовых точек, а не отвергает; пустое — `""`.
+без трека — 0 (GUEST-14). Имя для `join` чистит `JamNames.clean`, поле имени заполняет `JamNames.prefill`
+(GUEST-02).
 
 **Ловушки:**
 - Гость **никогда** не шлёт `search` (сервер ответит `not-allowed`, ROOM-27) и `add{trackId}` (ROOM-65): он ищет своим
   аккаунтом в `ui/`, а в `add` идёт готовый трек.
-- `\s` Java — только ASCII, а сервер проверяет имя набором JavaScript. Без `GuestNames.clean` имя с U+00A0 или
-  U+FEFF на краю проходит `JamCodec`, а сервер закрывает соединение с 1008.
 - Трек из `playback/JamTracks.toJam` в 4 КиБ влезает всегда: худший случай — трёхбайтовые знаки (CJK) во всех полях,
   около 3,6 КБ (`JamTracksTest`). Проверка срабатывает только на треке с четырёхбайтовыми знаками, собранном мимо
   `toJam`: `JamCodec` считает кодовые точки, а не байты.
@@ -332,10 +338,30 @@ U+205F, U+3000, U+FEFF); результат — 1…24 кодовые точки
 - Отклонённый токен — не повод для `forgetAll` (GUEST-03): только явный выход из аккаунта.
 - Правила `remove` и `skip` повторены локально, чтобы не тратить запросы; судья — сервер, его отказ приходит событием.
 
+## `JamNames`
+
+```kotlin
+object JamNames {
+    const val MAX_NAME = 24
+    fun clean(name: String): String?     // null — пусто или длиннее 24 кодовых точек
+    fun prefill(name: String): String    // "" — пусто
+    fun cut(name: String): String        // первые 24 кодовые точки, ничего не чистит
+}
+```
+
+Имя хозяина (`create.hostName`) и гостя (`join.name`) — одно правило `name` протокола: 1…24 кодовые точки,
+без управляющих знаков и без пробела на краях. `clean` обрезает края и сворачивает каждую серию пробелов
+ECMAScript (`JamCodec.ECMASCRIPT_SPACES`) в один пробел; результат — 1…24 кодовые точки или `null`. `prefill` чистит
+так же, но длинное имя обрезает до 24 кодовых точек, а не отвергает. Им заполняют поле имени гостя (GUEST-02) и
+хозяина, и им же `playback/JamHost.create` чистит имя хозяина. `cut` держит поле имени хозяина в 24 кодовых точках,
+пока его набирают, и не режет суррогатную пару, как `String.take`.
+
 ## Тесты
 
 `app/src/test/.../jam/`: `JamCodecTest` (все примеры спецификации, кодирование туда и обратно,
-правила `source`: каждое — правильный пример с одной правкой),
+правила `source`: каждое — правильный пример с одной правкой; пробелы ECMAScript: проход по всем кодовым точкам BMP
+в имени, края имени, `coverUri`, `listenUrl`, `joinUrl`, текст поиска), `JamNamesTest` (GUEST-02: чистка и
+предзаполнение имени, обрезка поля по кодовым точкам),
 `JamClientTest` (поддельный транспорт, виртуальное время `runTest`), `JamSessionCodecTest`, `JamLinkTest`
 (GUEST-01, GUEST-05: текст вокруг ссылки, нормализация сервера, отказы; все `joinUrl` примеров `created` и `linkRotated`),
 `JamGuestStoreTest` (GUEST-03, GUEST-19: формат, битые файлы и записи, срок жизни, 20 новейших),

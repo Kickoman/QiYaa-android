@@ -15,6 +15,7 @@ import io.github.kickoman.qiyaa.jam.Ended
 import io.github.kickoman.qiyaa.jam.JamClient
 import io.github.kickoman.qiyaa.jam.JamCodec
 import io.github.kickoman.qiyaa.jam.JamHandler
+import io.github.kickoman.qiyaa.jam.JamNames
 import io.github.kickoman.qiyaa.jam.JamRoom
 import io.github.kickoman.qiyaa.jam.JamSession
 import io.github.kickoman.qiyaa.jam.JamSessionStore
@@ -172,7 +173,7 @@ class JamHost(
      */
     fun create(hostName: String, settings: JamSettingsPatch? = null): Boolean {
         if (session != null || creating != null) return false
-        val name = hostName.trim().take(MAX_NAME).trim()
+        val name = JamNames.prefill(hostName)
         val server = config()
         if (server.serverUrl.isBlank()) return false
         val probe = Create("probe", name, settings)
@@ -605,7 +606,6 @@ class JamHost(
     }
 
     companion object {
-        const val MAX_NAME = 24
         const val MAX_OUTBOX = 500
         const val SEARCH_RESULTS = 20
         const val RESUME_RETRY_MS = 30_000L

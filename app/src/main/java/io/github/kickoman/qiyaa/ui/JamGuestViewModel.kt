@@ -7,9 +7,9 @@ import androidx.lifecycle.viewModelScope
 import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.appGraph
 import io.github.kickoman.qiyaa.jam.GuestAddResult
-import io.github.kickoman.qiyaa.jam.GuestNames
 import io.github.kickoman.qiyaa.jam.GuestPhase
 import io.github.kickoman.qiyaa.jam.JamGuestState
+import io.github.kickoman.qiyaa.jam.JamNames
 import io.github.kickoman.qiyaa.playback.JamTracks
 import io.github.kickoman.qiyaa.yandex.Account
 import io.github.kickoman.qiyaa.yandex.ErrorKind
@@ -213,7 +213,7 @@ class JamGuestViewModel(application: Application) : AndroidViewModel(application
         private const val NOTICE_BUFFER = 8
 
         private fun prefilledName(lastName: String?, account: Account): String =
-            GuestNames.prefill(lastName ?: account.displayName.ifEmpty { account.login })
+            JamNames.prefill(lastName ?: account.displayName.ifEmpty { account.login })
 
         private fun List<Track>.addable(): List<Track> = filter {
             it.available && JamTracks.toJam(it) != null

@@ -46,6 +46,9 @@ object JamCodec {
         )
     private val SECRET_FIELDS = setOf("hostKey", "hostSecret", "joinSecret", "participantId")
 
+    const val ECMASCRIPT_SPACES =
+        "\\u0009-\\u000D\\u0020\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000\\uFEFF"
+
     fun encode(message: ClientMessage): String = json.encodeToString(ClientMessage.serializer(), message)
 
     fun encodeServer(message: ServerMessage): String =
@@ -367,9 +370,7 @@ object JamCodec {
         require(track.artists.size <= 10) { "${track.artists.size} artists" }
         track.artists.forEach { require(it.codePointCount() in 1..64 && noControl(it)) { "bad artist $it" } }
         require(track.durationMs in 0..86_400_000) { "durationMs ${track.durationMs}" }
-        track.coverUri?.let {
-            require(it.length <= 300 && coverUri.matches(it)) { "coverUri is not a %% template" }
-        }
+        track.coverUri?.let { require(isCoverUri(it)) { "coverUri is not a %% template" } }
         require(track.isCatalog || (track.albumId == null && track.coverUri == null)) {
             "the host track ${track.id} has an albumId or a coverUri"
         }
@@ -382,18 +383,21 @@ object JamCodec {
     }
 
     private fun searchText(text: String) {
-        require(text.codePointCount() in 1..100 && noControl(text) && text.isNotBlank()) { "bad search text" }
+        require(text.codePointCount() in 1..100 && searchShape.matches(text)) { "bad search text" }
     }
 
     /** A file of Yandex Music's storage that guests may listen to (spec/jam/listen.md). */
-    fun isListenUrl(url: String): Boolean = url.length <= MAX_LISTEN_URL && listenUrl.matches(url)
+    fun isListenUrl(url: String): Boolean = url.codePointCount() <= MAX_LISTEN_URL && listenUrl.matches(url)
+
+    fun isCoverUri(template: String): Boolean =
+        template.codePointCount() <= MAX_COVER && coverUri.matches(template)
 
     private fun listenUrl(field: String, url: String) {
         require(isListenUrl(url)) { "$field is not a file of Yandex Music's storage" }
     }
 
     private fun joinUrl(url: String) {
-        require(url.length <= 200 && joinUrl.matches(url)) { "joinUrl $url" }
+        require(url.codePointCount() <= MAX_JOIN_URL && joinUrl.matches(url)) { "joinUrl $url" }
     }
 
     private fun pattern(field: String, value: String, regex: Regex) {
@@ -422,13 +426,25 @@ object JamCodec {
     private val participantId = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
     private val appVersion = Regex("^[0-9A-Za-z.+_-]{1,32}$")
     private val seed = Regex("^track:[0-9A-Za-z_-]{1,64}$")
-    private val coverUri = Regex("^\\S*%%\\S*$")
+    private val coverUri = Regex("^[^$ECMASCRIPT_SPACES]*%%[^$ECMASCRIPT_SPACES]*$")
     private const val MAX_LISTEN_URL = 400
+    private const val MAX_JOIN_URL = 200
+    private const val MAX_COVER = 300
     private val listenUrl =
         Regex(
-            "^https://[A-Za-z0-9-]+\\.storage\\.yandex\\.net/get-mp3/[0-9a-f]{32}/[0-9a-f]{1,32}/[^\\s#?]+$",
+            "^https://[A-Za-z0-9-]+\\.storage\\.yandex\\.net/get-mp3/[0-9a-f]{32}/[0-9a-f]{1,32}/" +
+                "[^$ECMASCRIPT_SPACES#?]+$",
         )
     private val joinUrl =
-        Regex("^https?://[^\\s#/]+(?:/[^\\s#]*)?/j/[0-9a-hjkmnp-tv-z]{8}#[A-Za-z0-9_-]{22}$")
-    private val nameShape = Regex("^[^\\s\\x00-\\x1F\\x7F](?:[^\\x00-\\x1F\\x7F]*[^\\s\\x00-\\x1F\\x7F])?$")
+        Regex(
+            "^https?://[^$ECMASCRIPT_SPACES#/]+(?:/[^$ECMASCRIPT_SPACES#]*)?" +
+                "/j/[0-9a-hjkmnp-tv-z]{8}#[A-Za-z0-9_-]{22}$",
+        )
+    private val nameShape =
+        Regex(
+            "^[^$ECMASCRIPT_SPACES\\x00-\\x1F\\x7F]" +
+                "(?:[^\\x00-\\x1F\\x7F]*[^$ECMASCRIPT_SPACES\\x00-\\x1F\\x7F])?$",
+        )
+    private val searchShape =
+        Regex("^[^\\x00-\\x1F\\x7F]*[^$ECMASCRIPT_SPACES\\x00-\\x1F\\x7F][^\\x00-\\x1F\\x7F]*$")
 }
