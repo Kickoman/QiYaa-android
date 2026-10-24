@@ -1,5 +1,7 @@
 package io.github.kickoman.qiyaa.ui.screens
 
+import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -43,6 +45,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.ui.AppViewModel
 import io.github.kickoman.qiyaa.ui.LoginStatus
+import io.github.kickoman.qiyaa.ui.Screen
 import io.github.kickoman.qiyaa.ui.components.ActionButton
 import io.github.kickoman.qiyaa.ui.components.LanguageSwitch
 import io.github.kickoman.qiyaa.ui.components.LedDot
@@ -78,13 +81,37 @@ fun LoginScreen(viewModel: AppViewModel) {
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             QiText(stringResource(R.string.brand), mono(12.sp, 600, 3.sp), color = colors.muted)
-            // Before the sign-in too: someone who does not read the default language can switch.
-            LanguageSwitch(language, viewModel::setLanguage)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                LanguageSwitch(language, viewModel::setLanguage)
+                QiText(
+                    stringResource(R.string.login_later),
+                    mono(11.sp, 500, 1.sp),
+                    Modifier.tap { viewModel.go(Screen.LIBRARY) },
+                    color = colors.muted,
+                    maxLines = 1,
+                )
+            }
         }
         QiText(stringResource(R.string.login_title), sans(26.sp, 600, colors.text, lineHeight = 30.sp))
         login.notice?.let { notice ->
             Spacer(Modifier.height(12.dp))
             QiText(notice, HintStyle, color = colors.error)
+        }
+        login.jamPageUrl?.let { url ->
+            val noBrowser = stringResource(R.string.login_no_browser)
+            Spacer(Modifier.height(12.dp))
+            ActionButton(
+                stringResource(R.string.login_open_jam_page),
+                Modifier.fillMaxWidth(),
+                background = colors.surface2,
+                color = colors.text,
+                height = 44.dp,
+            ) {
+                if (!openInBrowser(context, url)) viewModel.say(noBrowser)
+            }
         }
         Spacer(Modifier.height(28.dp))
         QiText(stringResource(R.string.login_step1), LabelStyle, color = colors.dim)
@@ -230,5 +257,19 @@ fun LoginScreen(viewModel: AppViewModel) {
             color = colors.dimmer,
             textAlign = TextAlign.Center,
         )
+    }
+}
+
+private fun openInBrowser(context: Context, url: String): Boolean {
+    val page =
+        Intent(Intent.ACTION_VIEW, url.toUri()).apply {
+            addCategory(Intent.CATEGORY_BROWSABLE)
+            selector = Intent(Intent.ACTION_VIEW, "https://".toUri()).addCategory(Intent.CATEGORY_BROWSABLE)
+        }
+    return try {
+        context.startActivity(page)
+        true
+    } catch (ignored: ActivityNotFoundException) {
+        false
     }
 }

@@ -61,6 +61,8 @@ import io.github.kickoman.qiyaa.ui.theme.LabelStyle
 import io.github.kickoman.qiyaa.ui.theme.Qi
 import io.github.kickoman.qiyaa.ui.theme.mono
 import io.github.kickoman.qiyaa.ui.theme.sans
+import io.github.kickoman.qiyaa.yandex.Track
+import io.github.kickoman.qiyaa.yandex.signedIn
 
 @Composable
 fun LibraryScreen(
@@ -71,14 +73,8 @@ fun LibraryScreen(
     onJam: () -> Unit,
 ) {
     val colors = Qi.colors
-    val context = LocalContext.current
     val account by viewModel.account.collectAsStateWithLifecycle()
     val liked by viewModel.likedIds.collectAsStateWithLifecycle()
-    val libraryUi by viewModel.libraryUi.collectAsStateWithLifecycle()
-    val forYou by viewModel.forYou.state.collectAsStateWithLifecycle()
-    val playlists by viewModel.playlists.state.collectAsStateWithLifecycle()
-    val artists by viewModel.artists.state.collectAsStateWithLifecycle()
-    val albums by viewModel.albums.state.collectAsStateWithLifecycle()
     val playerUi by player.ui.collectAsStateWithLifecycle()
     val language by viewModel.settings.language.collectAsStateWithLifecycle()
     val quality by viewModel.settings.quality.collectAsStateWithLifecycle()
@@ -86,184 +82,85 @@ fun LibraryScreen(
     val continueWithVibe by viewModel.settings.continueWithVibe.collectAsStateWithLifecycle()
     val shuffleAlgorithm by viewModel.settings.shuffleAlgorithm.collectAsStateWithLifecycle()
     val telemetryEnabled by viewModel.settings.telemetryEnabled.collectAsStateWithLifecycle()
+    val sessionState by viewModel.sessionState.collectAsStateWithLifecycle()
+    val signedIn = sessionState.signedIn
     val track = playerUi.current
 
     LaunchedEffect(account.uid) { if (account.isValid) viewModel.loadLibraryLists() }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         ScreenHeader(stringResource(R.string.library_title)) {
-            val who = account.login.ifEmpty { account.displayName }
-            QiText(
-                (if (who.isEmpty()) "" else "$who · ") + stringResource(R.string.library_sign_out),
-                mono(11.sp, 500, 1.sp),
-                Modifier.tap { viewModel.signOut() },
-                color = colors.muted,
-                maxLines = 1,
-            )
+            if (!signedIn) LanguageSwitch(language, viewModel::setLanguage)
         }
 
-        Row(
-            Modifier
-                .padding(start = 16.dp, end = 16.dp, top = 16.dp)
-                .fillMaxWidth()
-                .height(48.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .background(colors.deep)
-                .border(1.dp, colors.insetBorder, RoundedCornerShape(6.dp))
-                .padding(horizontal = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Box(Modifier.size(14.dp).border(2.dp, colors.dim, CircleShape))
-            val style = mono(13.sp, 400).copy(color = colors.text)
-            BasicTextField(
-                value = libraryUi.searchText,
-                onValueChange = viewModel::setSearchText,
-                textStyle = style,
-                singleLine = true,
-                cursorBrush = SolidColor(colors.accent),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(
-                    onSearch = { viewModel.submitSearch() },
-                ),
-                modifier = Modifier.weight(1f),
-                decorationBox = { inner ->
-                    if (libraryUi.searchText.isEmpty()) {
-                        QiText(
-                            stringResource(R.string.library_search_hint),
-                            style,
-                            color = colors.dim,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    inner()
-                },
-            )
-        }
+        val jamMeta =
+            when {
+                guestOf != null -> stringResource(R.string.jam_library_guest, guestOf)
 
-        Row(
-            Modifier
-                .padding(start = 16.dp, end = 16.dp, top = 14.dp)
-                .fillMaxWidth()
-                .height(72.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(colors.accentBackground)
-                .tap { viewModel.playMyWave() }
-                .padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Box(
-                Modifier.size(44.dp).clip(CircleShape).background(colors.accent),
-                contentAlignment = Alignment.Center,
-            ) {
-                PathIcon(IconPaths.PLAY, 20.dp, colors.deep)
-            }
-            Column(Modifier.weight(1f)) {
-                QiText(stringResource(R.string.library_my_wave), sans(16.sp, 600), color = colors.accent)
-                QiText(
-                    stringResource(R.string.library_my_wave_sub),
-                    HintStyle,
-                    Modifier.padding(top = 3.dp),
-                    color = colors.accent.copy(alpha = 0.85f),
+                jam.phase == JamHostPhase.NONE -> stringResource(R.string.jam_library_off)
+
+                jam.phase == JamHostPhase.CREATING -> "…"
+
+                else -> stringResource(
+                    R.string.jam_library_on,
+                    jam.room?.participants?.count { it.kind != ParticipantKind.HOST } ?: 0,
                 )
             }
-            QiText("∞", mono(20.sp, 400), color = colors.accent)
-        }
-
-        val loadingText = stringResource(R.string.library_loading)
-        val failedText = stringResource(R.string.library_row_error)
-        fun countOrStatus(state: ListState<*>): String = when (state) {
-            ListState.Idle -> "…"
-            ListState.Loading -> loadingText
-            is ListState.Loaded -> state.items.size.toString()
-            is ListState.Failed -> failedText
-        }
         Column(
             Modifier
-                .padding(start = 16.dp, end = 16.dp, top = 10.dp)
+                .padding(start = 16.dp, end = 16.dp, top = 16.dp)
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(8.dp))
                 .background(colors.surface),
         ) {
-            val jamMeta =
-                when {
-                    guestOf != null -> stringResource(R.string.jam_library_guest, guestOf)
-
-                    jam.phase == JamHostPhase.NONE -> stringResource(R.string.jam_library_off)
-
-                    jam.phase == JamHostPhase.CREATING -> "…"
-
-                    else -> stringResource(
-                        R.string.jam_library_on,
-                        jam.room?.participants?.count { it.kind != ParticipantKind.HOST } ?: 0,
-                    )
-                }
-            SourceRow(stringResource(R.string.jam_library_row), jamMeta, onClick = onJam)
-            SourceRow(stringResource(R.string.library_liked), "${liked.size}") { viewModel.playLiked() }
-            SourceRow(stringResource(R.string.library_for_you), countOrStatus(forYou)) {
-                viewModel.openSection(LibrarySection.FOR_YOU)
-            }
-            SourceRow(stringResource(R.string.library_wheel), stringResource(R.string.library_wheel_meta)) {
-                viewModel.openSection(LibrarySection.WHEEL)
-            }
-            SourceRow(stringResource(R.string.library_playlists), countOrStatus(playlists)) {
-                viewModel.openSection(LibrarySection.PLAYLISTS)
-            }
-            SourceRow(
-                stringResource(R.string.library_artists),
-                countOrStatus(artists) + " · " + stringResource(R.string.library_top_tracks),
-            ) { viewModel.openSection(LibrarySection.ARTISTS) }
-            SourceRow(stringResource(R.string.library_albums), countOrStatus(albums)) {
-                viewModel.openSection(LibrarySection.ALBUMS)
-            }
-            SourceRow(
-                stringResource(R.string.library_stations),
-                stringResource(R.string.library_by_type),
-                last = true,
-            ) {
-                viewModel.openSection(LibrarySection.STATIONS)
-            }
+            SourceRow(stringResource(R.string.jam_library_row), jamMeta, last = true, onClick = onJam)
         }
 
-        val currentTitle = track?.title?.uppercase() ?: stringResource(R.string.library_none)
-        QiText(
-            stringResource(R.string.library_current_track) + " · " + currentTitle,
-            LabelStyle,
-            Modifier.padding(start = 16.dp, end = 16.dp, top = 18.dp),
-            color = colors.dim,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        val isLiked = track != null && track.id in liked
         Row(
-            Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp).fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            Modifier.padding(start = 16.dp, end = 16.dp, top = 18.dp).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            LikeButton(isLiked, Modifier.weight(1f), height = 48.dp, onClick = player::toggleLikeCurrent)
-            IconWideButton(
-                stringResource(R.string.library_dislike),
+            QiText(
+                stringResource(R.string.library_yandex),
+                LabelStyle,
                 Modifier.weight(1f),
-                height = 48.dp,
-                onClick = player::dislikeCurrent,
-            ) {
-                PathIcon(IconPaths.THUMB_DOWN, 22.dp, colors.muted, strokeWidth = IconPaths.OUTLINE)
-            }
-            IconWideButton(
-                stringResource(
-                    R.string.library_open,
-                ),
-                Modifier.weight(1f),
-                height = 48.dp,
-                onClick = {
-                    track?.let { context.startActivity(Intent(Intent.ACTION_VIEW, it.webUrl.toUri())) }
+                color = colors.dim,
+            )
+            val who = account.login.ifEmpty { account.displayName }
+            QiText(
+                if (signedIn) {
+                    (if (who.isEmpty()) "" else "$who · ") + stringResource(R.string.library_sign_out)
+                } else {
+                    stringResource(R.string.library_sign_in)
                 },
-            ) {
-                PathIcon(IconPaths.OPEN_OUTSIDE, 22.dp, colors.muted, strokeWidth = IconPaths.OUTLINE)
-            }
+                mono(11.sp, 500, 1.sp),
+                Modifier.tap { if (signedIn) viewModel.signOut() else viewModel.openLogin() },
+                color = if (signedIn) colors.muted else colors.accent,
+                maxLines = 1,
+            )
         }
 
+        if (signedIn) {
+            YandexSources(viewModel, player, track, liked)
+        } else {
+            Column(
+                Modifier
+                    .padding(start = 16.dp, end = 16.dp, top = 10.dp)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(colors.surface),
+            ) {
+                SourceRow(stringResource(R.string.library_sign_in_row), "", last = true) {
+                    viewModel.openLogin()
+                }
+            }
+            QiText(
+                stringResource(R.string.library_sign_in_note),
+                HintStyle,
+                Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
+                color = colors.muted,
+            )
+        }
         QiText(
             stringResource(R.string.shuffle_title),
             LabelStyle,
@@ -372,6 +269,169 @@ private val SHUFFLE_CHOICES = listOf(
     ShuffleChoice.WITHOUT_REPEATS to R.string.shuffle_without_repeats,
     ShuffleChoice.RANDOM_TRACK to R.string.shuffle_random_track,
 )
+
+@Composable
+private fun YandexSources(
+    viewModel: AppViewModel,
+    player: PlayerViewModel,
+    track: Track?,
+    liked: Set<String>,
+) {
+    val colors = Qi.colors
+    val context = LocalContext.current
+    val libraryUi by viewModel.libraryUi.collectAsStateWithLifecycle()
+    val forYou by viewModel.forYou.state.collectAsStateWithLifecycle()
+    val playlists by viewModel.playlists.state.collectAsStateWithLifecycle()
+    val artists by viewModel.artists.state.collectAsStateWithLifecycle()
+    val albums by viewModel.albums.state.collectAsStateWithLifecycle()
+    Row(
+        Modifier
+            .padding(start = 16.dp, end = 16.dp, top = 16.dp)
+            .fillMaxWidth()
+            .height(48.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(colors.deep)
+            .border(1.dp, colors.insetBorder, RoundedCornerShape(6.dp))
+            .padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(Modifier.size(14.dp).border(2.dp, colors.dim, CircleShape))
+        val style = mono(13.sp, 400).copy(color = colors.text)
+        BasicTextField(
+            value = libraryUi.searchText,
+            onValueChange = viewModel::setSearchText,
+            textStyle = style,
+            singleLine = true,
+            cursorBrush = SolidColor(colors.accent),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(
+                onSearch = { viewModel.submitSearch() },
+            ),
+            modifier = Modifier.weight(1f),
+            decorationBox = { inner ->
+                if (libraryUi.searchText.isEmpty()) {
+                    QiText(
+                        stringResource(R.string.library_search_hint),
+                        style,
+                        color = colors.dim,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                inner()
+            },
+        )
+    }
+
+    Row(
+        Modifier
+            .padding(start = 16.dp, end = 16.dp, top = 14.dp)
+            .fillMaxWidth()
+            .height(72.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(colors.accentBackground)
+            .tap { viewModel.playMyWave() }
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Box(
+            Modifier.size(44.dp).clip(CircleShape).background(colors.accent),
+            contentAlignment = Alignment.Center,
+        ) {
+            PathIcon(IconPaths.PLAY, 20.dp, colors.deep)
+        }
+        Column(Modifier.weight(1f)) {
+            QiText(stringResource(R.string.library_my_wave), sans(16.sp, 600), color = colors.accent)
+            QiText(
+                stringResource(R.string.library_my_wave_sub),
+                HintStyle,
+                Modifier.padding(top = 3.dp),
+                color = colors.accent.copy(alpha = 0.85f),
+            )
+        }
+        QiText("∞", mono(20.sp, 400), color = colors.accent)
+    }
+
+    val loadingText = stringResource(R.string.library_loading)
+    val failedText = stringResource(R.string.library_row_error)
+    fun countOrStatus(state: ListState<*>): String = when (state) {
+        ListState.Idle -> "…"
+        ListState.Loading -> loadingText
+        is ListState.Loaded -> state.items.size.toString()
+        is ListState.Failed -> failedText
+    }
+    Column(
+        Modifier
+            .padding(start = 16.dp, end = 16.dp, top = 10.dp)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(colors.surface),
+    ) {
+        SourceRow(stringResource(R.string.library_liked), "${liked.size}") { viewModel.playLiked() }
+        SourceRow(stringResource(R.string.library_for_you), countOrStatus(forYou)) {
+            viewModel.openSection(LibrarySection.FOR_YOU)
+        }
+        SourceRow(stringResource(R.string.library_wheel), stringResource(R.string.library_wheel_meta)) {
+            viewModel.openSection(LibrarySection.WHEEL)
+        }
+        SourceRow(stringResource(R.string.library_playlists), countOrStatus(playlists)) {
+            viewModel.openSection(LibrarySection.PLAYLISTS)
+        }
+        SourceRow(
+            stringResource(R.string.library_artists),
+            countOrStatus(artists) + " · " + stringResource(R.string.library_top_tracks),
+        ) { viewModel.openSection(LibrarySection.ARTISTS) }
+        SourceRow(stringResource(R.string.library_albums), countOrStatus(albums)) {
+            viewModel.openSection(LibrarySection.ALBUMS)
+        }
+        SourceRow(
+            stringResource(R.string.library_stations),
+            stringResource(R.string.library_by_type),
+            last = true,
+        ) {
+            viewModel.openSection(LibrarySection.STATIONS)
+        }
+    }
+
+    val currentTitle = track?.title?.uppercase() ?: stringResource(R.string.library_none)
+    QiText(
+        stringResource(R.string.library_current_track) + " · " + currentTitle,
+        LabelStyle,
+        Modifier.padding(start = 16.dp, end = 16.dp, top = 18.dp),
+        color = colors.dim,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+    val isLiked = track != null && track.id in liked
+    Row(
+        Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp).fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        LikeButton(isLiked, Modifier.weight(1f), height = 48.dp, onClick = player::toggleLikeCurrent)
+        IconWideButton(
+            stringResource(R.string.library_dislike),
+            Modifier.weight(1f),
+            height = 48.dp,
+            onClick = player::dislikeCurrent,
+        ) {
+            PathIcon(IconPaths.THUMB_DOWN, 22.dp, colors.muted, strokeWidth = IconPaths.OUTLINE)
+        }
+        IconWideButton(
+            stringResource(
+                R.string.library_open,
+            ),
+            Modifier.weight(1f),
+            height = 48.dp,
+            onClick = {
+                track?.let { context.startActivity(Intent(Intent.ACTION_VIEW, it.webUrl.toUri())) }
+            },
+        ) {
+            PathIcon(IconPaths.OPEN_OUTSIDE, 22.dp, colors.muted, strokeWidth = IconPaths.OUTLINE)
+        }
+    }
+}
 
 @Composable
 private fun <T> ChoiceRow(label: String?, current: T, choices: List<Pair<T, Int>>, onPick: (T) -> Unit) {

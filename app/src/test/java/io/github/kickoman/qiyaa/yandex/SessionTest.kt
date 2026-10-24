@@ -30,6 +30,22 @@ class SessionTest {
     }
 
     @Test
+    fun `start with a token is Connecting at once, before any coroutine runs`() = runTest {
+        val session = Session(FakeGateway { account }, MutableStateFlow(true), backgroundScope)
+        session.start()
+        assertEquals(SessionState.Connecting, session.state.value)
+    }
+
+    @Test
+    fun `signed in means a token the server has not rejected, online or not`() {
+        assertEquals(false, SessionState.LoggedOut.signedIn)
+        assertEquals(false, SessionState.Expired.signedIn)
+        assertEquals(true, SessionState.Connecting.signedIn)
+        assertEquals(true, SessionState.Offline.signedIn)
+        assertEquals(true, SessionState.Online(account).signedIn)
+    }
+
+    @Test
     fun `start offline waits for the network, then goes Online and preloads likes`() = runTest {
         val gateway = FakeGateway { account }
         val network = MutableStateFlow(false)

@@ -70,6 +70,15 @@
 
     <string name="library_title">БИБЛИОТЕКА</string>
     <string name="library_sign_out">ВЫЙТИ</string>
+    <string name="library_sign_in">ВОЙТИ</string>
+    <string name="library_yandex">ЯНДЕКС МУЗЫКА</string>
+    <string name="library_sign_in_row">Войти в Яндекс Музыку</string>
+    <string name="library_sign_in_note">Моя волна, «Мне нравится», плейлисты, поиск и свой джем — после входа.</string>
+    <string name="login_later">ПОЗЖЕ</string>
+    <string name="login_open_jam_page">ОТКРЫТЬ ДЖЕМ В БРАУЗЕРЕ</string>
+    <string name="login_no_browser">На телефоне нет браузера, который откроет страницу.</string>
+    <string name="jam_join_needs_login">Войдите в Яндекс Музыку, чтобы зайти в джем из приложения. Без аккаунта откройте его в браузере.</string>
+    <string name="jam_needs_login">Чтобы начать джем, нужно войти в Яндекс Музыку: гости ищут треки через ваш аккаунт.</string>
     <string name="library_search_hint">Исполнитель, альбом или трек… (Enter)</string>
     <string name="library_my_wave">Моя волна</string>
     <string name="library_my_wave_sub">БЕСКОНЕЧНАЯ · ДОГРУЖАЕТСЯ</string>

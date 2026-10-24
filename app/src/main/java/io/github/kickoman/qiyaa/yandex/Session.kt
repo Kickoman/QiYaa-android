@@ -23,6 +23,9 @@ sealed interface SessionState {
     data object Expired : SessionState
 }
 
+val SessionState.signedIn: Boolean
+    get() = this != SessionState.LoggedOut && this != SessionState.Expired
+
 interface AccountGateway {
     var token: String
     val tokenRejections: Flow<HttpException>
@@ -59,6 +62,7 @@ class Session(
             mutableState.value = SessionState.LoggedOut
             return
         }
+        mutableState.value = SessionState.Connecting
         job = scope.launch { keepConnected(online = null) }
     }
 

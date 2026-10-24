@@ -261,6 +261,7 @@ data class WaveContext(val sessionId: String, val stationId: String, val batchId
 
 ```kotlin
 sealed interface SessionState { LoggedOut; Connecting; Online(account); Offline; Expired }
+val SessionState.signedIn: Boolean                // всё, кроме LoggedOut и Expired
 
 interface AccountGateway {
     var token: String;  val tokenRejections: Flow<HttpException>
@@ -269,7 +270,7 @@ interface AccountGateway {
 
 class Session(gateway: AccountGateway, connectivity: Flow<Boolean>, scope: CoroutineScope) {
     val state: StateFlow<SessionState>
-    fun start()                                  // пустой токен → LoggedOut, иначе цикл подключения
+    fun start()                                  // пустой токен → LoggedOut, иначе сразу Connecting и цикл подключения
     suspend fun signIn(token: String): Account   // ошибка → токен "", LoggedOut, исключение наружу
     fun signOut()                                // forget() и LoggedOut
     companion object { FIRST_RETRY_MS = 2_000; MAX_RETRY_MS = 60_000 }
@@ -286,6 +287,11 @@ class Session(gateway: AccountGateway, connectivity: Flow<Boolean>, scope: Corou
 | `Expired` | ничего; цикл остановлен | только `signIn`/`signOut` |
 
 Пауза между неудачными попытками при живой сети: 2, 4, 8, 16, 32, 60, 60… с. Пропавшая и вернувшаяся сеть сбрасывает её на 2 с и запускает попытку сразу.
+
+`start()` с токеном ставит `Connecting` сразу, до запуска корутины: на холодном старте состояние с первой минуты
+совпадает с токеном, и `signedIn` не мигает `false`. «Вошёл» (`signedIn`) — любое состояние, кроме `LoggedOut` и
+`Expired`: при `Connecting` и `Offline` аккаунт есть, нет только связи. Это единственное определение входа в
+приложении: по нему `ui/` выбирает стартовый экран, решает, куда ведёт ссылка на джем, и пускает к джему.
 
 `tokenRejections` в любом состоянии, кроме `LoggedOut`, останавливает цикл и ставит `Expired`. `signIn` проверяет новый токен в состоянии `LoggedOut`, поэтому неверный токен при входе даёт исключение, а не `Expired`.
 
