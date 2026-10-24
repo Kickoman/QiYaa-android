@@ -7,6 +7,7 @@ import io.github.kickoman.qiyaa.lyrics.LyricsKind
 import io.github.kickoman.qiyaa.lyrics.LyricsLine
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.charset.Charset
@@ -29,52 +30,52 @@ class LocalLyricsFilesTest {
     }
 
     @Test
-    fun `LYR-10 an lrc is UTF-8 or UTF-16 with a byte order mark, else UTF-8, else windows-1251`() {
+    fun `LYR-10 an lrc is UTF-8, 16 or 32 with a byte order mark, else UTF-8, else windows-1251`() {
         val text = "Над рекою туман"
-        assertEquals(text, decode(byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()) + utf8(text)))
-        assertEquals(
-            text,
-            decode(byteArrayOf(0xFF.toByte(), 0xFE.toByte()) + text.toByteArray(Charsets.UTF_16LE)),
-        )
-        assertEquals(
-            text,
-            decode(byteArrayOf(0xFE.toByte(), 0xFF.toByte()) + text.toByteArray(Charsets.UTF_16BE)),
-        )
+        assertEquals(text, decode(bytes(0xEF, 0xBB, 0xBF) + utf8(text)))
+        assertEquals(text, decode(bytes(0xFF, 0xFE) + text.toByteArray(Charsets.UTF_16LE)))
+        assertEquals(text, decode(bytes(0xFE, 0xFF) + text.toByteArray(Charsets.UTF_16BE)))
+        assertEquals(text, decode(bytes(0xFF, 0xFE, 0, 0) + text.toByteArray(Charset.forName("UTF-32LE"))))
+        assertEquals(text, decode(bytes(0, 0, 0xFE, 0xFF) + text.toByteArray(Charset.forName("UTF-32BE"))))
         assertEquals(text, decode(utf8(text)))
         assertEquals(text, decode(text.toByteArray(Charset.forName("windows-1251"))))
     }
 
     @Test
-    fun `LYR-10 USLT gives its text in each of the four encodings, whatever its description`() {
+    fun `LYR-10 USLT gives its description and text in each of the four encodings`() {
         val lines = "Line one\nЛінія два"
-        assertEquals(lines, LocalLyricsFiles.usltText(uslt(3, utf8("desc") + 0, utf8(lines))))
+        assertEquals(Uslt("desc", lines), LocalLyricsFiles.uslt(uslt(3, utf8("desc") + 0, utf8(lines))))
         val latin = "Line one\nline two"
         assertEquals(
-            latin,
-            LocalLyricsFiles.usltText(uslt(0, byteArrayOf(0), latin.toByteArray(Charsets.ISO_8859_1))),
+            Uslt("", latin),
+            LocalLyricsFiles.uslt(uslt(0, bytes(0), latin.toByteArray(Charsets.ISO_8859_1))),
         )
-        val bom = byteArrayOf(0xFE.toByte(), 0xFF.toByte())
-        assertEquals(
-            lines,
-            LocalLyricsFiles.usltText(
-                uslt(
-                    1,
-                    bom + "d".toByteArray(Charsets.UTF_16BE) + 0 + 0,
-                    bom + lines.toByteArray(Charsets.UTF_16BE),
-                ),
-            ),
+        val bom = bytes(0xFE, 0xFF)
+        val wide = uslt(
+            1,
+            bom + "d".toByteArray(Charsets.UTF_16BE) + 0 + 0,
+            bom + lines.toByteArray(Charsets.UTF_16BE),
         )
+        assertEquals(Uslt("d", lines), LocalLyricsFiles.uslt(wide))
         assertEquals(
-            lines,
-            LocalLyricsFiles.usltText(uslt(2, byteArrayOf(0, 0), lines.toByteArray(Charsets.UTF_16BE))),
+            Uslt("", lines),
+            LocalLyricsFiles.uslt(uslt(2, bytes(0, 0), lines.toByteArray(Charsets.UTF_16BE))),
         )
     }
 
     @Test
+    fun `LYR-10 a UTF-16 description ends at an aligned double zero, and trailing zeros leave the text`() {
+        val description = bytes(0x01, 0x00, 0x00, 0x41, 0x00, 0x00)
+        val frame = uslt(2, description, "Text".toByteArray(Charsets.UTF_16BE) + 0 + 0)
+        assertEquals(Uslt("ĀA", "Text"), LocalLyricsFiles.uslt(frame))
+        assertEquals(Uslt("", "words"), LocalLyricsFiles.uslt(uslt(3, bytes(0), utf8("words") + 0)))
+    }
+
+    @Test
     fun `LYR-10 a USLT frame that is cut short or has an unknown encoding has no text`() {
-        assertNull(LocalLyricsFiles.usltText(byteArrayOf(3, 'e'.code.toByte())))
-        assertNull(LocalLyricsFiles.usltText(uslt(4, byteArrayOf(0), utf8("text"))))
-        assertNull(LocalLyricsFiles.usltText(byteArrayOf(3) + utf8("eng") + utf8("no terminator")))
+        assertNull(LocalLyricsFiles.uslt(bytes(3, 'e'.code)))
+        assertNull(LocalLyricsFiles.uslt(uslt(4, bytes(0), utf8("text"))))
+        assertNull(LocalLyricsFiles.uslt(bytes(3) + utf8("eng") + utf8("no terminator")))
     }
 
     @Test
@@ -82,16 +83,32 @@ class LocalLyricsFilesTest {
         val tag = utf8("ID3-tag-bytes")
         val wav = riff(chunk("fmt ", ByteArray(16)), chunk("data", ByteArray(3)), chunk("id3 ", tag))
         assertArrayEquals(tag, LocalLyricsFiles.riffId3(ByteArrayInputStream(wav)))
-        val upper = riff(chunk("ID3 ", tag))
-        assertArrayEquals(tag, LocalLyricsFiles.riffId3(ByteArrayInputStream(upper)))
+        assertArrayEquals(tag, LocalLyricsFiles.riffId3(ByteArrayInputStream(riff(chunk("ID3 ", tag)))))
     }
 
     @Test
-    fun `LYR-11 a WAV without an id3 chunk, not a WAV, or with a chunk over 64 MiB has no tag`() {
+    fun `LYR-11 a WAV without an id3 chunk, not a WAV, or with a chunk cut short has no tag`() {
         assertNull(LocalLyricsFiles.riffId3(ByteArrayInputStream(riff(chunk("data", ByteArray(4))))))
         assertNull(LocalLyricsFiles.riffId3(ByteArrayInputStream(utf8("ID3 not a riff file"))))
-        val huge = riff() + utf8("id3 ") + le(LocalLyricsFiles.MAX_TAG_CHUNK_BYTES + 1)
-        assertNull(LocalLyricsFiles.riffId3(ByteArrayInputStream(huge)))
+        val avi = utf8("RIFF") + le(4) + utf8("AVI ") + chunk("id3 ", utf8("tag"))
+        assertNull(LocalLyricsFiles.riffId3(ByteArrayInputStream(avi)))
+        val cut = riff() + utf8("id3 ") + le(1_000) + ByteArray(10)
+        assertNull(LocalLyricsFiles.riffId3(ByteArrayInputStream(cut)))
+    }
+
+    @Test
+    fun `LYR-11 an id3 chunk over 64 MiB is not read at all`() {
+        val header = riff() + utf8("id3 ") + le(LocalLyricsFiles.MAX_TAG_CHUNK_BYTES + 1)
+        var read = 0L
+        val endless =
+            object : InputStream() {
+                override fun read(): Int {
+                    read++
+                    return if (read <= header.size) header[(read - 1).toInt()].toInt() and 0xFF else 0
+                }
+            }
+        assertNull(LocalLyricsFiles.riffId3(endless))
+        assertEquals(header.size.toLong(), read)
     }
 
     @Test
@@ -116,8 +133,10 @@ class LocalLyricsFilesTest {
 
     private fun utf8(text: String): ByteArray = text.toByteArray(Charsets.UTF_8)
 
+    private fun bytes(vararg values: Int): ByteArray = ByteArray(values.size) { values[it].toByte() }
+
     private fun uslt(encoding: Int, description: ByteArray, text: ByteArray): ByteArray =
-        byteArrayOf(encoding.toByte()) + utf8("eng") + description + text
+        bytes(encoding) + utf8("eng") + description + text
 
     private fun le(value: Int): ByteArray =
         ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(value).array()

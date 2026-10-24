@@ -97,13 +97,18 @@ class LocalLyrics(context: Context) : LyricsSource          // всё на Dispa
 object LocalLyricsFiles {
     const val MAX_TAG_CHUNK_BYTES = 64 * 1024 * 1024
     fun lrcNameFor(audioName: String, names: List<String>): String?   // то же имя, ".lrc" в любом регистре; первое по имени
-    fun decodeLrc(bytes: ByteArray): String                            // BOM UTF-8/UTF-16, иначе строгий UTF-8, иначе windows-1251
-    fun usltText(frame: ByteArray): String?                            // тело USLT/ULT: кодировка 0–3, язык, описание, текст
+    fun decodeLrc(bytes: ByteArray): String                            // BOM UTF-8/16/32, иначе строгий UTF-8, иначе windows-1251
+    fun uslt(frame: ByteArray): Uslt?                                  // тело USLT/ULT: кодировка 0–3, язык, описание, текст
     fun riffId3(input: InputStream): ByteArray?                        // чанк "id3 "/"ID3 " WAV-файла
     fun readLimited(input: InputStream, limit: Int): ByteArray?        // null — больше limit
     fun choose(lrc: Lyrics?, tags: Lyrics?): LyricsAnswer
 }
-@UnstableApi object TagLyrics { fun textOf(entries: List<Metadata.Entry>): String?;  fun entriesOf(metadata: Metadata?): List<Metadata.Entry> }
+data class Uslt(val description: String, val text: String)
+object TagLyrics {                                                     // @OptIn(UnstableApi) внутри
+    fun textOf(entries: List<Metadata.Entry>): String?
+    fun wavTagText(input: InputStream): String?                        // riffId3 → Id3Decoder (только USLT/ULT) → textOf
+    fun entriesOf(metadata: Metadata?): List<Metadata.Entry>
+}
 ```
 
 Порт `src/sources/local/lyrics.cpp` десктопа; правило — `spec/player/lyrics.md`, LYR-10, с оговорками Android ниже.
@@ -113,16 +118,16 @@ object LocalLyricsFiles {
    - API 30+: `MediaStore.Files` того же тома и `RELATIVE_PATH` с `MEDIA_TYPE_SUBTITLE` (5): `.lrc` медиатека считает субтитрами и с правом на аудио отдаёт. Имя сравнивается в коде, не `LIKE`: тот не различает регистр только в ASCII, а `_` и `%` в имени пришлось бы экранировать. Читается через content URI.
    - API 26–28: список папки `File(DATA).parentFile`, право на чтение хранилища это даёт.
    - API 29: не читается: `.lrc` там `MEDIA_TYPE_NONE`, а чужие немедийные файлы scoped storage не отдаёт. `requestLegacyExternalStorage` не взят: он меняет всё хранилище ради одного случая. На Android 10 — только теги.
-   - Больше 256 КиБ (LYR-11) — не читается: `readLimited` останавливается на 256 КиБ + 1 байте, у папки ещё раньше — по `File.length`.
-   - Кодировка (`decodeLrc`): BOM UTF-8 или UTF-16, иначе строгий UTF-8, иначе windows-1251. «Системная кодовая страница» ПК на Android пуста (`Charset.defaultCharset()` — всегда UTF-8), слушатели — be/ru; цена — однобайтовый западный текст (cp1252) выйдет кириллицей.
+   - Больше 256 КиБ (LYR-11) — не читается: `readLimited` бросает чтение на первом куске (до 8 КиБ) сверх предела, у папки ещё раньше — по `File.length`.
+   - Кодировка (`decodeLrc`): BOM UTF-8, UTF-16 или UTF-32 (как `encodingForData` десктопа), иначе строгий UTF-8, иначе windows-1251. «Системная кодовая страница» ПК на Android пуста (`Charset.defaultCharset()` — всегда UTF-8), слушатели — be/ru; цена — однобайтовый западный текст (cp1252) выйдет кириллицей.
 3. **Теги:**
-   - WAV (`audio/wav`, `audio/x-wav`, `audio/wave`, `audio/vnd.wave`): `WavExtractor` Media3 1.11.1 чанк `id3 ` пропускает, поэтому `riffId3` идёт по чанкам сам — `data` проматывает (`skip`), размер чанка проверяет до выделения памяти (64 МиБ, как `kMaxReadBytes` десктопа: в `id3 ` бывают картинки), нечётный размер — с байтом выравнивания — и отдаёт найденный `Id3Decoder().decode`.
+   - WAV (`audio/wav`, `audio/x-wav`, `audio/wave`, `audio/vnd.wave`): `WavExtractor` Media3 1.11.1 чанк `id3 ` пропускает, поэтому `TagLyrics.wavTagText` берёт его сам. `riffId3` идёт по чанкам: `data` проматывает (`skip`), чанк больше 64 МиБ (как `kMaxReadBytes` десктопа: в `id3 ` бывают картинки) не читает вовсе, а остальное читает растущим буфером — память не выделяется по одному лишь заголовку, и обрезанный файл кончается `null`. Нечётный размер — с байтом выравнивания. `Id3Decoder` разбирает только кадры `USLT` и `ULT` (`FramePredicate`), картинки не копируются. Тег, который заявляет больше байтов, чем в чанке, `Id3Decoder` встречает `IllegalArgumentException` — это «текста нет».
    - Остальное: `MetadataRetriever` из `media3-inspector` (`retrieveTrackGroups().await()`), записи `Format.metadata` всех дорожек.
-   - `TagLyrics.textOf` берёт первое из: `BinaryFrame` `USLT` (ID3v2.3/2.4) или `ULT` (ID3v2.2) — `usltText`, описание не важно; `TextInformationFrame` `USLT` — так Media3 отдаёт `©lyr` из MP4; `VorbisComment` `LYRICS` в любом регистре (FLAC, Ogg).
-4. **Порядок** (`choose`): синхронный `.lrc` — сразу, теги тогда не читаются; иначе текст тегов (синхронный, если в нём метки времени), `FILE_TAGS`; иначе обычный `.lrc`, `LRC_FILE`; иначе `Missing`. Файл, который не открылся (`IOException`, `SecurityException`), — `Missing`, никогда не `Failed`: повтор при сети ему не поможет.
+   - `TagLyrics.textOf`, как `ReadTagLyrics` десктопа по `PropertyMap` TagLib: у каждого текста ключ — `LYRICS` без описания или `LYRICS:<описание заглавными>`, и берётся первый по ключу, при равных — первый в файле. Так кадр без описания всегда первый, а потом описания по имени. Тексты — `BinaryFrame` `USLT` (ID3v2.3/2.4) или `ULT` (ID3v2.2) через `uslt`, `TextInformationFrame` `USLT` (так Media3 отдаёт `©lyr` из MP4) и `VorbisComment` `LYRICS` (FLAC, Ogg; ключ Media3 уже отдаёт заглавными).
+4. **Порядок** (`choose`): синхронный `.lrc` — сразу, теги тогда не читаются; иначе текст тегов (синхронный, если в нём метки времени), `FILE_TAGS`; иначе обычный `.lrc`, `LRC_FILE`; иначе `Missing`. Файл, который не открылся или не разобрался, — `Missing`, никогда не `Failed`: повтор при сети ему не поможет. `LocalLyrics` ловит любое `Exception`, кроме отмены: `ContentResolver.query`, `MetadataRetriever` (его `await` отдаёт `RuntimeException` разбора) и `Id3Decoder` бросают не только `IOException`, а исключение источника уронило бы корутину `LyricsFinder`.
 
 **Traps:**
-- `Id3Decoder` на JVM не работает: `ParsableByteArray` при первой загрузке читает `Build.FINGERPRINT`, а в заглушке android.jar это `null`. Поэтому JVM-тесты кормят `TagLyrics` готовыми кадрами, а что USLT приходит `BinaryFrame`, сверено по байткоду Media3 1.11.1 и проверяется на телефоне (#118).
+- `Id3Decoder` на JVM падает при первой загрузке `ParsableByteArray`: тот читает `Build.FINGERPRINT`, а в заглушке android.jar это `null`. `ParsableByteArray.setShouldEnforceLimitOnLegacyMethods(true)` в `@Before` этого чтения не делает: так `TagLyricsTest` гоняет настоящий `Id3Decoder` на WAV с ID3v2.2, 2.3 и 2.4.
 - `TextInformationFrame.value` устарел — `values.firstOrNull()`.
 - `MetadataRetriever` открывает файл через `DefaultMediaSourceFactory`, со своим потоком; вызов на `Dispatchers.IO`, ожидание — `await` из `kotlinx-coroutines-guava`. Его 8 с держит `lyrics.LyricsFinder`, а не он.
 

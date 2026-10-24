@@ -8,7 +8,6 @@ import android.provider.MediaStore
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.extractor.metadata.id3.Id3Decoder
 import androidx.media3.inspector.MetadataRetriever
 import io.github.kickoman.qiyaa.lyrics.Lyrics
 import io.github.kickoman.qiyaa.lyrics.LyricsAnswer
@@ -17,8 +16,8 @@ import io.github.kickoman.qiyaa.lyrics.LyricsSource
 import io.github.kickoman.qiyaa.lyrics.LyricsText
 import io.github.kickoman.qiyaa.track.Track
 import java.io.File
-import java.io.IOException
 import java.io.InputStream
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.withContext
@@ -41,10 +40,10 @@ class LocalLyrics(private val context: Context) : LyricsSource {
                 val lrc = readLrc(location)?.let { LyricsText.parse(LocalLyricsFiles.decodeLrc(it)) }
                 if (lrc?.kind == LyricsKind.SYNCED) return@withContext LocalLyricsFiles.choose(lrc, null)
                 LocalLyricsFiles.choose(lrc, readTags(location))
-            } catch (ignored: IOException) {
-                LyricsAnswer.Missing()
-            } catch (ignored: SecurityException) {
-                LyricsAnswer.Missing()
+            } catch (failed: CancellationException) {
+                throw failed
+            } catch (ignored: Exception) {
+                LyricsAnswer.Missing() // A file that cannot be read, or whose tags are broken, has no text.
             }
         }
     }
@@ -118,10 +117,7 @@ class LocalLyrics(private val context: Context) : LyricsSource {
     private suspend fun readTags(location: Location): Lyrics? {
         val text =
             if (location.mimeType?.lowercase() in WAV_TYPES) {
-                val chunk = context.contentResolver.openInputStream(
-                    location.uri,
-                )?.use(LocalLyricsFiles::riffId3)
-                chunk?.let { TagLyrics.textOf(TagLyrics.entriesOf(Id3Decoder().decode(it, it.size))) }
+                context.contentResolver.openInputStream(location.uri)?.use(TagLyrics::wavTagText)
             } else {
                 MetadataRetriever.Builder(context, MediaItem.fromUri(location.uri)).build().use { retriever ->
                     val groups = retriever.retrieveTrackGroups().await()

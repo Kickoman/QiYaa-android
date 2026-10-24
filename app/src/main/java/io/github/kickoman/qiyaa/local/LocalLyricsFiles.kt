@@ -12,6 +12,8 @@ import java.nio.charset.CharacterCodingException
 import java.nio.charset.Charset
 import java.nio.charset.CodingErrorAction
 
+data class Uslt(val description: String, val text: String)
+
 object LocalLyricsFiles {
     const val MAX_TAG_CHUNK_BYTES = 64 * 1024 * 1024
     private const val LRC = ".lrc"
@@ -19,6 +21,8 @@ object LocalLyricsFiles {
     private val FALLBACK: Charset = Charset.forName("windows-1251")
     private val UTF_16_BE: Charset = Charsets.UTF_16BE
     private val UTF_16_LE: Charset = Charsets.UTF_16LE
+    private val UTF_32_BE: Charset = Charset.forName("UTF-32BE")
+    private val UTF_32_LE: Charset = Charset.forName("UTF-32LE")
 
     fun lrcNameFor(audioName: String, names: List<String>): String? {
         val base = audioName.substringBeforeLast('.', audioName)
@@ -29,12 +33,14 @@ object LocalLyricsFiles {
 
     fun decodeLrc(bytes: ByteArray): String = when {
         bytes.startsWith(0xEF, 0xBB, 0xBF) -> String(bytes, 3, bytes.size - 3, Charsets.UTF_8)
+        bytes.startsWith(0xFF, 0xFE, 0x00, 0x00) -> String(bytes, 4, bytes.size - 4, UTF_32_LE)
+        bytes.startsWith(0x00, 0x00, 0xFE, 0xFF) -> String(bytes, 4, bytes.size - 4, UTF_32_BE)
         bytes.startsWith(0xFF, 0xFE) -> String(bytes, 2, bytes.size - 2, UTF_16_LE)
         bytes.startsWith(0xFE, 0xFF) -> String(bytes, 2, bytes.size - 2, UTF_16_BE)
         else -> strictUtf8(bytes) ?: String(bytes, FALLBACK)
     }
 
-    fun usltText(frame: ByteArray): String? {
+    fun uslt(frame: ByteArray): Uslt? {
         if (frame.size < 4) return null
         val charset =
             when (frame[0].toInt()) {
@@ -46,7 +52,9 @@ object LocalLyricsFiles {
             }
         val wide = charset != Charsets.ISO_8859_1 && charset != Charsets.UTF_8
         val textStart = endOfString(frame, 4, wide) ?: return null
-        return String(frame, textStart, frame.size - textStart, charset).trimEnd('\u0000')
+        val terminator = if (wide) 2 else 1
+        val description = String(frame, 4, textStart - terminator - 4, charset)
+        return Uslt(description, String(frame, textStart, frame.size - textStart, charset).trimEnd('\u0000'))
     }
 
     fun riffId3(input: InputStream): ByteArray? {
@@ -58,7 +66,7 @@ object LocalLyricsFiles {
             val size =
                 ByteBuffer.wrap(chunk, 4, 4).order(ByteOrder.LITTLE_ENDIAN).int.toLong() and 0xFFFF_FFFFL
             if (id == "id3 " || id == "ID3 ") {
-                return if (size > MAX_TAG_CHUNK_BYTES) null else input.readExactly(size.toInt())
+                return if (size > MAX_TAG_CHUNK_BYTES) null else input.readGrowing(size.toInt())
             }
             if (!input.skipExactly(size + (size and 1))) return null
         }
@@ -114,6 +122,17 @@ object LocalLyricsFiles {
             read += count
         }
         return bytes
+    }
+
+    private fun InputStream.readGrowing(size: Int): ByteArray? {
+        val bytes = ByteArrayOutputStream()
+        val chunk = ByteArray(READ_CHUNK)
+        while (bytes.size() < size) {
+            val count = read(chunk, 0, minOf(chunk.size, size - bytes.size()))
+            if (count < 0) return null
+            bytes.write(chunk, 0, count)
+        }
+        return bytes.toByteArray()
     }
 
     private fun InputStream.skipExactly(size: Long): Boolean {
