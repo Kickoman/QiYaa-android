@@ -23,12 +23,15 @@ class LocalLibrary(context: Context) {
     val permission: String                       // READ_MEDIA_AUDIO с API 33, иначе READ_EXTERNAL_STORAGE
     val flacDecodes: Boolean                     // MediaCodecList: есть ли декодер audio/flac (один раз за процесс)
     fun hasPermission(): Boolean
+    fun takeChanged(): Boolean                   // менялась ли медиатека с прошлого вызова; первый вызов — true
     fun rows(): List<LocalRow>                   // блокирует: звать на Dispatchers.IO
     fun rowsById(ids: List<Long>): Map<Long, LocalRow>   // порциями по 500 _ID
 }
 ```
 
 Запрос — `MediaStore.Audio.Media.EXTERNAL_CONTENT_URI` (`content://media/external/audio/media`; с API 29 это все внешние тома, как `getContentUri(VOLUME_EXTERNAL)`). `rows()` — один запрос с `IS_MUSIC != 0`. Этот признак медиатека ставит по пути: мимо проходят `Ringtones/`, `Notifications/`, `Alarms/`, `Podcasts/`, `Recordings/`, а голосовые сообщения и записи звонков вне этих папок могут попасть внутрь. Строки, чей `MIME_TYPE` не берётся (`LocalTracks.isTaken`), `rows()` отбрасывает сразу. `rowsById` — без обоих фильтров, только по `_ID` («`LocalCheck`» ниже).
+
+`takeChanged()` при первом вызове вешает `ContentObserver` на `EXTERNAL_CONTENT_URI` с потомками (зовут его только с разрешением: без него Android 8+ отказывает в подписке на чужой провайдер) и дальше отвечает, приходило ли с прошлого вызова уведомление медиатеки. Так `ui/` перечитывает медиатеку, только когда она менялась (сканирование нового файла, удаление). Наблюдатель живёт, пока жив процесс: `LocalLibrary` одна, в `AppGraph`.
 
 Столбцы: `_ID`, `TITLE`, `DISPLAY_NAME`, `ARTIST`, `ALBUM`, `ALBUM_ID`, `DURATION`, `TRACK`, `MIME_TYPE`, `SIZE`; с API 29 — `VOLUME_NAME` и `RELATIVE_PATH` (папка), до него — `DATA` (полный путь, папка — его родитель, том пустой); с API 30 — `BITRATE`.
 

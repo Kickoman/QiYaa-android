@@ -3,6 +3,7 @@ package io.github.kickoman.qiyaa.local
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.database.ContentObserver
 import android.database.Cursor
 import android.media.MediaCodecList
 import android.media.MediaFormat
@@ -10,6 +11,7 @@ import android.os.Build
 import android.provider.MediaStore
 import androidx.core.content.ContextCompat
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
 
 class LocalLibrary(private val context: Context) {
     val permission: String =
@@ -24,8 +26,27 @@ class LocalLibrary(private val context: Context) {
         MediaCodecList(MediaCodecList.REGULAR_CODECS).findDecoderForFormat(format) != null
     }
 
+    private val changed = AtomicBoolean(true)
+    private var watching = false
+
     fun hasPermission(): Boolean =
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+
+    fun takeChanged(): Boolean {
+        if (!watching) {
+            val observer =
+                object : ContentObserver(null) {
+                    override fun onChange(selfChange: Boolean) = changed.set(true)
+                }
+            context.contentResolver.registerContentObserver(
+                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                true,
+                observer,
+            )
+            watching = true
+        }
+        return changed.getAndSet(false)
+    }
 
     fun rows(): List<LocalRow> = query(MUSIC, emptyArray()).filter {
         LocalTracks.isTaken(it.mimeType, flacDecodes)

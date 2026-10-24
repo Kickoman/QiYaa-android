@@ -1,6 +1,10 @@
 package io.github.kickoman.qiyaa.ui.screens
 
 import android.content.Intent
+import android.provider.Settings
+import androidx.activity.compose.LocalActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -33,19 +37,24 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.ActivityCompat
 import androidx.core.net.toUri
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.data.AppLanguage
 import io.github.kickoman.qiyaa.data.AudioQuality
 import io.github.kickoman.qiyaa.data.ShuffleChoice
 import io.github.kickoman.qiyaa.jam.ParticipantKind
+import io.github.kickoman.qiyaa.local.LocalPick
+import io.github.kickoman.qiyaa.local.LocalPicks
 import io.github.kickoman.qiyaa.playback.JamHostPhase
 import io.github.kickoman.qiyaa.playback.JamHostState
 import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.ui.AppViewModel
 import io.github.kickoman.qiyaa.ui.LibrarySection
 import io.github.kickoman.qiyaa.ui.ListState
+import io.github.kickoman.qiyaa.ui.LocalAccess
 import io.github.kickoman.qiyaa.ui.PlayerViewModel
 import io.github.kickoman.qiyaa.ui.components.IconPaths
 import io.github.kickoman.qiyaa.ui.components.IconWideButton
@@ -158,10 +167,13 @@ fun LibraryScreen(
             QiText(
                 stringResource(R.string.library_sign_in_note),
                 HintStyle,
-                Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
+                Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
                 color = colors.muted,
             )
         }
+
+        LocalFiles(viewModel)
+
         QiText(
             stringResource(R.string.shuffle_title),
             LabelStyle,
@@ -484,5 +496,91 @@ private fun SourceRow(name: String, meta: String, last: Boolean = false, onClick
             QiText("›", mono(14.sp, 400), color = colors.dim)
         }
         if (!last) Box(Modifier.fillMaxWidth().height(1.dp).background(colors.background))
+    }
+}
+
+@Composable
+private fun LocalFiles(viewModel: AppViewModel) {
+    val colors = Qi.colors
+    val context = LocalContext.current
+    val activity = LocalActivity.current
+    val access by viewModel.localAccess.collectAsStateWithLifecycle()
+    val rows by viewModel.localRows.state.collectAsStateWithLifecycle()
+    val picks by viewModel.localPicks.collectAsStateWithLifecycle()
+    val ask =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            val rationale =
+                activity?.let {
+                    ActivityCompat.shouldShowRequestPermissionRationale(it, viewModel.localPermission)
+                }
+            viewModel.onLocalPermission(granted, rationale == true)
+        }
+    LifecycleResumeEffect(Unit) {
+        viewModel.refreshLocal()
+        onPauseOrDispose {}
+    }
+
+    QiText(
+        stringResource(R.string.library_local),
+        LabelStyle,
+        Modifier.padding(start = 16.dp, end = 16.dp, top = 18.dp),
+        color = colors.dim,
+    )
+    Column(
+        Modifier
+            .padding(start = 16.dp, end = 16.dp, top = 10.dp)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(colors.surface),
+    ) {
+        when (access) {
+            LocalAccess.GRANTED -> {
+                val loading = stringResource(R.string.library_loading)
+                val failed = stringResource(R.string.library_row_error)
+                val loaded = picks
+                fun meta(count: (LocalPicks) -> Int): String = when (rows) {
+                    ListState.Idle, ListState.Loading -> loading
+                    is ListState.Failed -> failed
+                    is ListState.Loaded -> loaded?.let { count(it).toString() } ?: loading
+                }
+                val allTitle = stringResource(R.string.local_all)
+                SourceRow(allTitle, meta { it.trackCount }) { viewModel.playLocal(LocalPick.All, allTitle) }
+                SourceRow(stringResource(R.string.local_albums), meta { it.albums.size }) {
+                    viewModel.openSection(LibrarySection.LOCAL_ALBUMS)
+                }
+                SourceRow(stringResource(R.string.local_artists), meta { it.artists.size }) {
+                    viewModel.openSection(LibrarySection.LOCAL_ARTISTS)
+                }
+                SourceRow(stringResource(R.string.local_folders), meta { it.folders.size }, last = true) {
+                    viewModel.openSection(LibrarySection.LOCAL_FOLDERS)
+                }
+            }
+
+            LocalAccess.ASK, LocalAccess.ASK_AGAIN ->
+                SourceRow(stringResource(R.string.local_allow), "", last = true) {
+                    ask.launch(viewModel.localPermission)
+                }
+
+            LocalAccess.SETTINGS ->
+                SourceRow(stringResource(R.string.local_settings), "", last = true) {
+                    val details = "package:${context.packageName}".toUri()
+                    context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, details))
+                }
+        }
+    }
+    val note =
+        when (access) {
+            LocalAccess.GRANTED -> null
+            LocalAccess.ASK -> R.string.local_allow_note
+            LocalAccess.ASK_AGAIN -> R.string.local_allow_again_note
+            LocalAccess.SETTINGS -> R.string.local_settings_note
+        }
+    note?.let {
+        QiText(
+            stringResource(it),
+            HintStyle,
+            Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
+            color = colors.muted,
+        )
     }
 }

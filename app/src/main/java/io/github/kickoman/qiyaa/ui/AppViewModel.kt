@@ -12,6 +12,8 @@ import io.github.kickoman.qiyaa.data.AudioQuality
 import io.github.kickoman.qiyaa.data.ShuffleChoice
 import io.github.kickoman.qiyaa.jam.GuestPhase
 import io.github.kickoman.qiyaa.jam.JamLink
+import io.github.kickoman.qiyaa.local.LocalPick
+import io.github.kickoman.qiyaa.local.LocalPicks
 import io.github.kickoman.qiyaa.playback.JamHostPhase
 import io.github.kickoman.qiyaa.queue.QueueController
 import io.github.kickoman.qiyaa.yandex.ErrorKind
@@ -28,12 +30,30 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-enum class LibrarySection { FOR_YOU, WHEEL, STATIONS, PLAYLISTS, ARTISTS, ALBUMS }
+enum class LibrarySection {
+    FOR_YOU,
+    WHEEL,
+    STATIONS,
+    PLAYLISTS,
+    ARTISTS,
+    ALBUMS,
+    LOCAL_ALBUMS,
+    LOCAL_ARTISTS,
+    LOCAL_FOLDERS,
+}
+
+val LibrarySection.isLocal: Boolean
+    get() = this == LibrarySection.LOCAL_ALBUMS || this == LibrarySection.LOCAL_ARTISTS ||
+        this == LibrarySection.LOCAL_FOLDERS
 
 sealed interface LoginStatus {
     data object Requesting : LoginStatus
@@ -97,6 +117,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val stations = listLoader("Stations") { library.stations() }
     val wheel = listLoader("Wheel of waves") { library.wheelWaves(listOf(wheelSeed)) }
     private val lists: List<ListLoader<*>> get() = listOf(forYou, playlists, artists, albums, stations)
+
+    private val localLibrary = graph.localLibrary
+    val localPermission: String = localLibrary.permission
+    private val mutableLocalAccess =
+        MutableStateFlow(
+            LocalAccessRule.before(localLibrary.hasPermission(), settings.localPermissionAsked.value),
+        )
+    val localAccess: StateFlow<LocalAccess> = mutableLocalAccess.asStateFlow()
+    val localRows = listLoader("Local files") { localLibrary.rows() }
+    val localPicks: StateFlow<LocalPicks?> =
+        localRows.state
+            .map { state -> (state as? ListState.Loaded)?.items?.let(::LocalPicks) }
+            .flowOn(Dispatchers.Default)
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     val sessionState: StateFlow<SessionState> = session.state
     val account = library.account
@@ -231,14 +265,21 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadSection(section: LibrarySection) {
-        if (!library.isLoggedIn) return
         when (section) {
-            LibrarySection.WHEEL -> loadWheel()
-            LibrarySection.FOR_YOU -> forYou.load()
-            LibrarySection.STATIONS -> stations.load()
-            LibrarySection.PLAYLISTS -> playlists.load()
-            LibrarySection.ARTISTS -> artists.load()
-            LibrarySection.ALBUMS -> albums.load()
+            LibrarySection.LOCAL_ALBUMS, LibrarySection.LOCAL_ARTISTS, LibrarySection.LOCAL_FOLDERS ->
+                refreshLocal()
+
+            LibrarySection.WHEEL -> if (library.isLoggedIn) loadWheel()
+
+            LibrarySection.FOR_YOU -> if (library.isLoggedIn) forYou.load()
+
+            LibrarySection.STATIONS -> if (library.isLoggedIn) stations.load()
+
+            LibrarySection.PLAYLISTS -> if (library.isLoggedIn) playlists.load()
+
+            LibrarySection.ARTISTS -> if (library.isLoggedIn) artists.load()
+
+            LibrarySection.ALBUMS -> if (library.isLoggedIn) albums.load()
         }
     }
 
@@ -316,6 +357,48 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         if (!library.isLoggedIn) return
         for (list in lists) list.load()
         if (likedIds.value.isEmpty()) preloadLikes()
+    }
+
+    fun refreshLocal() {
+        val access = LocalAccessRule.before(localLibrary.hasPermission(), settings.localPermissionAsked.value)
+        if (access == LocalAccess.GRANTED) {
+            onLocalGranted()
+        } else if (mutableLocalAccess.value != LocalAccess.SETTINGS) {
+            mutableLocalAccess.value = access
+        }
+    }
+
+    fun onLocalPermission(granted: Boolean, rationale: Boolean) {
+        val askedBefore = settings.localPermissionAsked.value
+        settings.setLocalPermissionAsked()
+        if (granted) {
+            onLocalGranted()
+        } else {
+            mutableLocalAccess.value = LocalAccessRule.after(granted = false, rationale, askedBefore)
+        }
+    }
+
+    private fun onLocalGranted() {
+        if (mutableLocalAccess.value != LocalAccess.GRANTED) {
+            mutableLocalAccess.value = LocalAccess.GRANTED
+            graph.checkRestoredLocalQueue()
+        }
+        localRows.load(force = localLibrary.takeChanged())
+    }
+
+    fun playLocal(pick: LocalPick, title: String) {
+        val picks = localPicks.value ?: return
+        queue.loadSource(title, sourceId = sourceIdOf(pick), waveFromHistory = false, limit = LOCAL_LIMIT) {
+            picks.tracks(pick)
+        }
+        go(Screen.PLAYER)
+    }
+
+    private fun sourceIdOf(pick: LocalPick): String = when (pick) {
+        LocalPick.All -> "local:all"
+        is LocalPick.Album -> "local:album:${pick.id}"
+        is LocalPick.Artist -> "local:artist:${pick.name}"
+        is LocalPick.Folder -> "local:folder:${pick.folder.volume}/${pick.folder.path.joinToString("/")}"
     }
 
     fun setSearchText(text: String) = mutableLibraryUi.update { it.copy(searchText = text) }
@@ -436,6 +519,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     companion object {
         const val TOAST_MS = 1_800L
+        const val LOCAL_LIMIT = 10_000
     }
 }
 

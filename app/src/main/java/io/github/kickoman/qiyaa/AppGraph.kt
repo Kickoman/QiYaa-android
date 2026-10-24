@@ -112,10 +112,14 @@ class AppGraph(val context: Context) {
     val localLibrary = LocalLibrary(context)
 
     init {
-        mainScope.launch { checkRestoredLocalQueue() }
+        checkRestoredLocalQueue()
     }
 
-    private suspend fun checkRestoredLocalQueue() {
+    fun checkRestoredLocalQueue() {
+        mainScope.launch { checkLocalQueue() }
+    }
+
+    private suspend fun checkLocalQueue() {
         val saved = queue.state.value.tracks
         val ids = LocalCheck.localIds(saved)
         if (ids.isEmpty() || !localLibrary.hasPermission()) return
