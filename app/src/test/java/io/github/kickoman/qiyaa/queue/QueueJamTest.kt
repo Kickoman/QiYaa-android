@@ -7,6 +7,7 @@ import io.github.kickoman.qiyaa.support.QueueHarness
 import io.github.kickoman.qiyaa.support.QueueHarness.Companion.track
 import io.github.kickoman.qiyaa.support.QueueHarness.Companion.tracks
 import io.github.kickoman.qiyaa.track.Track
+import io.github.kickoman.qiyaa.track.TrackSource
 import io.github.kickoman.qiyaa.yandex.ErrorKind
 import io.github.kickoman.qiyaa.yandex.SearchResult
 import io.github.kickoman.qiyaa.yandex.WaveBatch
@@ -1904,6 +1905,50 @@ class QueueJamTest {
             h.engine.startPlaying()
             assertEquals(listOf("w1", "w2"), h.playOn(2))
         }
+
+    @Test
+    fun `CONT-12 HOST-11 HOST-13 the last state's seeds start no jam wave under a base of local files`() =
+        runTest {
+            val h = QueueHarness.likes(this, "a", continueWithVibe = false)
+            h.source.onStartWave = { CompletableDeferred<WaveBatch>().await() }
+            h.engine.startPlaying()
+            val jam = h.startJam()
+            h.continueWithVibe = true
+            h.controller.loadSource("Files", waveFromHistory = false) {
+                listOf(localTrack("l1"), localTrack("l2"))
+            }
+            runCurrent()
+            h.state(seeds = listOf("genre:jam"), seedsVersion = 1)
+            runCurrent()
+            assertEquals(listOf("a", "l1", "l2"), h.engine.ids())
+            assertEquals(listOf("l1", "l2"), h.playOn(2))
+            h.engine.finishTrack()
+            runCurrent()
+            assertTrue(h.engine.isEnded)
+            assertEquals(emptyList<String>(), h.source.calls.filter { it.startsWith("startWave") })
+            assertEquals(JamPlayback.Kind.IDLE, jam.playbacks.last().kind)
+        }
+
+    @Test
+    fun `CONT-12 HOST-36 clearing a base of local files gives the empty base the flag of a new queue`() =
+        runTest {
+            val h = QueueHarness.likes(this, "a", continueWithVibe = false)
+            h.source.onStartWave = { CompletableDeferred<WaveBatch>().await() }
+            h.engine.startPlaying()
+            h.startJam()
+            h.continueWithVibe = true
+            h.controller.loadSource("Files", waveFromHistory = false) { listOf(localTrack("l1")) }
+            runCurrent()
+            assertFalse(h.controller.state.value.waveFromHistory)
+            assertFalse(h.controller.state.value.continueWithVibe)
+            h.controller.clear()
+            runCurrent()
+            assertTrue(h.controller.state.value.waveFromHistory)
+            assertTrue(h.controller.state.value.continueWithVibe)
+            assertEquals(listOf("a"), h.engine.ids())
+        }
+
+    private fun localTrack(id: String) = Track(id = id, title = "Свой $id", source = TrackSource.LOCAL)
 
     private class Recorder : JamPlaybackListener {
         val started = mutableListOf<String>()

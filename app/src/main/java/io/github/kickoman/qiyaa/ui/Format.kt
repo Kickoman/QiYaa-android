@@ -37,7 +37,12 @@ fun balanceLabel(balance: Int): String = when {
 }
 
 fun formatReadout(bitrateKbps: Int, sampleRate: Int, channels: Int): String {
-    val bitrate = if (bitrateKbps > 0) "${bitrateKbps}K" else "--K"
+    val bitrate =
+        when {
+            bitrateKbps > MAX_KBPS_SHOWN -> "${minOf(bitrateKbps / 100, 99)}H"
+            bitrateKbps > 0 -> "${bitrateKbps}K"
+            else -> "--K"
+        }
     val kilohertz = if (sampleRate > 0) "${(sampleRate + 500) / 1000}" else "--"
     val channelMode =
         when {
@@ -53,3 +58,5 @@ fun formatDb(db: Double): String {
     val text = "%.1f".format(Locale.ROOT, db).removeSuffix(".0")
     return if (db > 0) "+$text" else text
 }
+
+private const val MAX_KBPS_SHOWN = 999

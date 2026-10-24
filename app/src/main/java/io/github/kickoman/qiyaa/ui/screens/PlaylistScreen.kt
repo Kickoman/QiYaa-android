@@ -23,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -42,6 +43,7 @@ import io.github.kickoman.qiyaa.ui.JamViewModel
 import io.github.kickoman.qiyaa.ui.PlayerViewModel
 import io.github.kickoman.qiyaa.ui.TrackActions
 import io.github.kickoman.qiyaa.ui.components.ActionButton
+import io.github.kickoman.qiyaa.ui.components.DISABLED_ALPHA
 import io.github.kickoman.qiyaa.ui.components.IconPaths
 import io.github.kickoman.qiyaa.ui.components.OnOffPills
 import io.github.kickoman.qiyaa.ui.components.PathIcon
@@ -98,7 +100,11 @@ fun PlaylistScreen(viewModel: PlayerViewModel, jam: JamViewModel, onAdd: () -> U
                     color = colors.dim,
                     maxLines = 2,
                 )
-                OnOffPills(queue.continueWithVibe, onChange = viewModel::setQueueContinuesWithVibe)
+                OnOffPills(
+                    queue.continueWithVibe,
+                    enabled = queue.waveFromHistory,
+                    onChange = viewModel::setQueueContinuesWithVibe,
+                )
             }
         }
 
@@ -306,8 +312,10 @@ fun TrackActionsSheet(actions: TrackActions, viewModel: PlayerViewModel) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            val yandex = track.isYandex
             TrackActionRow(
                 stringResource(if (actions.liked) R.string.playlist_unlike else R.string.player_like),
+                enabled = yandex,
                 onClick = viewModel::likeOrUnlikePicked,
             ) {
                 if (actions.liked) {
@@ -318,11 +326,16 @@ fun TrackActionsSheet(actions: TrackActions, viewModel: PlayerViewModel) {
             }
             val dislikeText =
                 if (actions.isCurrent) R.string.player_dislike_skip else R.string.library_dislike
-            TrackActionRow(stringResource(dislikeText), onClick = viewModel::dislikePicked) {
+            TrackActionRow(
+                stringResource(dislikeText),
+                enabled = yandex,
+                onClick = viewModel::dislikePicked,
+            ) {
                 PathIcon(IconPaths.THUMB_DOWN, 22.dp, colors.muted, strokeWidth = IconPaths.OUTLINE)
             }
             TrackActionRow(
                 stringResource(R.string.playlist_open),
+                enabled = yandex,
                 onClick = {
                     viewModel.closeTrackActions()
                     track.webUrl?.let { url ->
@@ -337,13 +350,19 @@ fun TrackActionsSheet(actions: TrackActions, viewModel: PlayerViewModel) {
 }
 
 @Composable
-private fun TrackActionRow(label: String, onClick: () -> Unit, icon: @Composable () -> Unit) {
+private fun TrackActionRow(
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    icon: @Composable () -> Unit,
+) {
     Row(
         Modifier
             .fillMaxWidth()
             .height(48.dp)
+            .alpha(if (enabled) 1f else DISABLED_ALPHA)
             .clip(RoundedCornerShape(8.dp))
-            .tap(onClick = onClick)
+            .tap(enabled = enabled, onClick = onClick)
             .semantics { role = Role.Button }
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,

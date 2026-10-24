@@ -91,7 +91,7 @@ Writing rules for READMEs:
 
   | Package | Job | May import from |
   |---|---|---|
-  | `track` | The track model shared by sources, the queue and playback: `Track`, `TrackSource` | — (pure JVM) |
+  | `track` | The track model shared by sources, the queue and playback: `Track`, `TrackSource`, `TrackKey` | — (pure JVM) |
   | `yandex` | Yandex Music HTTP API, OAuth, link signing | `track` (pure JVM) |
   | `audio` | DSP: equalizer, FFT, spectrum, visualizer ring, PCM | — (pure JVM) |
   | `data` | Persistence: settings and token | `audio` |

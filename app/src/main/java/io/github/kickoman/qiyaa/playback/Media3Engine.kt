@@ -6,13 +6,16 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import io.github.kickoman.qiyaa.queue.FailureKind
 import io.github.kickoman.qiyaa.queue.HeadShuffle
 import io.github.kickoman.qiyaa.queue.PlayerEngine
 import io.github.kickoman.qiyaa.queue.QueueController
 import io.github.kickoman.qiyaa.queue.Transition
 import io.github.kickoman.qiyaa.track.Track
+import io.github.kickoman.qiyaa.yandex.ErrorKind
 import kotlin.random.Random
 
 @OptIn(UnstableApi::class)
@@ -57,6 +60,14 @@ class Media3Engine(
                 if (!playWhenReady && atEnd) controller.onPausedAtEnd()
             }
 
+            override fun onTracksChanged(tracks: Tracks) {
+                if (!PlaybackFailures.hasNoPlayableAudio(tracks)) return
+                Log.w(LOG_TAG, "No decoder for the audio of ${player.currentMediaItem?.mediaId}")
+                player.stop()
+                onAudioFailure(AudioFailure.UNDECODABLE)
+                controller.onFailure(FailureKind.TRACK, ErrorKind.TrackUnplayable)
+            }
+
             override fun onPlayerError(error: PlaybackException) {
                 Log.w(LOG_TAG, "Playback failed: ${error.errorCodeName}", error)
                 PlaybackFailures.audioFailure(error.errorCode)?.let(onAudioFailure)
@@ -78,6 +89,7 @@ class Media3Engine(
     override val currentIndex: Int get() = player.currentMediaItemIndex
     override val positionMs: Long get() = player.currentPosition
     override val isEnded: Boolean get() = player.playbackState == Player.STATE_ENDED
+    override val playWhenReady: Boolean get() = player.playWhenReady
 
     override var shuffleEnabled: Boolean
         get() = player.shuffleModeEnabled

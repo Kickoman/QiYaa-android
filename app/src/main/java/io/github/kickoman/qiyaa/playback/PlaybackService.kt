@@ -29,6 +29,7 @@ import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.appGraph
 import io.github.kickoman.qiyaa.audio.AudioBus
 import io.github.kickoman.qiyaa.queue.QueueController
+import io.github.kickoman.qiyaa.track.TrackSource
 import io.github.kickoman.qiyaa.yandex.Library
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.MainScope
@@ -81,14 +82,23 @@ class PlaybackService : MediaSessionService() {
         val links = graph.trackLinks
         val bitrate = CurrentBitrate(graph.audioBus::setBitrate)
         val dataSource =
-            PlaybackDataSources(graph.httpClient, links, bitrate, graph.playbackCache, graph.readInterrupts)
+            PlaybackDataSources(
+                this,
+                graph.httpClient,
+                links,
+                bitrate,
+                graph.playbackCache,
+                graph.readInterrupts,
+            )
         val audioAttributes =
             AudioAttributes.Builder().setUsage(
                 C.USAGE_MEDIA,
             ).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build()
         val player =
             ExoPlayer.Builder(this, renderers)
-                .setMediaSourceFactory(DefaultMediaSourceFactory(this).setDataSourceFactory(dataSource))
+                .setMediaSourceFactory(
+                    LocalMediaSources(DefaultMediaSourceFactory(this).setDataSourceFactory(dataSource)),
+                )
                 .setLoadControl(PlayerBuffer.loadControl())
                 .setAudioAttributes(audioAttributes, true)
                 .setHandleAudioBecomingNoisy(true)
@@ -115,22 +125,28 @@ class PlaybackService : MediaSessionService() {
         player.addListener(
             object : Player.Listener {
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    mediaItem?.let { localBitrate(bitrate, it) }
                     currentTrackId.value = mediaItem?.mediaId
                     graph.playbackCache.keepFor(player)
                 }
             },
         )
+        player.currentMediaItem?.let { localBitrate(bitrate, it) }
         currentTrackId.value = player.currentMediaItem?.mediaId
         serviceScope.launch { currentTrackId.collect(bitrate::onCurrentChanged) }
         serviceScope.launch {
             // The buttons' names follow the language picked while the service runs.
             combine(currentTrackId, graph.library.likedIds, graph.settings.language) { id, liked, language ->
-                (id != null && id in liked) to language
+                Triple(
+                    id != null && id in liked,
+                    id == null || MediaItems.sourceOf(id) == TrackSource.YANDEX,
+                    language,
+                )
             }
                 .distinctUntilChanged()
-                .collect { (liked, language) ->
+                .collect { (liked, likeable, language) ->
                     AppLocale.apply(this@PlaybackService, language)
-                    built.setCustomLayout(NotificationButtons.layout(this@PlaybackService, liked))
+                    built.setCustomLayout(NotificationButtons.layout(this@PlaybackService, liked, likeable))
                 }
         }
         setMediaNotificationProvider(
@@ -152,6 +168,11 @@ class PlaybackService : MediaSessionService() {
         val player = session?.player
         val playing = player != null && player.playWhenReady && player.mediaItemCount > 0
         if (!playing) pauseAllPlayersAndStopSelf()
+    }
+
+    private fun localBitrate(bitrate: CurrentBitrate, item: MediaItem) {
+        val track = MediaItems.toTrack(item)
+        if (!track.isYandex && track.bitrateKbps > 0) bitrate.onResolved(item.mediaId, track.bitrateKbps)
     }
 
     override fun onDestroy() {
@@ -193,6 +214,7 @@ class PlaybackService : MediaSessionService() {
                     NotificationButtons.layout(
                         context,
                         current != null && library.isLiked(current),
+                        current == null || MediaItems.sourceOf(current) == TrackSource.YANDEX,
                     ),
                 )
                 .build()

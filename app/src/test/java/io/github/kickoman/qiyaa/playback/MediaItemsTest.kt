@@ -1,5 +1,8 @@
 package io.github.kickoman.qiyaa.playback
 
+import io.github.kickoman.qiyaa.track.Track
+import io.github.kickoman.qiyaa.track.TrackKey
+import io.github.kickoman.qiyaa.track.TrackSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -16,5 +19,26 @@ class MediaItemsTest {
     fun `a negative revision is refused with the track and the value`() {
         val failed = assertThrows(IllegalArgumentException::class.java) { MediaItems.uriText("42", -1) }
         assertEquals("The revision of track 42 is -1", failed.message)
+    }
+
+    @Test
+    fun `a Yandex track's media id is its id, a local track's says its source`() {
+        val yandex = Track(id = "42", title = "A")
+        val local = Track(id = "42", title = "B", source = TrackSource.LOCAL)
+        assertEquals("42", MediaItems.mediaIdOf(yandex))
+        assertEquals("local:42", MediaItems.mediaIdOf(local))
+        for (track in listOf(yandex, local)) {
+            val mediaId = MediaItems.mediaIdOf(track)
+            assertEquals(track.key, TrackKey(MediaItems.sourceOf(mediaId), MediaItems.idOf(mediaId)))
+        }
+    }
+
+    @Test
+    fun `LOCAL-06 a local track plays from the media library's content URI, a Yandex one through qiyaa`() {
+        assertEquals("qiyaa://track/42", MediaItems.uriTextFor(Track(id = "42", title = "A")))
+        assertEquals(
+            "content://media/external/audio/media/42",
+            MediaItems.uriTextFor(Track(id = "42", title = "B", source = TrackSource.LOCAL)),
+        )
     }
 }

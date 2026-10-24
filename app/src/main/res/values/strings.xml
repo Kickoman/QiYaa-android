@@ -136,6 +136,10 @@
         <item quantity="one">%1$s: %2$d track</item>
         <item quantity="other">%1$s: %2$d tracks</item>
     </plurals>
+    <plurals name="queue_loaded_first">
+        <item quantity="one">%1$s: the first %2$d track</item>
+        <item quantity="other">%1$s: the first %2$d tracks</item>
+    </plurals>
     <string name="queue_empty">%1$s: empty</string>
     <string name="queue_wave_started">%1$s: vibe started</string>
     <string name="queue_nothing_found">Nothing found</string>
