@@ -67,6 +67,8 @@ class SpotifyStack(
     @Volatile
     var accessPoints: List<String> = listOf(accessPoint.address)
 
+    private val sessionClient = OkHttpClient()
+    private val webClient = OkHttpClient()
     private val routes = ConcurrentHashMap<String, (RecordedRequest) -> MockResponse>()
     private val recorded = CopyOnWriteArrayList<RecordedRequest>()
     private val reserved = CopyOnWriteArrayList<Socket>()
@@ -90,7 +92,7 @@ class SpotifyStack(
         route("POST", "/v3/login") { protobuf(login5(BEARER)) }
         session =
             SpotifySession(
-                client = OkHttpClient(),
+                client = sessionClient,
                 identity = identity,
                 network = network,
                 inUse = this.inUse,
@@ -110,7 +112,7 @@ class SpotifyStack(
             )
         web =
             SpotifyWeb(
-                client = OkHttpClient(),
+                client = webClient,
                 session = session,
                 identity = identity,
                 endpoints = endpoints(),
@@ -184,11 +186,19 @@ class SpotifyStack(
     }
 
     override fun close() {
-        session.logout()
-        accessPoint.close()
-        scope.cancel()
-        http.shutdown()
-        reserved.forEach(Socket::close)
+        try {
+            session.logout()
+            accessPoint.close()
+            scope.cancel()
+            for (client in listOf(sessionClient, webClient)) {
+                client.dispatcher.cancelAll()
+                client.connectionPool.evictAll()
+                client.dispatcher.executorService.shutdown()
+            }
+            http.shutdown()
+        } finally {
+            reserved.forEach(Socket::close)
+        }
     }
 
     private fun apresolve(): JsonObject = JsonObject(
@@ -229,3 +239,16 @@ class SpotifyStack(
 }
 
 fun RecordedRequest.bytes(): ByteArray = body.clone().readByteArray()
+
+fun closeAll(resources: Iterable<Closeable>) {
+    var failure: Throwable? = null
+    for (resource in resources) {
+        try {
+            resource.close()
+        } catch (failed: Throwable) {
+            val first = failure
+            if (first == null) failure = failed else first.addSuppressed(failed)
+        }
+    }
+    failure?.let { throw it }
+}

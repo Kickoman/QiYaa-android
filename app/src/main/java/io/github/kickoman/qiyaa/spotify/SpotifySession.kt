@@ -306,23 +306,18 @@ class SpotifySession(
                 .addQueryParameter("type", SPCLIENT_TYPE)
                 .build()
         val request = Request.Builder().url(url).build()
-        val json =
+        val body =
             try {
                 val reply = resolveClient.fetch(request, MAX_RESOLVE_BYTES)
                 if (!reply.ok) log("${labelOf(request)}: HTTP ${reply.status}")
-                jsonObjectOf(reply.body).takeIf { reply.ok }
+                reply.body
             } catch (failed: SpotifyException) {
                 log(failed.message.orEmpty())
-                null
+                ByteArray(0)
             }
-        val accessPoints = json?.strings(ACCESS_POINT_TYPE).orEmpty().mapNotNull(Address::parse)
-        val hosts = json?.strings(SPCLIENT_TYPE).orEmpty()
-        if (hosts.isNotEmpty()) {
-            spclients = hosts
-        } else if (spclients.isEmpty()) {
-            spclients = listOf(Endpoints.FALLBACK_SPCLIENT)
-        }
-        return accessPoints.ifEmpty { listOfNotNull(Address.parse(Endpoints.FALLBACK_ACCESS_POINT)) }
+        val resolved = resolvedOf(body, spclients)
+        spclients = resolved.spclients
+        return resolved.accessPoints.mapNotNull(Address::parse)
     }
 
     private suspend fun connect(address: Address, current: Int): Ending {
@@ -594,7 +589,19 @@ class SpotifySession(
         }
     }
 
+    internal data class Resolved(val accessPoints: List<String>, val spclients: List<String>)
+
     companion object {
+        internal fun resolvedOf(body: ByteArray, knownSpclients: List<String>): Resolved {
+            val json = jsonObjectOf(body)
+            val accessPoints = json.strings(ACCESS_POINT_TYPE).mapNotNull { Address.parse(it)?.toString() }
+            val hosts = json.strings(SPCLIENT_TYPE)
+            return Resolved(
+                accessPoints = accessPoints.ifEmpty { listOf(Endpoints.FALLBACK_ACCESS_POINT) },
+                spclients = hosts.ifEmpty { knownSpclients.ifEmpty { listOf(Endpoints.FALLBACK_SPCLIENT) } },
+            )
+        }
+
         const val KEY_ATTEMPTS = 2
         const val KEY_REFUSED_FOR_ACCOUNT = 1
         const val ACCESS_POINT = "the access point"
