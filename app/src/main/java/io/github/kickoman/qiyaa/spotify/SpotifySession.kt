@@ -170,6 +170,11 @@ class SpotifySession(
         fail(dropped, NotLoggedInException())
     }
 
+    fun loggedInUsername(): String = synchronized(lock) {
+        checkLoggedIn()
+        credentials?.username ?: throw NotLoggedInException()
+    }
+
     suspend fun audioKey(track: Bytes, file: Bytes): Bytes {
         require(track.size == Ids.GID_SIZE) { "a track gid is ${Ids.GID_SIZE} bytes, got ${track.size}" }
         require(file.size == Ids.FILE_ID_SIZE) { "a file id is ${Ids.FILE_ID_SIZE} bytes, got ${file.size}" }

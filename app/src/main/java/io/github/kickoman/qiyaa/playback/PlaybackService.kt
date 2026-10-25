@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
+import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -86,9 +87,11 @@ class PlaybackService : MediaSessionService() {
                 this,
                 graph.httpClient,
                 links,
+                graph.spotifyFiles,
                 bitrate,
                 graph.playbackCache,
                 graph.readInterrupts,
+                log = { message -> Log.i(LOG_TAG, "Spotify: $message") },
             )
         val audioAttributes =
             AudioAttributes.Builder().setUsage(
@@ -97,7 +100,11 @@ class PlaybackService : MediaSessionService() {
         val player =
             ExoPlayer.Builder(this, renderers)
                 .setMediaSourceFactory(
-                    LocalMediaSources(DefaultMediaSourceFactory(this).setDataSourceFactory(dataSource)),
+                    LocalMediaSources(
+                        DefaultMediaSourceFactory(this)
+                            .setDataSourceFactory(dataSource)
+                            .setLoadErrorHandlingPolicy(LoadRetries()),
+                    ),
                 )
                 .setLoadControl(PlayerBuffer.loadControl())
                 .setAudioAttributes(audioAttributes, true)
@@ -112,7 +119,15 @@ class PlaybackService : MediaSessionService() {
                 .also { it.attach() }
         graph.jamHost.onServiceStarted()
         serviceScope.launch(start = CoroutineStart.UNDISPATCHED) {
-            graph.qualityInEffect.drop(1).collect { graph.queue.onFilesChanged(links::askedInOtherQuality) }
+            graph.qualityInEffect.drop(1).collect {
+                graph.queue.onFilesChanged { track ->
+                    QualityCheck.askedInOtherQuality(
+                        track,
+                        links::askedInOtherQuality,
+                        graph.spotifyFiles::askedInOtherQuality,
+                    )
+                }
+            }
         }
 
         val builder =

@@ -1,5 +1,6 @@
 package io.github.kickoman.qiyaa
 
+import io.github.kickoman.qiyaa.spotify.CdnStatusException
 import io.github.kickoman.qiyaa.spotify.KeyFailedException
 import io.github.kickoman.qiyaa.spotify.KeyRefusedException
 import io.github.kickoman.qiyaa.spotify.LoginRefusedException
@@ -25,6 +26,7 @@ class SpotifyErrorKindsTest {
         assertEquals(ErrorKind.NoNetwork, errorKindOf(SpotifyNetworkException("GET spclient/x", timeout)))
         assertEquals(ErrorKind.ServerError(503), errorKindOf(SpotifyHttpException(503, "GET", "/x")))
         assertEquals(ErrorKind.ServerError(401), errorKindOf(SpotifyHttpException(401, "GET", "/x")))
+        assertEquals(ErrorKind.ServerError(403), errorKindOf(CdnStatusException(403, "audio-fa.scdn.co/a")))
         assertEquals(
             ErrorKind.Malformed,
             errorKindOf(SpotifyContentException("POST /x: a page that does not parse")),

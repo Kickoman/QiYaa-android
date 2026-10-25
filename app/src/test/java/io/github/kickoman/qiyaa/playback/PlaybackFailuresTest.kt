@@ -6,11 +6,25 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.TrackGroup
 import androidx.media3.common.Tracks
 import io.github.kickoman.qiyaa.queue.FailureKind
+import io.github.kickoman.qiyaa.spotify.CdnStatusException
+import io.github.kickoman.qiyaa.spotify.KeyFailedException
+import io.github.kickoman.qiyaa.spotify.KeyRefusedException
+import io.github.kickoman.qiyaa.spotify.LoginRefusedException
+import io.github.kickoman.qiyaa.spotify.NoPlayableFileException
+import io.github.kickoman.qiyaa.spotify.NotLoggedInException
+import io.github.kickoman.qiyaa.spotify.SpotifyContentException
+import io.github.kickoman.qiyaa.spotify.SpotifyHttpException
+import io.github.kickoman.qiyaa.spotify.SpotifyNetworkException
+import io.github.kickoman.qiyaa.spotify.SpotifySession
+import io.github.kickoman.qiyaa.spotify.SpotifyWeb
+import io.github.kickoman.qiyaa.spotify.protocol.Login5Reply
 import io.github.kickoman.qiyaa.yandex.ErrorKind
 import io.github.kickoman.qiyaa.yandex.HttpException
 import io.github.kickoman.qiyaa.yandex.MalformedResponseException
 import io.github.kickoman.qiyaa.yandex.NetworkException
 import java.io.IOException
+import java.net.SocketException
+import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -95,6 +109,77 @@ class PlaybackFailuresTest {
             ),
         )
         assertEquals(ErrorKind.TrackUnplayable, kind(PlaybackException.ERROR_CODE_DECODING_FAILED))
+    }
+
+    @Test
+    fun `SPOT-06 SPOT-17 no Spotify login or a refused key is an account failure with its own kind`() {
+        val io = PlaybackException.ERROR_CODE_IO_UNSPECIFIED
+        for (failed in listOf(NotLoggedInException(), KeyRefusedException())) {
+            assertEquals("$failed", FailureKind.SESSION, classify(io, failed))
+            val wrapped = IOException("load failed", failed)
+            assertEquals("wrapped $failed", FailureKind.SESSION, classify(io, wrapped))
+        }
+        assertEquals(ErrorKind.SpotifyLoggedOut, kind(io, NotLoggedInException()))
+        assertEquals(ErrorKind.SpotifyKeyRefused, kind(io, IOException("load failed", KeyRefusedException())))
+    }
+
+    @Test
+    fun `SPOT-05 a login the access point or login5 refused is an account failure with its own kind`() {
+        val io = PlaybackException.ERROR_CODE_IO_UNSPECIFIED
+        val accessPoint = LoginRefusedException(11, SpotifySession.ACCESS_POINT)
+        val login5 = LoginRefusedException(3, SpotifyWeb.LOGIN5_PATH)
+        for (failed in listOf(accessPoint, login5)) {
+            val wrapped = IOException("load failed", failed)
+            assertEquals("$failed", FailureKind.SESSION, classify(io, failed))
+            assertEquals("wrapped $failed", FailureKind.SESSION, classify(io, wrapped))
+        }
+        assertEquals(ErrorKind.SpotifyLoginRefused, kind(io, accessPoint))
+        assertEquals(ErrorKind.SpotifyTokenRefused, kind(io, IOException("load failed", login5)))
+    }
+
+    @Test
+    fun `SPOT-18 login5's timeout, too many attempts and try again later wait for the network instead`() {
+        val io = PlaybackException.ERROR_CODE_IO_UNSPECIFIED
+        val codes = listOf(4, 6, 8)
+        for (code in codes) {
+            val failed = LoginRefusedException(code, SpotifyWeb.LOGIN5_PATH)
+            assertEquals("$code", FailureKind.NETWORK, classify(io, IOException("load failed", failed)))
+            assertEquals("$code", ErrorKind.NoNetwork, kind(io, failed))
+            val accessPoint = LoginRefusedException(code, SpotifySession.ACCESS_POINT)
+            assertEquals("access point $code", FailureKind.SESSION, classify(io, accessPoint))
+        }
+        assertEquals(Login5Reply.Error.TRANSIENT_CODES, codes.toSet())
+    }
+
+    @Test
+    fun `SPOT-14 SPOT-18 a network failure on the way to the access point or the CDN is a network failure`() {
+        val io = PlaybackException.ERROR_CODE_IO_UNSPECIFIED
+        val reset = SpotifyNetworkException("GET audio-fa.scdn.co/a", SocketException("Connection reset"))
+        val keyWait = SpotifyNetworkException("an audio key", SocketTimeoutException("no access point login"))
+        for (failed in listOf(reset, keyWait)) {
+            assertEquals("$failed", FailureKind.NETWORK, classify(io, failed))
+            assertEquals(ErrorKind.NoNetwork, kind(io, failed))
+        }
+    }
+
+    @Test
+    fun `SPOT-14 SPOT-15 SPOT-16 a failed key, no playable file and a status are track failures`() {
+        val io = PlaybackException.ERROR_CODE_IO_UNSPECIFIED
+        val failures =
+            mapOf(
+                KeyFailedException("no answer in 5000 ms") to ErrorKind.TrackUnplayable,
+                NoPlayableFileException("6PCoZdjSPbRMehHviTrpB3") to ErrorKind.TrackUnplayable,
+                SpotifyContentException("GET /storage-resolve: a reply that does not parse") to
+                    ErrorKind.TrackUnplayable,
+                CdnStatusException(403, "audio-fa.scdn.co/audio/03") to ErrorKind.ServerError(403),
+                CdnStatusException(401, "audio-fa.scdn.co/audio/03") to ErrorKind.ServerError(401),
+                SpotifyHttpException(502, "POST", "/extended-metadata/v0/extended-metadata") to
+                    ErrorKind.ServerError(502),
+            )
+        for ((failed, shown) in failures) {
+            assertEquals("$failed", FailureKind.TRACK, classify(io, failed))
+            assertEquals("$failed", shown, kind(io, failed))
+        }
     }
 
     @Test

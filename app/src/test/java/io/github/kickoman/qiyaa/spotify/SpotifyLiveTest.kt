@@ -31,7 +31,7 @@ import org.junit.Test
 
 class SpotifyLiveTest {
     @Test
-    fun `logs in to the real Spotify with saved credentials and gets a track's audio key`() = runBlocking {
+    fun `logs in to the real Spotify, gets a track's key and its file's first Ogg bytes`() = runBlocking {
         val given = System.getenv(CREDENTIALS).orEmpty()
         assumeTrue("$CREDENTIALS is not set", given.isNotEmpty())
         val credentials =
@@ -65,6 +65,33 @@ class SpotifyLiveTest {
             val key = withTimeout(LOGIN_MS) { session.audioKey(Ids.gidFromBase62(track)!!, file) }
             assertEquals(16, key.size)
             println("$track: logged in, country ${session.country}, an audio key of ${key.size} bytes")
+            val files =
+                SpotifyFiles(
+                    web = web,
+                    session = session,
+                    bitrates = { listOf(320, 160) },
+                    clock = System::currentTimeMillis,
+                    log = ::println,
+                )
+            val prepared = withTimeout(LOGIN_MS) { files.prepare(track) }
+            assertTrue("${prepared.kbps} kbps", prepared.kbps in setOf(96, 160, 320))
+            val stream =
+                SpotifyStream(client, prepared, web.userAgent, relink = { prepared.urls }, log = ::println)
+            val head = ByteArray(FIRST_BYTES)
+            try {
+                val length = stream.open(0)
+                assertTrue("the CDN gave a length of $length", length > FIRST_BYTES)
+                var read = 0
+                while (read < FIRST_BYTES) {
+                    val count = stream.read(head, read, FIRST_BYTES - read)
+                    assertTrue("the file ended at byte $read", count > 0)
+                    read += count
+                }
+            } finally {
+                stream.close()
+            }
+            assertEquals("OggS", String(head, 0, 4, Charsets.US_ASCII))
+            println("$track: ${prepared.kbps} kbps, ${prepared.urls.size} CDN links, Ogg after the header")
         } finally {
             session.logout()
             scope.cancel()
@@ -98,6 +125,7 @@ class SpotifyLiveTest {
         const val TRACK = "QIYAA_SPOTIFY_TRACK"
         const val DEFAULT_TRACK = "6PCoZdjSPbRMehHviTrpB3"
         const val LOGIN_MS = 20_000L
+        const val FIRST_BYTES = 1_024
         const val TRACK_FILES = 12
         val OGG_VORBIS = 0L..2L
         val ENDINGS = setOf(SpotifyState.Expired, SpotifyState.PremiumRequired, SpotifyState.LoggedOut)

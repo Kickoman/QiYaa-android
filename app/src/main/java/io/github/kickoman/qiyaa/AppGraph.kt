@@ -28,6 +28,7 @@ import io.github.kickoman.qiyaa.playback.JamHostConfig
 import io.github.kickoman.qiyaa.playback.OkHttpJamTransport
 import io.github.kickoman.qiyaa.playback.PlaybackCache
 import io.github.kickoman.qiyaa.playback.ReadInterrupts
+import io.github.kickoman.qiyaa.playback.SpotifyBitrates
 import io.github.kickoman.qiyaa.playback.TrackUrlCache
 import io.github.kickoman.qiyaa.queue.LibraryMusicSource
 import io.github.kickoman.qiyaa.queue.QueueActivity
@@ -36,6 +37,7 @@ import io.github.kickoman.qiyaa.queue.QueueStore
 import io.github.kickoman.qiyaa.queue.SearchPick
 import io.github.kickoman.qiyaa.queue.ShuffleAlgorithm
 import io.github.kickoman.qiyaa.spotify.SpotifyAccount
+import io.github.kickoman.qiyaa.spotify.SpotifyFiles
 import io.github.kickoman.qiyaa.spotify.SpotifyIdentity
 import io.github.kickoman.qiyaa.spotify.SpotifyLibrary
 import io.github.kickoman.qiyaa.spotify.SpotifySession
@@ -212,6 +214,15 @@ class AppGraph(val context: Context) {
             Log.d(LOG_TAG, "Signing the link of track $id ($quality)")
             api.resolveTrackUrl(id, quality)
         }
+
+    val spotifyFiles =
+        SpotifyFiles(
+            web = spotifyWeb,
+            session = spotifySession,
+            bitrates = { SpotifyBitrates.of(qualityInEffect.value) },
+            clock = SystemClock::elapsedRealtime,
+            log = ::logSpotify,
+        )
 
     val readInterrupts =
         ReadInterrupts(
