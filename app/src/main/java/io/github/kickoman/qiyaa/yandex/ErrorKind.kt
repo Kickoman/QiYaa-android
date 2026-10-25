@@ -20,6 +20,14 @@ sealed interface ErrorKind {
 
     data object TrackUnplayable : ErrorKind
 
+    data object SpotifyLoggedOut : ErrorKind
+
+    data object SpotifyKeyRefused : ErrorKind
+
+    data object SpotifyLoginRefused : ErrorKind
+
+    data object SpotifyTokenRefused : ErrorKind
+
     data object Unknown : ErrorKind
 
     companion object {

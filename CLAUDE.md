@@ -93,7 +93,7 @@ Writing rules for READMEs:
   |---|---|---|
   | `track` | The track model shared by sources, the queue and playback: `Track`, `TrackSource`, `TrackKey` | — (pure JVM) |
   | `yandex` | Yandex Music HTTP API, OAuth, link signing | `track` (pure JVM) |
-  | `spotify` | Spotify client: `protocol/`, the sans-IO core (access point handshake and packets, login messages, hashcash, audio keys, file decryption); the access point connection, tokens and spclient requests, the code and browser logins, the login state | `track` (pure JVM); `protocol/` imports nothing from the app, nor OkHttp, coroutines or `java.net` |
+  | `spotify` | Spotify client: `protocol/`, the sans-IO core (access point handshake and packets, login messages, hashcash, audio keys, file decryption); the access point connection, tokens and spclient requests, the code and browser logins, the login state, the catalogue | `track` (pure JVM); `protocol/` imports nothing from the app, nor OkHttp, coroutines or `java.net` |
   | `audio` | DSP: equalizer, FFT, spectrum, visualizer ring, PCM | — (pure JVM) |
   | `data` | Persistence: settings, token, the Spotify login | `audio` |
   | `jam` | Jam client: protocol codec, connection, the host's stored session | — (pure JVM) |
@@ -103,7 +103,7 @@ Writing rules for READMEs:
   | `playback` | ExoPlayer, MediaSession, the Media3 adapter for `queue`, audio processors, the jam host and its WebSocket transport | `track`, `queue`, `jam`, `yandex`, `audio`, `data` |
   | `ui` | Compose screens, view models, theme | everything above |
   | `telemetry` | Anonymous statistics and crash reports: events, the crash handler, the run's files, sending, the schedule and the switch | — (pure JVM; only root imports it) |
-  | root | `AppGraph`, `QiYaaApp` (composition root), `NetworkMonitor` (platform signals), `AppTelemetry`, `TelemetryCodes` (telemetry wiring), `YandexLyrics`, `SourceLyrics` (lyrics sources: Yandex's, and the choice by the track's source), `SpotifySavedCredentials` (`data`'s Spotify store for `spotify`'s account) | everything |
+  | root | `AppGraph`, `QiYaaApp` (composition root), `NetworkMonitor` (platform signals), `AppTelemetry`, `TelemetryCodes` (telemetry wiring), `YandexLyrics`, `SourceLyrics` (lyrics sources: Yandex's, and the choice by the track's source), `SpotifySavedCredentials` (`data`'s Spotify store for `spotify`'s account), `SpotifyErrorKinds` (`spotify`'s failures as an `ErrorKind`) | everything |
 
   Dependencies point down the table only. `track`, `yandex`, `spotify` and `audio` are pure JVM
   and must not import `android.*` or `androidx.*`; that keeps them testable on

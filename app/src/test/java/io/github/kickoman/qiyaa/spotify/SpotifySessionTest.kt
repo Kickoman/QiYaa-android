@@ -9,6 +9,7 @@ import io.github.kickoman.qiyaa.spotify.protocol.LoginError
 import io.github.kickoman.qiyaa.support.FakeAccessPoint
 import io.github.kickoman.qiyaa.support.FakeAccessPointServer
 import io.github.kickoman.qiyaa.support.SpotifyStack
+import io.github.kickoman.qiyaa.support.closeAll
 import io.github.kickoman.qiyaa.support.expectFailure
 import io.github.kickoman.qiyaa.support.fieldOf
 import io.github.kickoman.qiyaa.support.varintOf
@@ -37,8 +38,7 @@ class SpotifySessionTest {
 
     @After
     fun tearDown() {
-        stacks.forEach(SpotifyStack::close)
-        servers.forEach(FakeAccessPointServer::close)
+        closeAll(stacks + servers)
     }
 
     @Test

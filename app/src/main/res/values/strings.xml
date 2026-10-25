@@ -338,6 +338,10 @@
     <string name="error_sign_in_refused">Yandex refused the sign-in</string>
     <string name="error_code_expired">the code expired, start again</string>
     <string name="error_track_unplayable">the track cannot be played</string>
+    <string name="error_spotify_logged_out">not logged in to Spotify</string>
+    <string name="error_spotify_key_refused">Spotify does not let this account play here</string>
+    <string name="error_spotify_login_refused">Spotify refused the login</string>
+    <string name="error_spotify_token_refused">Spotify did not give an access token</string>
     <string name="error_unknown">something went wrong</string>
     <string name="library_row_error">ERROR</string>
     <string name="library_retry">TAP TO RETRY</string>

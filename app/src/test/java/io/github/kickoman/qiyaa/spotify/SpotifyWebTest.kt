@@ -8,11 +8,13 @@ import io.github.kickoman.qiyaa.spotify.protocol.ProtoWriter
 import io.github.kickoman.qiyaa.spotify.protocol.bytesOfHex
 import io.github.kickoman.qiyaa.support.SpotifyStack
 import io.github.kickoman.qiyaa.support.bytes
+import io.github.kickoman.qiyaa.support.closeAll
 import io.github.kickoman.qiyaa.support.expectFailure
 import io.github.kickoman.qiyaa.support.fieldOf
 import io.github.kickoman.qiyaa.support.varintOf
 import java.io.IOException
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineStart
@@ -21,6 +23,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.SocketPolicy
@@ -33,7 +36,7 @@ class SpotifyWebTest {
     private val stacks = mutableListOf<SpotifyStack>()
 
     @After
-    fun tearDown() = stacks.forEach(SpotifyStack::close)
+    fun tearDown() = closeAll(stacks)
 
     @Test
     fun `the tokens are asked once and go to spclient with QiYaa's User-Agent`() = runBlocking {
@@ -271,6 +274,85 @@ class SpotifyWebTest {
         )
         assertEquals(2, stack.requests("/v3/login").size)
     }
+
+    @Test
+    fun `a failed token fetch is not handed to a request of another account that waited for it`() =
+        runBlocking {
+            val stack = online()
+            val asked = CountDownLatch(1)
+            val gate = CountDownLatch(1)
+            val answers = AtomicInteger()
+            stack.route("POST", "/v3/login") { request ->
+                val username = fieldOf(fieldOf(request.bytes(), 100), 1).toString(Charsets.UTF_8)
+                if (answers.getAndIncrement() == 0) {
+                    asked.countDown()
+                    gate.await(SpotifyStack.WAIT_MS, TimeUnit.MILLISECONDS)
+                    MockResponse().setResponseCode(503)
+                } else {
+                    SpotifyStack.protobuf(SpotifyStack.login5("bearer-$username", username = username))
+                }
+            }
+            stack.route("GET", "/thing") { SpotifyStack.json(EMPTY) }
+            try {
+                val first =
+                    async(Dispatchers.IO) { runCatching { stack.web.spclient(WebRequest("/thing")) } }
+                withContext(Dispatchers.IO) { asked.await(SpotifyStack.WAIT_MS, TimeUnit.MILLISECONDS) }
+                stack.session.logout()
+                stack.loginStored(
+                    Credentials("other", AuthenticationType.STORED_CREDENTIALS, Bytes.of(byteArrayOf(5))),
+                )
+                val second =
+                    async(start = CoroutineStart.UNDISPATCHED) {
+                        runCatching { stack.web.spclient(WebRequest("/thing")) }
+                    }
+                gate.countDown()
+                val failed = first.await().exceptionOrNull()
+                assertTrue("$failed", failed is SpotifyHttpException && failed.status == 503)
+                assertTrue("${second.await().exceptionOrNull()}", second.await().isSuccess)
+                assertEquals(
+                    listOf("Bearer bearer-other"),
+                    stack.requests("/thing").map {
+                        it.getHeader("Authorization")
+                    },
+                )
+            } finally {
+                gate.countDown()
+            }
+        }
+
+    @Test
+    fun `the local NotLoggedInException of a token login is not handed to a request after APWelcome`() =
+        runBlocking {
+            val stack = SpotifyStack().also { stacks += it }
+            val asked = CountDownLatch(1)
+            val gate = CountDownLatch(1)
+            stack.route("POST", "/v1/clienttoken") {
+                asked.countDown()
+                gate.await(SpotifyStack.WAIT_MS, TimeUnit.MILLISECONDS)
+                SpotifyStack.protobuf(SpotifyStack.clientToken(SpotifyStack.CLIENT_TOKEN))
+            }
+            stack.route("GET", "/thing") { SpotifyStack.json(EMPTY) }
+            stack.accessPoint.loginGate = CountDownLatch(1)
+            val token = Bytes.of("BQ-token".toByteArray())
+            stack.session.login(Credentials("owner", AuthenticationType.SPOTIFY_TOKEN, token))
+            try {
+                val first =
+                    async(Dispatchers.IO) { runCatching { stack.web.spclient(WebRequest("/thing")) } }
+                withContext(Dispatchers.IO) { asked.await(SpotifyStack.WAIT_MS, TimeUnit.MILLISECONDS) }
+                stack.accessPoint.loginGate.countDown()
+                stack.awaitOnline()
+                val second =
+                    async(start = CoroutineStart.UNDISPATCHED) {
+                        runCatching { stack.web.spclient(WebRequest("/thing")) }
+                    }
+                gate.countDown()
+                assertTrue("${first.await()}", first.await().exceptionOrNull() is NotLoggedInException)
+                assertTrue("${second.await().exceptionOrNull()}", second.await().isSuccess)
+                assertEquals(1, stack.requests("/v3/login").size)
+            } finally {
+                gate.countDown()
+            }
+        }
 
     @Test
     fun `client-token's hashcash is solved and answered with the challenge's state`() = runBlocking {

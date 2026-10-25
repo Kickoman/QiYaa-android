@@ -1,6 +1,6 @@
 # `spotify/` — Spotify
 
-Клиент Spotify, порт `src/spotify` десктопа (Kickoman/QiYaa) файл в файл; план — [Kickoman/QiYaa-android#113](https://github.com/Kickoman/QiYaa-android/issues/113). Поведение — `spec/player/spotify.md` (SPOT-01…22) и `spec/player/errors.md`, общие тест-векторы протокола — `spec/spotify/`. В пакете — ядро протокола `protocol/` и сеть с входом поверх него: соединение с точкой доступа (AP) и ключи файлов, токены client-token и login5, запросы к spclient и Pathfinder, вход кодом и в браузере, состояние входа. Каталог (#113 PR 3b) и файл трека (PR 4) появятся следующими шагами. Пакет ничего не показывает и не знает очереди: склейка с ней будет в корне, как `YandexLyrics.kt`. Сохранённый вход лежит в `data/SpotifyStore`, к `SavedCredentials` его подключает корневой `SpotifySavedCredentials`; в граф (`AppGraph`) пакет пока не включён — это PR 3b, экран входа — PR 5.
+Клиент Spotify, порт `src/spotify` десктопа (Kickoman/QiYaa) файл в файл; план — [Kickoman/QiYaa-android#113](https://github.com/Kickoman/QiYaa-android/issues/113). Поведение — `spec/player/spotify.md` (SPOT-01…22) и `spec/player/errors.md`, общие тест-векторы протокола — `spec/spotify/`. В пакете — ядро протокола `protocol/` и сеть с входом поверх него: соединение с точкой доступа (AP) и ключи файлов, токены client-token и login5, запросы к spclient и Pathfinder, вход кодом и в браузере, состояние входа, а над ними — каталог: выборы SPOT-07…12, метаданные, Pathfinder, станция и запрос автоплея (#113 PR 3b). Файл трека (PR 4) появится следующим шагом. Пакет ничего не показывает и не знает очереди: склейка с ней будет в корне, как `YandexLyrics.kt`. Сохранённый вход лежит в `data/SpotifyStore`, к `SavedCredentials` его подключает корневой `SpotifySavedCredentials`; в граф (`AppGraph`) пакет пока не включён — это PR 3c, экран входа — PR 5. Продолжение очереди (автоплей и станция как `queue.Continuation`) будет в корне (`SpotifyContinuations`, PR 3c), вид ошибки для статуса — уже в корне (`SpotifyErrorKinds`, «Вид ошибки для статуса» ниже).
 
 Чистая JVM; из приложения пакет может импортировать только `track`, а `protocol/` — без ввода-вывода и не импортирует из приложения ничего:
 
@@ -22,11 +22,14 @@ grep -rn --include='*.kt' '^import io\.github\.kickoman\.qiyaa\.' app/src/main/j
 | `PairLogin.kt` | `PairLogin` — вход кодом на spotify.com/pair (SPOT-01) |
 | `BrowserLogin.kt` | `BrowserLogin` — вход в браузере: PKCE и переход на `127.0.0.1` (SPOT-02) |
 | `SpotifyAccount.kt` | `SpotifyAccount` — вход сохранённый и по токену, отказы, выход (SPOT-03…06); `SavedCredentials` |
+| `SpotifyLibrary.kt` | `SpotifyLibrary` — каталог: выборы SPOT-07…12, метаданные пачками, Pathfinder с хешами, станция и автоплей; `SpotifyItem`, `SpotifyFound`, `SpotifyPick`, `ContextPage` |
+| `SpotifyTracks.kt` | `SpotifyTracks` — трек Spotify как `Track`: id, доступность, обложка (SPOT-15, SPOT-19) |
+| `CatalogJson.kt` | `CatalogJson` — разбор JSON каталога: контекст (станция, автоплей, следующая страница), `data` Pathfinder, «Made For You», поиск; `ContextUris` |
 | `Http.kt` | внутреннее: запрос OkHttp с отменой и пределом тела, форма OAuth и её ответ, `closingOnCancel` |
 | `protocol/AccessPoint.kt` | `AccessPoint` — сеанс с точкой доступа (AP): рукопожатие, пакеты, вход, keep-alive, ключи файлов; `ClientIdentity`, `ApPlatform`, `ApCpuFamily`, `ApOs`, `Credentials`, `AuthenticationType`, `ServerKey`, `LoginError`, `ApEvent` |
 | `protocol/Login.kt` | `Login` — тела запросов client-token и login5 и разбор их ответов; `Hashcash`; `ClientPlatform`, `ClientTokenParams`, `ClientTokenReply`, `Login5Reply`, `HashcashChallenge`, `HashcashSolution` |
-| `protocol/Metadata.kt` | `Metadata.request`, `ExtensionKind` — запрос `extended-metadata` |
-| `protocol/CatalogMessages.kt` | `CatalogMessages` — запросы `collection/v2/paging` и автоплея |
+| `protocol/Metadata.kt` | `Metadata` — запрос и ответ `extended-metadata`, разбор `TRACK_V4`, `ALBUM_V4`, `ARTIST_V4`, топ исполнителя, выбор Ogg Vorbis, `storage-resolve`; `ExtensionKind`, `AudioFormat`, `SpotifyTrack`, `SpotifyAlbum`, `SpotifyArtist`, `MetadataEntity`, `PlayableFile`, `StorageUrls` и их части |
+| `protocol/CatalogMessages.kt` | `CatalogMessages` — запрос и страница `collection/v2/paging`, страница rootlist и плейлиста, плейлисты rootlist, запрос автоплея; `CollectionPage`, `ListPage` |
 | `protocol/AudioFile.kt` | `AudioDecryptor`, `AudioFile` — расшифровка файла трека, заголовок 167 байт |
 | `protocol/Crypto.kt` | `Crypto` — SHA-1, HMAC-SHA1, `modPow`, проверка подписи RSA; `AesCtr` |
 | `protocol/Shannon.kt` | `Shannon` — шифр и MAC пакетов AP |
@@ -34,7 +37,7 @@ grep -rn --include='*.kt' '^import io\.github\.kickoman\.qiyaa\.' app/src/main/j
 | `protocol/Ids.kt` | `Ids` — base62 ↔ gid, URI трека |
 | `protocol/Bytes.kt` | `Bytes` — неизменяемые байты; hex, big-endian |
 
-Соответствие ПК: `client/session` → `SpotifySession.kt`, `client/web` → `SpotifyWeb.kt`, `client/login` → `PairLogin.kt` и `BrowserLogin.kt`, `client/identity` и `endpoints` → `SpotifyIdentity.kt` и `Endpoints.kt`, `client/credentials_file` → `data/SpotifyStore.kt` (через корневой `SpotifySavedCredentials.kt`), `app/spotify_account` → `SpotifyAccount.kt`; ядро: `access_point` → `AccessPoint.kt`, `login` → `Login.kt`, `metadata` и `catalog` → `Metadata.kt` и `CatalogMessages.kt` (пока только запросы), `audio_file` → `AudioFile.kt`, `crypto`, `modpow.c` и подмножество BearSSL → `Crypto.kt`, `shannon` → `Shannon.kt`, `protobuf` → `Protobuf.kt`, `ids` и `bytes` → `Ids.kt` и `Bytes.kt`.
+Соответствие ПК: `client/session` → `SpotifySession.kt`, `client/web` → `SpotifyWeb.kt`, `client/login` → `PairLogin.kt` и `BrowserLogin.kt`, `client/identity` и `endpoints` → `SpotifyIdentity.kt` и `Endpoints.kt`, `client/credentials_file` → `data/SpotifyStore.kt` (через корневой `SpotifySavedCredentials.kt`), `app/spotify_account` → `SpotifyAccount.kt`, `sources/spotify/library` → `SpotifyLibrary.kt` и `CatalogJson.kt`, `sources/spotify/tracks` → `SpotifyTracks.kt`; ядро: `access_point` → `AccessPoint.kt`, `login` → `Login.kt`, `metadata` и `catalog` → `Metadata.kt` и `CatalogMessages.kt`, `audio_file` → `AudioFile.kt`, `crypto`, `modpow.c` и подмножество BearSSL → `Crypto.kt`, `shannon` → `Shannon.kt`, `protobuf` → `Protobuf.kt`, `ids` и `bytes` → `Ids.kt` и `Bytes.kt`.
 
 ## Исключения
 
@@ -48,15 +51,47 @@ SpotifyException : IOException
 ├── KeyRefusedException                          // AesKeyError 1: ключей этому аккаунту не дают (SPOT-17)
 ├── KeyFailedException(detail)                   // две попытки без ключа (SPOT-16)
 ├── NotLoggedInException                         // нет сохранённого входа
-├── QueryOutdatedException(operation)            // все хеши Pathfinder отвергнуты (бросает PR 3b)
+├── QueryOutdatedException(operation)            // все хеши Pathfinder отвергнуты, последний — ответом 2xx без data
 └── NoPlayableFileException(trackId)             // у трека нет Ogg Vorbis (бросает PR 4)
 ```
 
 - Корень наследует `IOException`: Media3 пропускает из источника данных только `IOException` (PR 4).
 - `NotLoggedInException` — только «нет сохранённого входа»: ещё не входили, вышли или `BadCredentials` (он удаляет сохранённое). Пока AP подключается или переподключается, ключ ждёт входа до 20 с и падает `SpotifyNetworkException`, а не этой ошибкой: иначе холодный старт и обрыв давали бы ERR-08 вместо ожидания (SPOT-04, SPOT-18).
-- У `SpotifyNetworkException` причина есть всегда: исключение OkHttp или сокета; у таймаутов — `SocketTimeoutException`, у оборванного соединения — `EOFException` или ошибка сокета. Поэтому `yandex.ErrorKind.of` видит в ней сеть по цепочке причин и до классификатора Spotify (`SpotifyErrorKinds`, PR 3b).
+- У `SpotifyNetworkException` причина есть всегда: исключение OkHttp или сокета; у таймаутов — `SocketTimeoutException`, у оборванного соединения — `EOFException` или ошибка сокета. Поэтому `yandex.ErrorKind.of` видит в ней сеть по цепочке причин и без классификатора Spotify.
 - `AuthorizationException` в списке плана нет: она — как `OAuthException` у `yandex`. Экран входа на неё отвечает «войдите снова», а не «нет сети» или «сервер упал», и ошибки OAuth — строки, а не коды.
-- Данные, а не исключения: `SpotifyState` (`Offline`, `Expired`, `PremiumRequired`, `Refused`), `null` от `SavedCredentials.load()`, `SpotifyProblem`.
+- Данные, а не исключения: `SpotifyState` (`Offline`, `Expired`, `PremiumRequired`, `Refused`), `null` от `SavedCredentials.load()`, `SpotifyProblem`. В каталоге: трек без метаданных (не 200 или без тела) или с телом, которое не разбирается, выпадает из списка; альбом или исполнитель без метаданных — пустой список; сохранённый альбом или исполнитель без имени выпадает; поиск без треков — `SpotifyFound.Tracks(emptyList())`; трек без Ogg Vorbis — `available = false`.
+- Весь ответ, который нельзя прочесть (конверт `extended-metadata`, страница коллекции или списка, контекст, поиск и главная Pathfinder), — `SpotifyContentException` и `Content` в `problems` («Два вида нечитаемого» спеки, `expected/spotify/README.md`). Pathfinder, отвергнувший все хеши ответом 2xx без `data`, — `QueryOutdatedException` и `QueryOutdated` вместо `Content`; отвергнувший последний хеш статусом 400, 405 или 412 — `SpotifyHttpException` с этим статусом и тоже `QueryOutdated`.
+
+### Вид ошибки для статуса
+
+`yandex.ErrorKind` — общий вид ошибки приложения (`yandex/README.md`), а `yandex` не знает исключений Spotify, и `ErrorKind.of` дал бы им `Unknown`. Их переводит корневой `SpotifyErrorKinds.kt`:
+
+```kotlin
+fun errorKindOf(failed: Throwable): ErrorKind   // первое звено цепочки cause, которое узнаёт; иначе ErrorKind.of(failed)
+```
+
+| Звено | Вид |
+|---|---|
+| `SpotifyNetworkException` | `NoNetwork` |
+| `SpotifyHttpException(status)` | `ServerError(status)` при любом статусе: 401 и 403 Spotify — не `TokenRejected` Яндекса |
+| `SpotifyContentException`, `QueryOutdatedException` | `Malformed` (ПК: «Spotify sent an answer QiYaa cannot read») |
+| `NotLoggedInException` | `SpotifyLoggedOut` (ERR-08, SPOT-06) |
+| `KeyRefusedException` | `SpotifyKeyRefused` (SPOT-17) |
+| `KeyFailedException` (SPOT-16), `NoPlayableFileException` (SPOT-15) | `TrackUnplayable` |
+| `LoginRefusedException` с `where` = `/v3/login` (ошибка login5) | `SpotifyTokenRefused` |
+| `LoginRefusedException` от AP (кроме `BadCredentials`: например, `PremiumAccountRequired` у ключа) | `SpotifyLoginRefused` |
+| остальное (`AuthorizationException`, исключения `yandex`, сеть Java) | как `ErrorKind.of` |
+
+Звать его будут `QueueController` и `ui/ListLoader` (классификатор в конструкторе, PR 3c) и `ui/SpotifyViewModel` (PR 5); вид отказа воспроизведения (`FailureKind`: `TRACK`, `SESSION`) у трека решает `playback/PlaybackFailures` (PR 4), а `ErrorKind` его статуса — по той же таблице плана. Тексты четырёх видов Spotify — в `ui/ErrorText.kt`, по переводам ПК (`qiyaa_ru.ts`, `qiyaa_be.ts`):
+
+| Вид | Строка | Текст ПК |
+|---|---|---|
+| `SpotifyLoggedOut` | `error_spotify_logged_out` | «not logged in to Spotify» (`source.cpp`) |
+| `SpotifyKeyRefused` | `error_spotify_key_refused` | «Spotify does not let this account play here» (`file_download.cpp`) |
+| `SpotifyLoginRefused` | `error_spotify_login_refused` | «Spotify refused the login» (`spotify_account.cpp:110`, без `: %1`) |
+| `SpotifyTokenRefused` | `error_spotify_token_refused` | «Spotify did not give an access token» (`web.cpp:187–191`) |
+
+`SignInRefused` Яндекса («Яндекс отклонил вход») для Spotify не годится. Тест — `SpotifyErrorKindsTest`.
 
 ## `SpotifyIdentity`
 
@@ -134,7 +169,7 @@ data class SessionTiming(keyTimeoutMs = 5_000, keyRetryMs = 1_000, loginWaitMs =
 
 ### Подключение
 
-1. apresolve: `GET {apresolve}/?type=accesspoint&type=spclient`, тело до 64 КиБ, 10 с на весь запрос. Ответ — `{"accesspoint": ["host:port", …], "spclient": ["host:port", …]}`; адрес без хоста или с портом вне 1…65535 отбрасывается, адрес без порта — порт 443. Пустой список, не 200 или сбой — `ap.spotify.com:443`; хостов spclient нет — остаются прежние, а без прежних — `spclient.wg.spotify.com:443`.
+1. apresolve: `GET {apresolve}/?type=accesspoint&type=spclient`, тело до 64 КиБ, 10 с на весь запрос. Ответ — `{"accesspoint": ["host:port", …], "spclient": ["host:port", …]}`; разбирает его `SpotifySession.resolvedOf(body, knownSpclients)` (внутреннее, проверяется на `spec/fixtures/spotify/apresolve`). Пустые строки отбрасываются, адрес AP без хоста или с портом вне 1…65535 — тоже, адрес без порта — порт 443. Статус не смотрится, как у ПК (`session.cpp:120–138`): любое тело разбирается одинаково, а сбой сети — пустое тело. Пустой список AP — `ap.spotify.com:443`; хостов spclient нет — остаются прежние, а без прежних — `spclient.wg.spotify.com:443`. Не 200 пишется в лог.
 2. Адреса по очереди: `java.net.Socket`, `connect` с таймаутом 10 с, `TCP_NODELAY`. Отказ соединения, обрыв до входа, `TryAnotherAP`, сбой протокола до входа (`ApEvent.Failure`: подпись, MAC, размер пакета) и молчание 20 с до входа — сразу к следующему адресу.
 3. Вход — `AccessPoint` ядра с текущими `credentials`. На `APWelcome` сессия запоминает многоразовые данные (ими входит следующее соединение, SPOT-03, SPOT-18), зовёт `listener.loggedIn` и переходит в `Online`.
 4. Отказ входа, кроме `TryAnotherAP`, — конец без повторов: `credentials = null`, `listener.refused(error)`, состояние из таблицы, `LoginRefused(code)` в `problems`, ждущие ключи падают.
@@ -196,14 +231,15 @@ class SpotifyWeb(
     val problems: SharedFlow<SpotifyProblem>             // Http(status), Content
     suspend fun spclient(request: WebRequest): ByteArray // тело ответа 2xx
     suspend fun pathfinder(query: String): ByteArray     // POST {pathfinder}/pathfinder/v2/query, JSON
-    fun report(problem: SpotifyProblem)                  // для тех, кто разбирает ответы (PR 3b, PR 4)
+    fun report(problem: SpotifyProblem)                  // для тех, кто разбирает ответы (SpotifyLibrary, PR 4)
+    fun unreadable(method: String, label: String, detail: String): SpotifyContentException   // в лог и Content в problems; исключение бросает вызывающий
 }
 ```
 
 **Токены.**
 - client-token: `POST {clientToken}/v1/clienttoken`, `Accept` и `Content-Type` — `application/x-protobuf`, `User-Agent`; тело — `Login.clientTokenRequest(identity.clientToken)`. Вызов hashcash решается с пустым контекстом и отвечается тем же адресом (`Login.clientTokenAnswer(state, suffix)`), не больше трёх решений. Токен живёт `refresh_after_seconds` − 60 с.
 - login5: `POST {login5}/v3/login` с заголовком `client-token`; тело — `Login.login5Request(CLIENT_ID, deviceId, credentials, context, solution)`. Нужны многоразовые данные сессии (`STORED_CREDENTIALS` и непустые), иначе — `NotLoggedInException`. Вызов hashcash решается с контекстом ответа (`login_context`), и следующий запрос несёт контекст, решение и сколько оно заняло; не больше трёх решений. Bearer живёт `expires_in` − 60 с и принадлежит имени пользователя: вход под другим именем берёт новый. ПК при выходе сбрасывает токены (`web->forgetTokens()`); здесь `SpotifyAccount` не знает `SpotifyWeb`, и аккаунты разделяет эта проверка (`SpotifyWebTest`: после выхода и входа под другим именем bearer прежнего не уходит). Ошибка login5 (`error`) — `LoginRefusedException(code, "/v3/login")` и `Http(401)` в `problems`, как у ПК.
-- Выдача токенов — под `Mutex`: запросы, пришедшие во время выдачи, ждут её. Неудачу выдачи, как у ПК (`finishTokens`), получают все, кто её ждал, и в `problems` от неё одно событие. Кто ждал, узнаёт по счётчику законченных выдач: он запомнил его до замка, и если за это время выдача кончилась неудачей, получает её исключение без новой выдачи. Заново выдачу начинает только запрос, пришедший после неудачи. Выдача, чьего вызывающего отменили, неудачей не считается: следующий ждавший пробует сам.
+- Выдача токенов — под `Mutex`: запросы, пришедшие во время выдачи, ждут её. Неудачу выдачи, как у ПК (`finishTokens`), получают все, кто её ждал под тем же именем пользователя, и в `problems` от неё одно событие. Кто ждал, узнаёт по счётчику законченных выдач: он запомнил его до замка, и если за это время выдача кончилась неудачей для того же имени, получает её исключение без новой выдачи. Запрос другого аккаунта (выход и вход, пока шла выдача) выдаёт токены сам. `NotLoggedInException` не делится никогда: это местная проверка данных входа (токен до `APWelcome`), а не ответ Spotify, и запрос, пришедший уже с многоразовыми данными, выдаёт bearer сам. Заново выдачу начинает только запрос, пришедший после неудачи. Выдача, чьего вызывающего отменили, неудачей не считается: следующий ждавший пробует сам.
 - Hashcash решается на `solver` (`Dispatchers.Default`) и бросается через `Hashcash.GIVE_UP_AFTER_MS` (5 с) или при отмене корутины — `SpotifyContentException` и `Content`. Время решения на слабом телефоне — #118.
 
 **Запрос к spclient.**
@@ -215,7 +251,7 @@ class SpotifyWeb(
 - Тело читается с пределом, как у LRCLIB, а не `body.string()`: `Content-Length` больше предела или больше байт, чем предел, — `SpotifyContentException` и `Content`. Предел — 8 МиБ у spclient и Pathfinder, 64 КиБ у токенов.
 
 **Traps:**
-- `label` уходит в лог и в исключения. Путь с именем пользователя (`/playlist/v2/user/<имя>/rootlist`, PR 3b) обязан получить `label` без него.
+- `label` уходит в лог и в исключения. Путь с именем пользователя обязан получить `label` без него: у rootlist это `/playlist/v2/user/{username}/rootlist`, у следующей страницы контекста — последний сегмент `{page}` (станция Liked Songs — `spotify:station:user:<имя>:collection`).
 - login5 бесполезен до входа в AP с токеном: ему нужны многоразовые данные (та же ловушка у ПК). У сохранённого входа они есть с самого начала, и запросы идут, пока AP ещё подключается.
 - Сроки токенов — по часам стены (`System.currentTimeMillis`), как у ПК: после глубокого сна устаревший bearer лечится ответом 401.
 
@@ -275,6 +311,120 @@ class SpotifyAccount(session: SpotifySession, saved: SavedCredentials) {
 - SPOT-05: `PremiumAccountRequired` ничего не сохраняет. Сохранённый вход, которому отказали так, остаётся (как у ПК): следующий запуск попробует снова.
 - SPOT-06: `logout()` — сначала `session.logout()` (соединение закрывается, ждущие ключи падают `NotLoggedInException`), потом `saved.forget()`.
 
+## Каталог: `SpotifyLibrary`
+
+```kotlin
+class SpotifyLibrary(
+    web: SpotifyWeb,
+    session: SpotifySession,
+    timeZone: () -> String = { TimeZone.getDefault().id },   // для «Для вас»; тесты подают свой
+    maxPages: Int = MAX_PAGES,                               // 1000 страниц коллекции или списка; тесты ставят меньше
+) {
+    val username: String                                     // имя из session.credentials; "" без входа
+    val likedSongsUri: String                                // spotify:user:<username>:collection — контекст автоплея Liked Songs
+    suspend fun tracks(uris: List<String>): List<Track>      // TRACK_V4 в порядке uris, с повторами
+    suspend fun likedTracks(): List<Track>                   // SPOT-07
+    suspend fun playlists(): List<SpotifyItem>               // SPOT-08
+    suspend fun playlistTracks(uri: String): List<Track>
+    suspend fun savedAlbums(): List<SpotifyItem>             // SPOT-09
+    suspend fun followedArtists(): List<SpotifyItem>
+    suspend fun albumTracks(uri: String): List<Track>
+    suspend fun artistTopTracks(uri: String): List<Track>
+    suspend fun forYou(): List<SpotifyItem>                  // SPOT-10
+    suspend fun search(text: String): SpotifyFound           // SPOT-11
+    suspend fun searchPick(text: String): SpotifyPick        // SPOT-11: лучший исполнитель, альбом или найденные треки
+    suspend fun station(trackUri: String): ContextPage       // SPOT-12
+    suspend fun autoplay(contextUri: String, recentTrackUris: List<String>): ContextPage   // SPOT-20
+    suspend fun nextPage(pageUrl: String): ContextPage       // hm://… из ContextPage.next
+}
+data class SpotifyItem(val uri: String, val name: String)
+sealed interface SpotifyFound { val trackUris: List<String>; Artist(best, trackUris); Album(best, trackUris); Tracks(trackUris) }
+data class SpotifyPick(val best: SpotifyItem?, val contextUri: String, val tracks: List<Track>)   // best == null — найденные треки
+data class ContextPage(val tracks: List<Track>, val next: String)                                  // next == "" — страница последняя
+```
+
+Порт `Library` ПК (`src/sources/spotify/library.cpp`). Каждый вызов спрашивает Spotify заново, ничего не запоминается. Пакет не показывает текстов: заголовки «Liked Songs», «Search: <текст>», «<трек>: radio» и статусы — у очереди и экрана (PR 3c, PR 5); имена плейлистов, альбомов и исполнителей — данные с сервера. Отмена корутины отменяет все запросы вызова.
+
+| Выбор | Запрос | Что берётся |
+|---|---|---|
+| `tracks(uris)` | `POST /extended-metadata/v0/extended-metadata` (`Metadata.request`, `TRACK_V4`), `product`, `country`, `salt` | по 100 URI на запрос, все пачки сразу, каждый URI один раз; ответ сопоставляется по URI, а список — в порядке `uris`, с повторами (трек дважды в плейлисте играет дважды, `library.cpp:246–261`). Сущность не 200 или без тела и тело, которое не разбирается, — трек выпадает |
+| SPOT-07 `likedTracks` | `POST /collection/v2/paging`: тело `CatalogMessages.collectionPageRequest(username, "collection", token, 300)`, `Content-Type` и `Accept` — `application/vnd.collection-v2.spotify.proto`, без `product`, `country`, `salt`; следующая — с токеном ответа, пока не `last` | `spotify:track:` элементы в порядке Spotify (новые первыми) |
+| SPOT-08 `playlists` | `GET /playlist/v2/user/<имя>/rootlist?decorate=revision,attributes,length,owner,capabilities,status_code&from=<n>&length=1000`, `product`, `country`, `salt`; имя — percent-encoding RFC 3986 (всё, кроме `A–Z a–z 0–9 - . _ ~`), как `QUrl::toPercentEncoding` | `spotify:playlist:` элементы (`CatalogMessages.playlistsOf`): маркеры папок отпадают, папки сплющиваются |
+| `playlistTracks(uri)` | `GET /playlist/v2/playlist/<id>?decorate=revision,attributes,length,owner&from=<n>&length=1000`, `product`, `country`, `salt`; `<id>` — третья часть URI через `:` | `spotify:track:` элементы, потом `tracks`; эпизоды и свои файлы не спрашиваются |
+| SPOT-09 `savedAlbums`, `followedArtists` | коллекция: `spotify:album:` элементы набора `collection` (набора `albums` нет: 403), набор `artist`; имена — `ALBUM_V4`, `ARTIST_V4` (`library.cpp:424–449`) | без метаданных, с телом, которое не разбирается, или с пустым именем — выпадают |
+| `albumTracks(uri)` | `ALBUM_V4` | треки диск за диском в порядке полей 11; альбом без метаданных — пустой список без ошибки |
+| `artistTopTracks(uri)` | `ARTIST_V4` | `Metadata.topTracksIn(artist, session.country)`, первые 10 (`kTopTracks`) |
+| SPOT-10 `forYou` | Pathfinder `home`: `homeEndUserIntegration` `INTEGRATION_DESKTOP`, `timeZone` (пустой — `UTC`), `sp_t` и `facet` пустые, `sectionItemsLimit` 20, `includeEpisodeContentRatingsV2` | плейлисты раздела «Made For You» (`CatalogJson.madeForYou`) |
+| SPOT-11 `search(text)` | Pathfinder `searchDesktop`: `searchTerm` — обрезанный текст, `offset` 0, `limit` 50, `numberOfTopResults` 5, пять `include…` — `false`. Пустой текст — без запроса, `Tracks(emptyList())` | `CatalogJson.found` |
+| `searchPick(text)` | `search`, потом `artistTopTracks` или `albumTracks` лучшего, иначе `tracks` найденных | `contextUri` — URI лучшего или первого найденного трека (`catalog.cpp:101–115`), `""` без треков. Пустые `tracks` (или ни одного доступного) — «ничего не найдено» (SRC-12): это решает вызывающий |
+| SPOT-12 `station(trackUri)` | `GET /context-resolve/v1/spotify:station:track:<id>`, `Accept: application/json`, без `product`, `country`, `salt` | первая страница контекста, её `next` |
+| SPOT-20 `autoplay(context, recent)` | `POST /context-resolve/v1/autoplay`, тело — protobuf `{1 context_uri, 2 recent_track_uri…}` (`CatalogMessages.autoplayRequest`, вектор `messages.json`), `Content-Type: application/x-protobuf`, `Accept: application/json`, без `product`, `country`, `salt` | то же. `recent` отбирает вызывающий: начавшиеся треки Spotify, старые первыми, до 50 (PR 3c) |
+| `nextPage(url)` | `GET` на spclient по пути `url` без `hm:/` (`hm://radio-apollo/v5/…` → `/radio-apollo/v5/…`), с его запросом как есть, без `product`, `country`, `salt` | страница контекста. Не `hm://` — `SpotifyContentException` без запроса и без `Content`, как у ПК |
+
+`label` запросов (лог и исключения, «Лог» ниже) — путь без запроса, кроме двух: `/playlist/v2/user/{username}/rootlist` и у `nextPage` — путь без последнего сегмента и `/{page}`.
+
+### Pathfinder
+
+Тело запроса — `{"variables": {…}, "operationName": "<операция>", "extensions": {"persistedQuery": {"version": 1, "sha256Hash": "<хеш>"}}}`: Spotify знает запрос по хешу. Хеши — константы `SpotifyLibrary.HOME_HASHES` (один) и `SEARCH_HASHES` (четыре), новые первыми, те же, что `kHomeHashes` и `kSearchHashes` в `library.cpp:38–46` ПК (b99c1df). В спеку они не вынесены: это деталь клиента, а не поведение.
+
+Ответ разбирается в четыре шага, как у ПК (`library.cpp:499–512`, «Pathfinder» в `expected/spotify/README.md`):
+
+1. **Устарел:** `SpotifyHttpException` со статусом 400, 405 или 412 от самого Pathfinder (путь `/pathfinder/v2/query`; отказ выдачи токена с тем же статусом — не он) или ответ 2xx, у которого `data` не объект. Есть следующий хеш — спрашиваем с ним. Хешей нет — `QueryOutdated` в `problems`, и дальше шаги 2 и 3.
+2. Другой статус не 2xx — `SpotifyHttpException`, тело не читается (`500-with-data`). Сеть — `SpotifyNetworkException`, к следующему хешу не переходит.
+3. 2xx без `data`-объекта (сюда доходит только устаревший без хешей) — `QueryOutdatedException(operation)`.
+4. Иначе — `data`; поиск без `searchV2` и главная без `home.sectionContainer` — `SpotifyContentException` и `Content`.
+
+Каждый ответ не 2xx `SpotifyWeb` сообщает и сам — `Http(status)`, в том числе устаревшие 412, как `reportFailed` у ПК.
+
+**Как обновить хеши.** Когда Spotify обновляет свои клиенты, хеши устаревают: «Для вас» и поиск падают («HTTP 412» или «непонятный ответ сервера»), а телеметрия показывает `error spotify/query-outdated`.
+1. Новый хеш операции — в веб-плеере `open.spotify.com` (DevTools → Network → запрос `pathfinder/v2/query` с нужным `operationName`, поле `extensions.persistedQuery.sha256Hash` тела) или у клиентов на librespot.
+2. Хеш дописывается первым в оба списка: `kHomeHashes`/`kSearchHashes` ПК и `HOME_HASHES`/`SEARCH_HASHES` здесь; старые остаются за ним — их спросят, только если новый отвергнут. Оба приложения — в одном выпуске.
+3. Если с новым хешем меняются переменные или форма ответа, это изменение спеки (`fixtures/spotify/pathfinder-*` и `expected/`) и разбора `CatalogJson` в обоих приложениях. Тесты берут хеши из тех же констант, перезаписывать в них нечего.
+
+**Traps:**
+- Страна аккаунта приходит с AP чуть после входа (`SpotifySession.country`); топ исполнителя до неё — по `""`, затем мировой (ловушка ПК).
+- `searchPick` для лучшего исполнителя или альбома не смотрит найденные треки: у пустого топа исполнителя (страна, где топа нет и мирового тоже) выбор пуст, хотя треки нашлись. Так же у ПК.
+- Коллекция и список читаются страница за страницей, пока сервер говорит «ещё», но не больше `maxPages` (1000) страниц: дальше — `SpotifyContentException` («a collection of more than 1000 pages», «a list of more than 1000 pages») и `Content`. Это сверх ПК, где предела нет и сервер, который всегда отвечает токеном или огромным `length`, держит цикл вечно. 1000 страниц — 300 000 сохранённых треков или 1 000 000 записей списка.
+
+## `SpotifyTracks`
+
+```kotlin
+object SpotifyTracks {
+    const val COVER_HOST = "https://i.scdn.co/image/";  const val COVER_PIXELS = 400;  const val ANY_BITRATE_KBPS = 320
+    fun trackOf(track: SpotifyTrack): Track
+    fun isAvailable(track: SpotifyTrack): Boolean           // есть Ogg Vorbis, свой или у замены (SPOT-15)
+    fun coverUrlOf(covers: List<Image>, pixels: Int): String?
+    fun uriOf(track: Track): String                         // spotify:track:<id>
+}
+```
+
+`trackOf` — порт `TrackOf` ПК (`tracks.cpp`), и только он строит `Track` трека Spotify:
+- `id` — base62 gid, `title` — имя, `artists` — имена всех исполнителей по порядку (как у ПК, и пустые), `durationMs`;
+- `albumId` пуст, `source = TrackSource.SPOTIFY`, `bitrateKbps = 0` (битрейт файла узнаёт PR 4);
+- `available` — `Metadata.pickOggVorbis(track, 320) != null`: трек без Ogg Vorbis, свой или у замены, остаётся в списке недоступным (SPOT-15, SRC-05);
+- `coverUrl` — `coverUrlOf(album.covers, 400)`: `https://i.scdn.co/image/<hex>` наименьшей обложки не меньше 400 px, иначе самой большой; среди равных — первая; без обложек — `null` (SPOT-19). 400 — как `kCoverPixels` ПК и 400×400 Яндекса.
+
+Альбом, год и обложки других размеров `Track` не хранит; тест сравнивает их по `SpotifyTrack`.
+
+## `CatalogJson`
+
+```kotlin
+object CatalogJson {
+    const val MADE_FOR_YOU = "spotify:section:0JQ5DAUnp4wcj0bCb3wh3S"
+    fun context(body: ByteArray): ContextUris?               // null — {"loading": true} или не объект
+    fun pathfinderData(body: ByteArray): JsonObject?         // data ответа Pathfinder; null — не объект
+    fun madeForYou(data: JsonObject): List<SpotifyItem>?     // null — нет home.sectionContainer
+    fun found(data: JsonObject): SpotifyFound?               // null — нет searchV2
+}
+data class ContextUris(val trackUris: List<String>, val next: String)
+```
+
+Порт `ContextOf`, `MadeForYouOf`, `FoundOf` ПК; правила — «Contexts» и «Pathfinder» в `expected/spotify/README.md`. Поле, которого нет или у которого другой тип, — пустое, как `toString()`, `toObject()`, `toArray()` у `QJsonValue`: так поиск, где `searchV2` есть, но не объект, — «ничего не найдено», а не ошибка. Только `contains` различает «нет» и «пусто»: `pages`, `data` обёртки, `searchV2`, `sectionContainer`.
+
+- Контекст: при `pages` читается первая страница, иначе сам корень; `trackUris` — `uri` из `tracks` с `spotify:track:`, `next` — `next_page_url` или `""`.
+- Главная: плейлисты — `sectionItems.items[].content.data` раздела `MADE_FOR_YOU` с `__typename` `Playlist`; без раздела — пустой список.
+- Поиск: `trackUris` — `tracksV2.items[].item.data.uri` (или `item.uri`, когда у `item` нет `data`) с `spotify:track:`; лучший — только `topResultsV2.itemsV2[0]`: `Artist` с `spotify:artist:` — `Artist` (имя — `profile.name`), `Album` с `spotify:album:` — `Album`, иначе `Tracks`.
+
 ## `SpotifyProblem`
 
 | Член | Откуда | Код TEL-18 (PR 5) |
@@ -284,14 +434,14 @@ class SpotifyAccount(session: SpotifySession, saved: SavedCredentials) {
 | `KeyFailed` | `SpotifySession`: две попытки без ключа | `key-failed` |
 | `AccessPoint` | `SpotifySession`: протокол сдался (`ApEvent.Failure`), не ошибка сокета | `access-point` |
 | `Http(status)` | `SpotifyWeb`: ответ не 2xx у токенов, spclient и Pathfinder; ошибка login5 — 401 | `http` + `httpStatus` |
-| `Content` | `SpotifyWeb`: ответ не читается или больше предела, hashcash не решён; `report` | `content` |
-| `QueryOutdated` | `report` из Pathfinder (PR 3b) | `query-outdated` |
+| `Content` | `SpotifyWeb`: ответ не читается или больше предела, hashcash не решён; `unreadable` из `SpotifyLibrary` | `content` |
+| `QueryOutdated` | `SpotifyLibrary`: Pathfinder отверг все хеши | `query-outdated` |
 
 У сессии и у `SpotifyWeb` свои потоки `problems` (буфер 16, `tryEmit`); телеметрия (PR 5) слушает оба. Сеть не сообщается, как у ПК.
 
 ## Лог
 
-`SpotifySession` и `SpotifyWeb` пишут в `log` только хост и порт AP, хост и путь без запроса (`label`), статус, код ошибки и класс исключения: `access point ap-gew1.spotify.com:4070: ConnectException`, `GET spclient.wg.spotify.com/thing: HTTP 503`, `the access point refused the login: code 12`. В лог и в сообщения исключений не попадают токены (OAuth, bearer, client-token, login5), многоразовые данные, имя пользователя, device id, `user_code`, `state`, PKCE и ссылки CDN. `toString()` классов с такими строками печатает их длину (`SpotifyState.Online`, `SpotifyIdentity`, `PairLogin.Code`; классы ядра — в «`Ids`, `Bytes`» ниже). Проверка — `SpotifyLogTest`. Входы (`PairLogin`, `BrowserLogin`) не пишут в лог ничего.
+`SpotifySession` и `SpotifyWeb` (и через `SpotifyWeb.unreadable` — `SpotifyLibrary`) пишут в `log` только хост и порт AP, хост и путь без запроса (`label`), статус, код ошибки и класс исключения: `access point ap-gew1.spotify.com:4070: ConnectException`, `GET spclient.wg.spotify.com/thing: HTTP 503`, `the access point refused the login: code 12`, `POST /collection/v2/paging: a collection page that does not parse`. В лог и в сообщения исключений не попадают токены (OAuth, bearer, client-token, login5), многоразовые данные, имя пользователя, device id, `user_code`, `state`, PKCE и ссылки CDN. `toString()` классов с такими строками печатает их длину (`SpotifyState.Online`, `SpotifyIdentity`, `PairLogin.Code`; классы ядра — в «`Ids`, `Bytes`» ниже). Проверка — `SpotifyLogTest`. Входы (`PairLogin`, `BrowserLogin`) не пишут в лог ничего.
 
 ## Тесты клиента
 
@@ -301,6 +451,13 @@ class SpotifyAccount(session: SpotifySession, saved: SavedCredentials) {
 - `support/SpotifyStack.kt` — `MockWebServer` (apresolve, client-token, login5, остальное — по маршрутам теста) и фальшивая AP, сессия и `SpotifyWeb` на них; паузы переподключения и `Retry-After` записываются и не ждутся, часы токенов подаются. `refusingAddress()` держит порт `127.0.0.1` привязанным, но не слушает: соединение с ним отказано, и никто другой этот порт не займёт до конца теста. `onLog` — крючок на строки лога (тест отмены ключа держит на нём поток AP).
 - Тесты ждут событий (`state.first { … }`, `awaitPackets`) с пределом 10 с, а не спят; короткая пауза в 200 мс стоит только перед проверкой «ничего не случилось» и уронить верную реализацию не может.
 - Блокирующего `takeRequest` нет (ловушка `runBlocking` + `takeRequest`): mock-сервер записывает запросы, тест читает записанное. Вход в браузере, чья неудача — ожидаемый результат, запускается в своей области с `SupervisorJob`, чтобы упавший `async` не отменял `runBlocking`.
+
+Каталог (#113 PR 3b):
+- `support/SpotifyFixtures.kt` — фикстуры `spec/fixtures/spotify`: обёртка protobuf (`base64` отдаётся как есть с её `contentType`, а `fields`, записанные `ProtoWriter`, обязаны дать те же байты), JSON — как есть; статус — из имени случая, `requestedFrom` — из `page-<n>`. `forEachCase(endpoint)` проходит каждый случай папки и сравнивает весь объект с `expected`.
+- `CatalogFixturesTest` — все 11 папок фикстур, каждый случай: protobuf и контексты — разбором напрямую, apresolve — `SpotifySession.resolvedOf`, Pathfinder — через `SpotifyLibrary` на mock-сервере (устаревший ответ — каждый хеш по очереди и `QueryOutdated`, нечитаемый — `Content`). Папка без теста роняет `every endpoint … has a test here`. Сравнивается весь объект: модель ядра хранит все поля спеки, а `Track` — id, имя, длительность, доступность и обложку 400 px.
+- `SpotifyLibraryTest` — выборы на `MockWebServer` через `SpotifyWeb` и фальшивую AP: SPOT-07…12, 15, 20, Pathfinder (следующий хеш, все устарели, сеть, 500 и отказ токена — без следующего), пачки по 100 и повторы, `label` без имени, нечитаемые ответы; тело трека, альбома или сохранённого альбома, которое не разбирается, выпадает без ошибки и без `Content` (фикстуры такого нет, «Two kinds of unreadable» спеки); предел страниц. Метаданные отвечает фальшивый сервер: сущности фикстур `extended-metadata` по URI, остальные треки — синтетические (имя — base62 id, Ogg 320), в обратном порядке.
+- `protocol/MetadataTest` — первый из равных файлов, предел глубины замен (на 4 читается, на 5 — нет, 100 000 вложенных — без `StackOverflowError`); `protocol/CatalogMessagesTest` — граница `hasMoreAfter` и счёт без переполнения.
+- `SpotifyTracksTest` — обложка SPOT-19 и `Track` трека Spotify; `SpotifyWebTest` — неудача выдачи токена не уходит другому аккаунту, а местная `NotLoggedInException` — никому; `SpotifyErrorKindsTest` (корень) — виды ошибок.
 
 Живой тест `SpotifyLiveTest` выполняется, только когда задана `QIYAA_SPOTIFY_CREDENTIALS`: JSON сохранённого входа ПК (`{"username": …, "type": 1, "data": "<base64>"}`) или путь к файлу с ним; иначе он пропускается (`Assume`). Он входит в настоящую AP с device id из 40 `d`, как живой тест ПК, проверяет, что `Online` — тот же аккаунт (имя не печатается ни в сообщениях проверок, ни в отчёте; ошибка разбора `QIYAA_SPOTIFY_CREDENTIALS` называет только класс исключения), берёт `TRACK_V4` трека (`QIYAA_SPOTIFY_TRACK`, по умолчанию `6PCoZdjSPbRMehHviTrpB3`) через spclient (а с ним client-token и login5), выбирает Ogg Vorbis и получает ключ файла. В CI не выполняется; запуск с настоящим аккаунтом — только с разрешения владельца (вопрос плана), и работает ли вход ПК при другом device id, не проверено. Часть с файлом — первые килобайты с CDN, расшифровка и `OggS` после 167 байт — добавит PR 4 вместе с `SpotifyFiles` и `SpotifyStream`.
 
@@ -476,15 +633,48 @@ AES-128-CTR с постоянным IV Spotify с любого байта фай
 ### `Metadata`, `CatalogMessages`
 
 ```kotlin
-object Metadata { fun request(uris: List<String>, kind: ExtensionKind): ByteArray }   // TRACK_V4 10, ALBUM_V4 9, ARTIST_V4 8
+object Metadata {
+    const val WORLDWIDE = "ZZ"
+    const val MAX_ALTERNATIVE_DEPTH = 4                                  // замены глубже не читаются
+    fun request(uris: List<String>, kind: ExtensionKind): ByteArray        // TRACK_V4 10, ALBUM_V4 9, ARTIST_V4 8
+    fun parseReply(body: ByteArray): List<MetadataEntity>?               // в порядке сервера; null — конверт не читается
+    fun parseTrack(payload: Bytes): SpotifyTrack?
+    fun parseAlbum(payload: Bytes): SpotifyAlbum?
+    fun parseArtist(payload: Bytes): SpotifyArtist?
+    fun topTracksIn(artist: SpotifyArtist, country: String): List<Bytes>  // gid: страна, ZZ, ""
+    fun pickOggVorbis(track: SpotifyTrack, preferredKbps: Int): PlayableFile?
+    fun parseStorageResolve(body: ByteArray): StorageUrls?
+}
+data class MetadataEntity(val uri: String, val status: Int, val payload: Bytes) { val found: Boolean }   // 200 и непустое тело
+data class SpotifyTrack(gid, name, artists: List<ArtistRef>, album: AlbumRef, durationMs, files: List<AudioFileRef>, alternatives: List<SpotifyTrack>)
+data class SpotifyAlbum(gid, name, artists, tracks: List<Bytes>);   data class SpotifyArtist(gid, name, topTracks: List<TopTracks>)
+data class AlbumRef(gid, name, year, covers: List<Image>);   ArtistRef(gid, name);   Image(id, pixels);   TopTracks(country, tracks)
+data class AudioFileRef(val id: Bytes, val format: AudioFormat);   value class AudioFormat(val code: Int) { val oggVorbisKbps: Int }   // 0 → 96, 1 → 160, 2 → 320, другое — 0
+data class PlayableFile(val track: Bytes, val file: AudioFileRef)   // track — gid того, чей файл: у перепривязанного — замены
+value class StorageResult(val code: Int);   data class StorageUrls(val result: StorageResult, val urls: List<String>) { val usable: Boolean }   // CDN 0, STORAGE 1, RESTRICTED 3
 object CatalogMessages {
     const val COLLECTION_CONTENT_TYPE = "application/vnd.collection-v2.spotify.proto"   // и Content-Type, и Accept
     fun collectionPageRequest(username: String, set: String, pageToken: String, limit: Int): ByteArray
+    fun parseCollectionPage(body: ByteArray): CollectionPage?     // items(uri, addedAt), nextPageToken; last
+    fun parseListPage(body: ByteArray): ListPage?                 // name, length, from, truncated, items(uri, name); hasMoreAfter(requestedFrom, pageLength)
+    fun playlistsOf(rootlist: List<ListItem>): List<ListItem>
     fun autoplayRequest(contextUri: String, recentTrackUris: List<String>): ByteArray
 }
 ```
 
-Только тела запросов, которые проверяет `spec/spotify/messages.json`. Разбор ответов каталога (`TRACK_V4`, альбомы, исполнители, коллекция, плейлисты, `storage-resolve`) придёт вместе с фикстурами спеки (#113, S3 и PR 3b).
+Порт `metadata.cpp` и `catalog.cpp` ПК. Тела запросов проверяет `spec/spotify/messages.json`, разбор — фикстуры `spec/fixtures/spotify` против `expected/spotify` (номера полей и правила — «Shapes» и «The parsing rules» в README спеки; здесь не повторяются). Что делает порт:
+- `null` от `parse…` — ответ или тело, которое не читается целиком. Ошибка ли это, решает вызывающий: конверт и страница — да, тело одного трека — пропуск («Исключения» выше).
+- Ядро отдаёт сущности в порядке сервера; сопоставление по URI — у `SpotifyLibrary`.
+- Id не той длины остаётся нулевым (у gid — 16 нулей, base62 `0000000000000000000000`); файл и обложка без id в 20 байт выпадают. Упавший читатель альбома, исполнителя или даты внутри трека — берётся прочитанное; упавший файл, обложка или замена — выпадает; упавший трек — `null`; упавший диск или запись топа — весь альбом или исполнитель `null`.
+- Обложка: `pixels` — ширина (поле 3, zigzag), если она больше 0, иначе по классу размера (поле 2): 1 — 64, 2 — 640, 3 — 1280, другое — 300.
+- `pickOggVorbis`: ближайший битрейт Ogg Vorbis, первый среди равных; без своих — замены по порядку, каждая так же и в глубину. MP3, AAC, FLAC не берутся никогда (SPOT-13).
+- **Глубина замен — не больше `MAX_ALTERNATIVE_DEPTH` (4), сверх ПК.** Замена глубже четвёртого уровня не разбирается, и `pickOggVorbis` глубже не смотрит: трек, чей единственный Ogg Vorbis лежит глубже, — без файла (`available = false`). У ПК разбор и выбор рекурсивны без предела, и ответ в сотни КБ с тысячами вложенных замен дал бы `StackOverflowError` — это не `IOException`, его не ловит никто, и приложение падает. В фикстурах спеки и тестах ПК замена — один уровень (на настоящем Spotify не проверено).
+- Zigzag: длительность, ширина, год, статус элемента списка.
+- Страница списка: если мета-элементов столько же, сколько элементов, элемент берёт имя своего мета-элемента и выпадает при статусе не 0 и не 200; иначе остаются все, без имён. Есть ли следующая — `hasMoreAfter(from, 1000)`: `from + 1000 < length` по смещению, которое спросили; `from` и `truncated` ответа читаются, но не решают. Сумма считается в `Long`, сверх ПК: в `Int` при `from` около 2^31 она стала бы отрицательной, и «ещё» не кончилось бы.
+- Коллекция: удалённые элементы, элементы без URI и упавшие выпадают; `last` — пустой токен или страница без элементов.
+- `storage-resolve`: `usable` — только CDN с хотя бы одной ссылкой; файлом займётся PR 4.
+
+Номера полей — константы рядом с сообщением, имена — как в `.proto` librespot: `extended_metadata.proto`, `metadata.proto`, `collection2v2.proto`, `playlist4_external.proto`, `storage-resolve.proto`.
 
 ### Тесты
 
@@ -496,7 +686,7 @@ object CatalogMessages {
 
 ## Not here
 
-- Разбор метаданных и каталога, `SpotifyLibrary`, `SpotifyTracks`, запросы и хеши Pathfinder — #113 PR 3b. Там же вид ошибки для статуса (`SpotifyErrorKinds`, корень) и сборка в `AppGraph`: `network` из `NetworkMonitor`, `inUse`, device id, `SpotifySavedCredentials`.
+- Сборка в `AppGraph` (`network` из `NetworkMonitor`, `inUse`, device id, `SpotifySavedCredentials`, `SpotifyLibrary`), продолжение очереди — автоплей и станция как `queue.Continuation` (корневой `SpotifyContinuations`), классификатор ошибок в `QueueController` и `ListLoader` — #113 PR 3c. Заголовки и статусы выборов — очередь и `ui` (PR 3c, PR 5).
 - Файл трека: `SpotifyFiles`, `SpotifyStream`, `SpotifyDataSource` в `playback` — PR 4.
 - Экран входа, открытие браузера, тексты страницы `BrowserLogin.Pages` — `ui`, PR 5; коды TEL-18 — корневой `TelemetryCodes`, PR 5.
 - Ключи хранения входа — `data/README.md` (`SpotifyStore`).
