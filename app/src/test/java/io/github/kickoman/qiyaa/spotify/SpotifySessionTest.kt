@@ -276,6 +276,13 @@ class SpotifySessionTest {
     }
 
     @Test
+    fun `SPOT-16 the app's timing waits 5 s for a key answer and asks once more after 1 s`() {
+        val timing = SessionTiming()
+        assertEquals(5_000L, timing.keyTimeoutMs)
+        assertEquals(1_000L, timing.keyRetryMs)
+    }
+
+    @Test
     fun `SPOT-16 AesKeyError code 2 is asked once more after the retry delay`() = runBlocking {
         val stack = stack()
         stack.loginStored()

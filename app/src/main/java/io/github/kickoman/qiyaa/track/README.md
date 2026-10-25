@@ -41,7 +41,7 @@ data class Track(
 - `LOCAL` — свой файл из медиатеки телефона: `id` — `_ID` медиатеки, `albumId` пуст. Его даёт
   `local/LocalTracks.toTrack` (`local/README.md`); в джеме это трек, который может сыграть только хозяин (HOST-37).
 - `SPOTIFY` — каталог Spotify (`spec/player/spotify.md`): `id` — base62 id трека, 22 знака, как в `spotify:track:<id>`.
-  Его даст каталог Spotify (#113, PR 3b). Как и свой файл, в джеме это трек хозяина (HOST-37), а очередь о нём
+  Его дают выборы Spotify (`spotify/SpotifyTracks`). Как и свой файл, в джеме это трек хозяина (HOST-37), а очередь о нём
   никому не сообщает и не лайкает его (SPOT-19).
 
 `TrackSource.key` — то, что пишется на диск (`queue/QueueSnapshot`) и уходит в данные HMAC id трека хозяина в джеме
