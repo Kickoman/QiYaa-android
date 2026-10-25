@@ -49,10 +49,11 @@ object MachineId {
 sealed interface Event { val at: Instant; val session: String; val version: String
     Start(fields: StartFields); Exit(counts: Counts); Crash(signal, frames, seconds, exceptionType?)
     UncleanExit(seconds); Error(area: ErrorArea, kind: String, httpStatus: Int? = null); Feature(name: FeatureName, value: String) }
-enum class ErrorArea(code) { PLAYBACK, AUDIO, API, LOGIN, JAM }          // skin и milkdrop у Android нет
-enum class FeatureName(code) { JAM, LANGUAGE, EQUALIZER, VIS, LYRICS, LYRICS_SERVICES }   // lyrics, lyrics-services
+enum class ErrorArea(code) { PLAYBACK, AUDIO, API, LOGIN, JAM, SPOTIFY }          // skin и milkdrop у Android нет
+enum class FeatureName(code) { JAM, LANGUAGE, EQUALIZER, VIS, LYRICS, LYRICS_SERVICES, SPOTIFY }   // lyrics, lyrics-services, spotify
 data class StartFields(osVersion, sdk, device, kernel, arch, packaging: Packaging, locale, language: Language,
-    dpr, theme: Theme, vis: Vis, equalizer, quality: Quality, qualityMetered: Quality, loggedIn, firstRun)
+    dpr, theme: Theme, vis: Vis, equalizer, quality: Quality, qualityMetered: Quality, loggedIn,
+    spotifyLoggedIn: Boolean? = null, firstRun)   // spotifyLoggedIn null — поля нет, как у сборок до Spotify
 data class Counts(seconds, tracks, playMinutes, jams, errorsDropped, lyrics: LyricsCounts = LyricsCounts())
 enum class LyricsOutcome { SOURCE_SYNCED, THIRD_PARTY_SYNCED, SOURCE_TEXT, THIRD_PARTY_TEXT, INSTRUMENTAL, NONE }
 data class LyricsCounts(sourceSynced, thirdPartySynced, sourceText, thirdPartyText, instrumental, none, thirdPartyFailed) {
@@ -68,7 +69,7 @@ object EventCodec {
 }
 ```
 
-Поля и их имена — ровно `androidStart`, `androidExit`, `androidCrash`, `unclean_exit`, `error`, `feature` из `spec/telemetry/schemas/batch.schema.json`. Счётчики текстов (`lyricsLookups`, `lyricsSourceSynced` … `lyricsThirdPartyFailed`, TEL-17, «Lyrics counts» спеки) `exit` несёт, только когда был хоть один поиск, и тогда все восемь (`dependentRequired` схемы); `lyricsThirdPartyFailed` без поиска ничего не значит и тоже не пишется. Перечисления `StartFields` (`Packaging` `apk`/`debug`, `Language`, `Theme`, `Vis`, `Quality`) хранят код спеки, поэтому их значение всегда допустимо.
+Поля и их имена — ровно `androidStart`, `androidExit`, `androidCrash`, `unclean_exit`, `error`, `feature` из `spec/telemetry/schemas/batch.schema.json`. `spotifyLoggedIn` (TEL-18) у `androidStart` необязательный: `encode` пишет его, только когда он не `null`, а `AppTelemetry` подаёт его всегда; `null` остаётся для `StartFields()` тестов и пример `android-start.json` версии 0.6.0 без поля по-прежнему совпадает с выводом (`BatchSchemaTest`), а `android-start-spotify.json` — с полем. Сервер QiYaa-jam принимает поле с v0.9.2 (`docs/telemetry.md`, «Нужная версия QiYaa-jam»). Счётчики текстов (`lyricsLookups`, `lyricsSourceSynced` … `lyricsThirdPartyFailed`, TEL-17, «Lyrics counts» спеки) `exit` несёт, только когда был хоть один поиск, и тогда все восемь (`dependentRequired` схемы); `lyricsThirdPartyFailed` без поиска ничего не значит и тоже не пишется. Перечисления `StartFields` (`Packaging` `apk`/`debug`, `Language`, `Theme`, `Vis`, `Quality`) хранят код спеки, поэтому их значение всегда допустимо.
 
 Один неверный элемент даёт 400, а 400 — это «выбросить пачку», вместе с отчётами о падениях. Поэтому `encode` сам приводит каждое свободное поле к схеме, а то, что привести нельзя, не кодирует:
 
@@ -270,14 +271,19 @@ class AppTelemetry(application: Application, settings: Settings, httpClient: OkH
     scope: CoroutineScope, onScreen: Flow<Boolean>) {
     fun start()                                     // обработчик падения ставится здесь же, если telemetry/enabled
     fun connect(api: YandexApi, sessionState: StateFlow<SessionState>, queue: QueueController, jamHost: JamHost,
-        network: StateFlow<Boolean>)
+        network: StateFlow<Boolean>, lyricsShown: StateFlow<Boolean>, lyricsLookups: Flow<LyricsLookup>,
+        spotify: SpotifyAccount, spotifyProblems: Flow<SpotifyProblem>)
     fun loginFailed();  fun audioFailed(failure: AudioFailure)
+    fun spotifyLoggedIn(way: SpotifyLoginWay);  fun spotifyLoggedOut()   // зовёт ui/SpotifyViewModel
 }
 data class ErrorCode(area: ErrorArea, kind: String, httpStatus: Int? = null)
 data class ProcessExit(summary: String?, reason: Int, status: Int)
+enum class SpotifyLoginWay { CODE, BROWSER }
 object TelemetryCodes {
     fun error(kind: FailureKind / failure: AudioFailure / failure: RequestFailure): ErrorCode
     fun error(event: JamHostEvent): ErrorCode?;  val LOGIN_FAILED: ErrorCode
+    fun error(problem: SpotifyProblem): ErrorCode?   // null — отказ входа, кроме кодов 11 и 12
+    fun spotifyLogin(way: SpotifyLoginWay): String;  const val SPOTIFY_LOGOUT = "logout"
     fun onOff / language / theme / vis / quality / packaging / arch / locale / device
     fun exitInfo(reason: Int, status: Int): ExitInfo;  fun exits(newestFirst: List<ProcessExit>): Map<String, ExitInfo>
 }
@@ -293,7 +299,7 @@ object TelemetryCodes {
 | `online` | `NetworkMonitor.available` |
 | `store` | `File(noBackupFilesDir, "telemetry")` |
 | `newReporter` | `Reporter(BuildConfig.VERSION_NAME, store, Sender(httpClient, endpoint)::post, applicationScope, Dispatchers.IO, Instant::now, { elapsedRealtime() - Process.getStartElapsedRealtime() }, logcat)`; на Android 11+ ещё `ActivityManager.setProcessStateSummary(session)` — по этой метке следующий запуск найдёт причину выхода |
-| `beginning` (на `io`) | ждёт `connect` (`loggedIn` — `api.token` не пустой), `Settings.markTelemetryFirstStart()`, `MachineId.resolve(ANDROID_ID, telemetry/machine)`, на Android 11+ `getHistoricalProcessExitReasons(пакет, 0, 16)` → `TelemetryCodes.exits`, поля `start` |
+| `beginning` (на `io`) | ждёт `connect` (`loggedIn` — `api.token` не пустой, `spotifyLoggedIn` — `SpotifyAccount.hasSavedLogin()`), `Settings.markTelemetryFirstStart()`, `MachineId.resolve(ANDROID_ID, telemetry/machine)`, на Android 11+ `getHistoricalProcessExitReasons(пакет, 0, 16)` → `TelemetryCodes.exits`, поля `start` |
 
 Строки отправки идут в logcat с тегом `QiYaa`: `Telemetry: HTTP 204, 3 events sent`; «не начался» — предупреждением.
 
@@ -310,6 +316,7 @@ object TelemetryCodes {
 | `language`, `theme`, `vis`, `equalizer`, `quality`, `qualityMetered` | `Settings` |
 | `dpr` | `resources.displayMetrics.density` |
 | `loggedIn` | `api.token` не пустой |
+| `spotifyLoggedIn` | `spotify/SpotifyAccount.hasSavedLogin()`: есть сохранённый вход Spotify (как `SpotifyAccount::hasSavedLogin` ПК), даже если он ещё не подключился или потом истечёт |
 | `firstRun` | `Settings.wasEmpty` (`data/README.md`) |
 
 События из типов приложения:
@@ -330,18 +337,25 @@ object TelemetryCodes {
 | `AppGraph.lyricsShown` — текст вместо обложки и обратно, после старта | `feature lyrics on/off`; смена вкладки и фон — не `off` (флаг тот же), новый процесс снова с обложкой и без `off` |
 | `Settings.lyricsThirdParty` — смена после старта (в Library или «Искать в LRCLIB») | `feature lyrics-services on/off`; отменённое согласие ничего не меняет и не шлёт |
 | `lyrics.LyricsFinder.lookups` (TEL-17) | `countLyrics(TelemetryCodes.lyricsOutcome(shown), thirdPartyFailed)` — в маркер запуска, оттуда в `exit` следующего запуска |
+| `SpotifyProblem` из `merge(spotifySession.problems, spotifyWeb.problems)` (TEL-18): `LoginRefused(12)` / `LoginRefused(11)` | `error spotify/login-expired` (SPOT-04), `premium-required` (SPOT-05); другой код отказа — ничего, как у ПК (`Refusal::Other`) |
+| `SpotifyProblem.KeyRefused` / `KeyFailed` / `AccessPoint` | `error spotify/key-refused` (SPOT-17), `key-failed` (SPOT-16), `access-point` |
+| `SpotifyProblem.Http(status)` / `Content` / `QueryOutdated` | `error spotify/http` с `httpStatus` (spclient, Pathfinder, токены и CDN — через `SpotifyStream`), `content`, `query-outdated`. Сеть в `problems` не попадает и не сообщается, как у ПК |
+| `ui/SpotifyViewModel`: после токена из кода или браузера сессия стала `Online` | `feature spotify login-code` / `login-browser` (`spotifyLoggedIn(way)`), один раз на вход: переподключение и отказ входа его не шлют |
+| `ui/SpotifyViewModel.logout()` | `feature spotify logout` (`spotifyLoggedOut()`) |
 
 `TelemetryCodes`:
 - `arch`: `arm64-v8a` → `arm64`, `armeabi-v7a` → `arm`, `x86` → `i386` (как у десктопа), остальное как есть — его приводит `EventCodec.arch` (`x86_64`).
 - `locale(language, country)`: `be_BY`, `es_419`; `sr-Latn-RS` даёт `sr_RS` (`Locale.country` без письменности); без страны — язык; без языка — `C`.
 - `device(manufacturer, model)`: «производитель модель», но без производителя, если модель с него уже начинается (без учёта регистра): `Google Pixel 7`, `samsung SM-S911B`, `Xiaomi 13`.
 - `exitInfo(reason, status)` — по числам `ApplicationExitInfo` (свои константы: `telemetry` и `TelemetryCodes` без `android.*`, а `TelemetryCodesTest` сверяет их с константами Android): 4 `REASON_CRASH` → `CRASH`, 5 `REASON_CRASH_NATIVE` → `NATIVE_CRASH` с `status` как номером сигнала, 6 `REASON_ANR` → `ANR`, остальное → `OTHER`.
+- `error(SpotifyProblem)`: коды TEL-18 по таблице выше; отказ входа — по `LoginError` ядра (`BAD_CREDENTIALS` 12, `PREMIUM_ACCOUNT_REQUIRED` 11), остальные коды — `null`. Ни имени, ни данных входа, ни треков Spotify в событиях нет («Never sent» спеки).
+- `spotifyLogin(way)`: `CODE` → `login-code`, `BROWSER` → `login-browser`; выход — `SPOTIFY_LOGOUT` (`logout`).
 - `exits`: записи от новых к старым (так их отдаёт Android); `summary` — `session` процесса, не UUID v4 — запись пропускается; у одного запуска берётся самая новая.
 
 `TelemetryCodesTest` проверяет каждую строку этих таблиц, кроме подписок `AppTelemetry`: это Android-класс без логики, он не тестируется на JVM.
 
 **Traps:**
-- `connect` обязан идти до первых событий: у `queue.activity`, `requestFailures` и `jamHost.events` нет `replay`, раньше подписки события теряются. `AppGraph` зовёт его в конце `init`, до сервиса и экранов.
+- `connect` обязан идти до первых событий: у `queue.activity`, `requestFailures`, `jamHost.events` и `problems` Spotify нет `replay`, раньше подписки события теряются. Сохранённый вход Spotify (`spotifyAccount.start()`) начинается раньше `connect`, но его первый отказ приходит только после ответа AP, а сборка графа синхронна. `AppGraph` зовёт его в конце `init`, до сервиса и экранов.
 - `beginning` ждёт `connect`: до него `loggedIn` неизвестен. Если бы `connect` не позвали, `Reporter` так и не начался бы (события копятся в памяти, ничего не уходит).
 - `ANDROID_ID` читается только на `io` и только в `beginning`; `@SuppressLint("HardwareIds")` с причиной в той же строке.
 - Процесс без активностей (сервис поднят кнопкой гарнитуры) в использовании, только пока играет.

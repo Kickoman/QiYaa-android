@@ -259,7 +259,7 @@ fun LoginScreen(viewModel: AppViewModel) {
     }
 }
 
-private fun openInBrowser(context: Context, url: String): Boolean {
+internal fun openInBrowser(context: Context, url: String): Boolean {
     val page =
         Intent(Intent.ACTION_VIEW, url.toUri()).apply {
             addCategory(Intent.CATEGORY_BROWSABLE)

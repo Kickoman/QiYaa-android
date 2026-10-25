@@ -352,7 +352,7 @@
     <string name="quality_mobile">Mobile data</string>
     <string name="quality_standard">Standard</string>
     <string name="quality_economy">Economy</string>
-    <string name="quality_note">Economy: HE-AAC 64 kbps, a third of the data. From the next track on.</string>
+    <string name="quality_note">Economy: HE-AAC 64 kbps, a third of the data. Spotify: Ogg Vorbis 320 kbps, economy 96. From the next track on.</string>
     <string name="toggle_on">On</string>
     <string name="toggle_off">Off</string>
     <string name="shuffle_title">SHUFFLE</string>
@@ -361,7 +361,7 @@
     <string name="shuffle_note">Without repeats: each track once, in a random order. Random track: any track but the current one, so a track may come again. Applies while SHF is on.</string>
     <string name="vibe_continue_title">CONTINUE WITH A VIBE</string>
     <string name="vibe_continue_new_queues">New queues</string>
-    <string name="vibe_continue_note">When likes, a playlist, an album, an artist or a search runs out, a vibe from what played follows. The playlist switches it for the queue that plays.</string>
+    <string name="vibe_continue_note">When likes, a playlist, an album, an artist or a search runs out, a vibe from what played follows; after a Spotify pick, Spotify\'s autoplay. The playlist switches it for the queue that plays.</string>
     <string name="vibe_continue_on">A vibe will follow this queue</string>
     <string name="vibe_continue_off">This queue stops at its end</string>
     <string name="telemetry_title">SEND STATISTICS</string>
@@ -386,4 +386,38 @@
     <string name="lyrics_lrclib_consent">LRCLIB, an open database of lyrics, will learn the title and the first artist of each track whose lyrics you open, and the phone’s address. Turn it on?</string>
     <string name="lyrics_lrclib_accept">Turn on</string>
     <string name="lyrics_lrclib_cancel">Cancel</string>
+    <string name="library_spotify" translatable="false">SPOTIFY</string>
+    <string name="spotify_log_in">LOG IN</string>
+    <string name="spotify_log_out">LOG OUT</string>
+    <string name="spotify_log_in_row">Log in to Spotify</string>
+    <string name="spotify_log_in_again">Log in again</string>
+    <string name="spotify_premium_note">Spotify plays only with a Premium account.</string>
+    <string name="spotify_connecting">Connecting to Spotify…</string>
+    <string name="spotify_logged_in">Logged in to Spotify as %1$s</string>
+    <string name="spotify_logged_out">You have logged out of Spotify</string>
+    <string name="spotify_expired">The Spotify login has expired: log in again</string>
+    <string name="spotify_premium_required">Spotify Premium is needed to play</string>
+    <string name="spotify_liked_songs">Liked Songs</string>
+    <string name="spotify_search_hint">Spotify: artist, album or track… (Enter)</string>
+    <string name="spotify_radio">RADIO</string>
+    <string name="spotify_radio_title">%1$s: radio</string>
+    <string name="spotify_login_title">Log in to Spotify</string>
+    <string name="spotify_login_browser_step">WAY 1 · IN THE BROWSER</string>
+    <string name="spotify_login_browser_text">Log in on Spotify\'s page in this phone\'s browser, then come back to QiYaa: it finishes the login on its own.</string>
+    <string name="spotify_login_browser">LOG IN IN THE BROWSER</string>
+    <string name="spotify_login_browser_waiting">WAITING FOR THE BROWSER…</string>
+    <string name="spotify_login_browser_failed">LOGGING IN IN THE BROWSER FAILED: %1$s</string>
+    <string name="spotify_login_code_step">WAY 2 · CODE</string>
+    <string name="spotify_login_code_text">Open the pairing page in any browser (another phone or a computer will do) and enter the code. The app finishes the login on its own.</string>
+    <string name="spotify_login_open_pair">OPEN SPOTIFY.COM/PAIR</string>
+    <string name="spotify_login_copy">COPY THE LINK</string>
+    <string name="spotify_login_qr_note">Or scan the QR code with another device: the page opens with the code filled in.</string>
+    <string name="spotify_login_code_requesting">GETTING THE CODE…</string>
+    <string name="spotify_login_code_waiting">WAITING FOR THE CONFIRMATION…</string>
+    <string name="spotify_login_code_failed">LOGGING IN WITH THE CODE FAILED: %1$s · TAP THE CODE TO RETRY</string>
+    <string name="spotify_page_logging_in">QiYaa is logging in to Spotify. Go back to the app: this page can be closed.</string>
+    <string name="spotify_page_refused">QiYaa did not get access to Spotify. Go back to the app and try again.</string>
+    <string name="queue_autoplay_on">Spotify autoplay will follow this queue</string>
+    <string name="player_shuffle_radio">Shuffle does not apply to a radio · Spotify sets the order</string>
+    <string name="player_repeat_radio">Repeat does not apply to a radio · the radio keeps going</string>
 </resources>

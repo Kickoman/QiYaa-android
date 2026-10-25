@@ -49,11 +49,31 @@ enum class LibrarySection {
     LOCAL_ALBUMS,
     LOCAL_ARTISTS,
     LOCAL_FOLDERS,
+    SPOTIFY_FOR_YOU,
+    SPOTIFY_PLAYLISTS,
+    SPOTIFY_ALBUMS,
+    SPOTIFY_ARTISTS,
 }
 
 val LibrarySection.isLocal: Boolean
     get() = this == LibrarySection.LOCAL_ALBUMS || this == LibrarySection.LOCAL_ARTISTS ||
         this == LibrarySection.LOCAL_FOLDERS
+
+val LibrarySection.spotifyList: SpotifyList?
+    get() = when (this) {
+        LibrarySection.SPOTIFY_FOR_YOU -> SpotifyList.FOR_YOU
+
+        LibrarySection.SPOTIFY_PLAYLISTS -> SpotifyList.PLAYLISTS
+
+        LibrarySection.SPOTIFY_ALBUMS -> SpotifyList.ALBUMS
+
+        LibrarySection.SPOTIFY_ARTISTS -> SpotifyList.ARTISTS
+
+        LibrarySection.FOR_YOU, LibrarySection.WHEEL, LibrarySection.STATIONS, LibrarySection.PLAYLISTS,
+        LibrarySection.ARTISTS, LibrarySection.ALBUMS, LibrarySection.LOCAL_ALBUMS,
+        LibrarySection.LOCAL_ARTISTS, LibrarySection.LOCAL_FOLDERS,
+        -> null
+    }
 
 sealed interface LoginStatus {
     data object Requesting : LoginStatus
@@ -92,7 +112,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private var pendingLink: JamLink? = null
     private var loginReturn = Screen.LIBRARY
 
-    private val mutableScreen = MutableStateFlow(startScreen(isSignedIn) { jamGuest.restore() })
+    private val mutableScreen =
+        MutableStateFlow(
+            startScreen(isSignedIn, graph.spotifyAccount.hasSavedLogin()) { jamGuest.restore() },
+        )
     val screen: StateFlow<Screen> = mutableScreen.asStateFlow()
 
     private val mutableSection = MutableStateFlow<LibrarySection?>(null)
@@ -280,6 +303,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             LibrarySection.ARTISTS -> if (library.isLoggedIn) artists.load()
 
             LibrarySection.ALBUMS -> if (library.isLoggedIn) albums.load()
+
+            LibrarySection.SPOTIFY_FOR_YOU, LibrarySection.SPOTIFY_PLAYLISTS, LibrarySection.SPOTIFY_ALBUMS,
+            LibrarySection.SPOTIFY_ARTISTS,
+            -> {}
         }
     }
 

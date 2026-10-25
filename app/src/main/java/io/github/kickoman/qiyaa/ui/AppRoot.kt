@@ -54,6 +54,8 @@ import io.github.kickoman.qiyaa.ui.screens.LoginScreen
 import io.github.kickoman.qiyaa.ui.screens.PlayerScreen
 import io.github.kickoman.qiyaa.ui.screens.PlaylistScreen
 import io.github.kickoman.qiyaa.ui.screens.PresetsSheet
+import io.github.kickoman.qiyaa.ui.screens.SpotifyLoginScreen
+import io.github.kickoman.qiyaa.ui.screens.SpotifySectionScreen
 import io.github.kickoman.qiyaa.ui.screens.TrackActionsSheet
 import io.github.kickoman.qiyaa.ui.screens.marqueeText
 import io.github.kickoman.qiyaa.ui.theme.Qi
@@ -72,11 +74,14 @@ fun AppRoot(
     player: PlayerViewModel = viewModel(),
     jam: JamViewModel = viewModel(),
     guest: JamGuestViewModel = viewModel(),
+    spotify: SpotifyViewModel = viewModel(factory = SpotifyViewModel.Factory),
 ) {
     val theme by app.settings.theme.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { player.notices.collect(app::say) }
     LaunchedEffect(Unit) { jam.notices.collect(app::say) }
     LaunchedEffect(Unit) { guest.notices.collect(app::say) }
+    LaunchedEffect(Unit) { spotify.notices.collect(app::say) }
+    LaunchedEffect(Unit) { spotify.moves.collect(app::go) }
     QiYaaTheme(theme) {
         val colors = Qi.colors
         val screen by app.screen.collectAsStateWithLifecycle()
@@ -92,6 +97,7 @@ fun AppRoot(
         val guestOn = guestState.phase.isSession
         val openLink = { text: String -> app.openJamLink(text) }
         val backTarget = screen.backTarget
+        LaunchedEffect(screen) { if (screen != Screen.SPOTIFY_LOGIN) spotify.cancelLogin() }
         BackHandler(enabled = backTarget != null) {
             if (screen == Screen.LOGIN) app.leaveLogin() else backTarget?.let(app::go)
         }
@@ -103,14 +109,16 @@ fun AppRoot(
                     .windowInsetsPadding(WindowInsets.systemBars)
                     .imePadding(),
             ) {
-                if (screen != Screen.LOGIN && sessionState == SessionState.Offline) {
+                if (!screen.isLogin && sessionState == SessionState.Offline) {
                     OfflineStrip(stringResource(R.string.session_offline))
-                } else if (screen != Screen.LOGIN && jamOn && !jamState.connected) {
+                } else if (!screen.isLogin && jamOn && !jamState.connected) {
                     OfflineStrip(stringResource(R.string.jam_offline_strip), onClick = { app.go(Screen.JAM) })
                 }
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     when (screen) {
                         Screen.LOGIN -> LoginScreen(app)
+
+                        Screen.SPOTIFY_LOGIN -> SpotifyLoginScreen(spotify)
 
                         Screen.PLAYER -> PlayerScreen(player, onJam = { app.go(Screen.JAM) }.takeIf { jamOn })
 
@@ -123,11 +131,17 @@ fun AppRoot(
                         Screen.EQ -> EqScreen(player)
 
                         Screen.LIBRARY -> section?.let {
-                            if (it.isLocal) LocalSectionScreen(app, it) else LibrarySectionScreen(app, it)
+                            val list = it.spotifyList
+                            when {
+                                it.isLocal -> LocalSectionScreen(app, it)
+                                list != null -> SpotifySectionScreen(spotify, list, app::closeSection)
+                                else -> LibrarySectionScreen(app, it)
+                            }
                         }
                             ?: LibraryScreen(
                                 app,
                                 player,
+                                spotify,
                                 jamState,
                                 guestOf = (guestState.room?.hostName ?: "…").takeIf { guestOn },
                                 onJam = { app.go(if (guestOn) Screen.JAM_GUEST else Screen.JAM) },
@@ -157,7 +171,7 @@ fun AppRoot(
                     }
                 }
                 val track = playerUi.current
-                if (screen != Screen.LOGIN && screen != Screen.PLAYER && track != null) {
+                if (!screen.isLogin && screen != Screen.PLAYER && track != null) {
                     MiniPlayer(
                         text = marqueeText(playerUi.index, track),
                         playing = playerUi.isPlaying,
@@ -165,10 +179,10 @@ fun AppRoot(
                         onToggle = player::toggleMiniPlay,
                     )
                 }
-                if (screen != Screen.LOGIN) TabBar(screen, app::go)
+                if (!screen.isLogin) TabBar(screen, app::go)
             }
 
-            if (screen != Screen.LOGIN && sessionState.signedIn && jamState.storedSession) {
+            if (!screen.isLogin && sessionState.signedIn && jamState.storedSession) {
                 JamContinueDialog(onContinue = jam::continueStored, onEnd = jam::discardStored)
             }
 
@@ -179,7 +193,7 @@ fun AppRoot(
 
             trackActions?.let { actions ->
                 BackHandler { player.closeTrackActions() }
-                TrackActionsSheet(actions, player)
+                TrackActionsSheet(actions, player, onRadio = spotify::playRadio)
             }
 
             toast?.let { message ->

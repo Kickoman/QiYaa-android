@@ -59,6 +59,7 @@ import io.github.kickoman.qiyaa.ui.LibrarySection
 import io.github.kickoman.qiyaa.ui.ListState
 import io.github.kickoman.qiyaa.ui.LocalAccess
 import io.github.kickoman.qiyaa.ui.PlayerViewModel
+import io.github.kickoman.qiyaa.ui.SpotifyViewModel
 import io.github.kickoman.qiyaa.ui.components.IconPaths
 import io.github.kickoman.qiyaa.ui.components.IconWideButton
 import io.github.kickoman.qiyaa.ui.components.LanguageSwitch
@@ -81,6 +82,7 @@ import io.github.kickoman.qiyaa.yandex.signedIn
 fun LibraryScreen(
     viewModel: AppViewModel,
     player: PlayerViewModel,
+    spotify: SpotifyViewModel,
     jam: JamHostState,
     guestOf: String?,
     onJam: () -> Unit,
@@ -174,6 +176,8 @@ fun LibraryScreen(
                 color = colors.muted,
             )
         }
+
+        SpotifySources(spotify, onOpenSection = viewModel::openSection)
 
         LocalFiles(viewModel)
 
@@ -302,45 +306,12 @@ private fun YandexSources(
     val playlists by viewModel.playlists.state.collectAsStateWithLifecycle()
     val artists by viewModel.artists.state.collectAsStateWithLifecycle()
     val albums by viewModel.albums.state.collectAsStateWithLifecycle()
-    Row(
-        Modifier
-            .padding(start = 16.dp, end = 16.dp, top = 16.dp)
-            .fillMaxWidth()
-            .height(48.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .background(colors.deep)
-            .border(1.dp, colors.insetBorder, RoundedCornerShape(6.dp))
-            .padding(horizontal = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Box(Modifier.size(14.dp).border(2.dp, colors.dim, CircleShape))
-        val style = mono(13.sp, 400).copy(color = colors.text)
-        BasicTextField(
-            value = libraryUi.searchText,
-            onValueChange = viewModel::setSearchText,
-            textStyle = style,
-            singleLine = true,
-            cursorBrush = SolidColor(colors.accent),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(
-                onSearch = { viewModel.submitSearch() },
-            ),
-            modifier = Modifier.weight(1f),
-            decorationBox = { inner ->
-                if (libraryUi.searchText.isEmpty()) {
-                    QiText(
-                        stringResource(R.string.library_search_hint),
-                        style,
-                        color = colors.dim,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                inner()
-            },
-        )
-    }
+    SearchField(
+        libraryUi.searchText,
+        stringResource(R.string.library_search_hint),
+        onChange = viewModel::setSearchText,
+        onSearch = viewModel::submitSearch,
+    )
 
     Row(
         Modifier
@@ -372,14 +343,6 @@ private fun YandexSources(
         QiText("∞", mono(20.sp, 400), color = colors.accent)
     }
 
-    val loadingText = stringResource(R.string.library_loading)
-    val failedText = stringResource(R.string.library_row_error)
-    fun countOrStatus(state: ListState<*>): String = when (state) {
-        ListState.Idle -> "…"
-        ListState.Loading -> loadingText
-        is ListState.Loaded -> state.items.size.toString()
-        is ListState.Failed -> failedText
-    }
     Column(
         Modifier
             .padding(start = 16.dp, end = 16.dp, top = 10.dp)
@@ -388,20 +351,20 @@ private fun YandexSources(
             .background(colors.surface),
     ) {
         SourceRow(stringResource(R.string.library_liked), "${liked.size}") { viewModel.playLiked() }
-        SourceRow(stringResource(R.string.library_for_you), countOrStatus(forYou)) {
+        SourceRow(stringResource(R.string.library_for_you), listMeta(forYou)) {
             viewModel.openSection(LibrarySection.FOR_YOU)
         }
         SourceRow(stringResource(R.string.library_wheel), stringResource(R.string.library_wheel_meta)) {
             viewModel.openSection(LibrarySection.WHEEL)
         }
-        SourceRow(stringResource(R.string.library_playlists), countOrStatus(playlists)) {
+        SourceRow(stringResource(R.string.library_playlists), listMeta(playlists)) {
             viewModel.openSection(LibrarySection.PLAYLISTS)
         }
         SourceRow(
             stringResource(R.string.library_artists),
-            countOrStatus(artists) + " · " + stringResource(R.string.library_top_tracks),
+            listMeta(artists) + " · " + stringResource(R.string.library_top_tracks),
         ) { viewModel.openSection(LibrarySection.ARTISTS) }
-        SourceRow(stringResource(R.string.library_albums), countOrStatus(albums)) {
+        SourceRow(stringResource(R.string.library_albums), listMeta(albums)) {
             viewModel.openSection(LibrarySection.ALBUMS)
         }
         SourceRow(
@@ -461,6 +424,50 @@ private fun YandexSources(
 }
 
 @Composable
+internal fun SearchField(text: String, hint: String, onChange: (String) -> Unit, onSearch: () -> Unit) {
+    val colors = Qi.colors
+    Row(
+        Modifier
+            .padding(start = 16.dp, end = 16.dp, top = 16.dp)
+            .fillMaxWidth()
+            .height(48.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(colors.deep)
+            .border(1.dp, colors.insetBorder, RoundedCornerShape(6.dp))
+            .padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(Modifier.size(14.dp).border(2.dp, colors.dim, CircleShape))
+        val style = mono(13.sp, 400).copy(color = colors.text)
+        BasicTextField(
+            value = text,
+            onValueChange = onChange,
+            textStyle = style,
+            singleLine = true,
+            cursorBrush = SolidColor(colors.accent),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { onSearch() }),
+            modifier = Modifier.weight(1f),
+            decorationBox = { inner ->
+                if (text.isEmpty()) {
+                    QiText(hint, style, color = colors.dim, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                inner()
+            },
+        )
+    }
+}
+
+@Composable
+internal fun listMeta(state: ListState<*>): String = when (state) {
+    ListState.Idle -> "…"
+    ListState.Loading -> stringResource(R.string.library_loading)
+    is ListState.Loaded -> state.items.size.toString()
+    is ListState.Failed -> stringResource(R.string.library_row_error)
+}
+
+@Composable
 private fun <T> ChoiceRow(label: String?, current: T, choices: List<Pair<T, Int>>, onPick: (T) -> Unit) {
     Row(
         Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth(),
@@ -483,7 +490,7 @@ private fun <T> ChoiceRow(label: String?, current: T, choices: List<Pair<T, Int>
 }
 
 @Composable
-private fun SourceRow(name: String, meta: String, last: Boolean = false, onClick: () -> Unit) {
+internal fun SourceRow(name: String, meta: String, last: Boolean = false, onClick: () -> Unit) {
     val colors = Qi.colors
     Column {
         Row(

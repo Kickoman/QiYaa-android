@@ -79,6 +79,10 @@ fun LibrarySectionScreen(viewModel: AppViewModel, section: LibrarySection) {
                 LibrarySection.LOCAL_ALBUMS -> R.string.local_albums
                 LibrarySection.LOCAL_ARTISTS -> R.string.local_artists
                 LibrarySection.LOCAL_FOLDERS -> R.string.local_folders
+                LibrarySection.SPOTIFY_FOR_YOU -> R.string.library_sub_for_you
+                LibrarySection.SPOTIFY_PLAYLISTS -> R.string.library_sub_playlists
+                LibrarySection.SPOTIFY_ALBUMS -> R.string.library_sub_albums
+                LibrarySection.SPOTIFY_ARTISTS -> R.string.library_sub_artists
             },
         )
     val stationGroupNames =
@@ -183,7 +187,10 @@ fun LibrarySectionScreen(viewModel: AppViewModel, section: LibrarySection) {
                 listOf(ChipGroup(stringResource(R.string.library_group_liked), items))
             }
 
-            LibrarySection.LOCAL_ALBUMS, LibrarySection.LOCAL_ARTISTS, LibrarySection.LOCAL_FOLDERS -> {
+            LibrarySection.LOCAL_ALBUMS, LibrarySection.LOCAL_ARTISTS, LibrarySection.LOCAL_FOLDERS,
+            LibrarySection.SPOTIFY_FOR_YOU, LibrarySection.SPOTIFY_PLAYLISTS, LibrarySection.SPOTIFY_ALBUMS,
+            LibrarySection.SPOTIFY_ARTISTS,
+            -> {
                 listState = ListState.Idle
                 emptyList()
             }

@@ -21,6 +21,7 @@ import io.github.kickoman.qiyaa.lyrics.LyricsView
 import io.github.kickoman.qiyaa.playback.MediaItems
 import io.github.kickoman.qiyaa.playback.PlaybackService
 import io.github.kickoman.qiyaa.track.Track
+import io.github.kickoman.qiyaa.track.TrackSource
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -47,7 +48,7 @@ data class PlayerUi(
     val isBuffering: Boolean get() = playbackState == Player.STATE_BUFFERING && playWhenReady
 }
 
-data class TrackActions(val track: Track, val liked: Boolean, val isCurrent: Boolean)
+data class TrackActions(val track: Track, val liked: Boolean, val isCurrent: Boolean, val radio: Boolean)
 
 class PlayerViewModel(application: Application) : AndroidViewModel(application) {
     private val graph = application.appGraph
@@ -148,7 +149,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun toggleShuffle() {
         if (queue.state.value.isWave) {
-            notify(string(R.string.player_shuffle_wave))
+            notify(string(lockedShuffleNotice(queue.state.value)))
             return
         }
         queue.setShuffle(!queue.modes.value.shuffle)
@@ -158,7 +159,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun toggleRepeat() {
         if (queue.state.value.isWave) {
-            notify(string(R.string.player_repeat_wave))
+            notify(string(lockedRepeatNotice(queue.state.value)))
             return
         }
         queue.setRepeat(!queue.modes.value.repeat)
@@ -168,8 +169,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setQueueContinuesWithVibe(on: Boolean) {
         queue.setContinueWithVibe(on)
-        val now = queue.state.value.continueWithVibe
-        notify(string(if (now) R.string.vibe_continue_on else R.string.vibe_continue_off))
+        notify(string(continueNotice(queue.state.value)))
     }
 
     fun toggleMiniPlay() {
@@ -205,6 +205,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 track = track,
                 liked = track.isYandex && track.id in library.likedIds.value,
                 isCurrent = track.key == mutableUi.value.current?.key,
+                radio = track.source == TrackSource.SPOTIFY,
             )
     }
 
