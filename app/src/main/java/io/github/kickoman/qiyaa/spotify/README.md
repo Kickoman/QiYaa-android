@@ -245,7 +245,7 @@ class SpotifyWeb(
     val problems: SharedFlow<SpotifyProblem>             // Http(status), Content
     suspend fun spclient(request: WebRequest): ByteArray // тело ответа 2xx
     suspend fun pathfinder(query: String): ByteArray     // POST {pathfinder}/pathfinder/v2/query, JSON
-    fun report(problem: SpotifyProblem)                  // для тех, кто разбирает ответы (SpotifyLibrary, PR 4)
+    fun report(problem: SpotifyProblem)                  // для тех, кто разбирает ответы (SpotifyLibrary, SpotifyFiles)
     fun unreadable(method: String, label: String, detail: String): SpotifyContentException   // в лог и Content в problems; исключение бросает вызывающий
 }
 ```
@@ -770,7 +770,7 @@ object CatalogMessages {
 - Zigzag: длительность, ширина, год, статус элемента списка.
 - Страница списка: если мета-элементов столько же, сколько элементов, элемент берёт имя своего мета-элемента и выпадает при статусе не 0 и не 200; иначе остаются все, без имён. Есть ли следующая — `hasMoreAfter(from, 1000)`: `from + 1000 < length` по смещению, которое спросили; `from` и `truncated` ответа читаются, но не решают. Сумма считается в `Long`, сверх ПК: в `Int` при `from` около 2^31 она стала бы отрицательной, и «ещё» не кончилось бы.
 - Коллекция: удалённые элементы, элементы без URI и упавшие выпадают; `last` — пустой токен или страница без элементов.
-- `storage-resolve`: `usable` — только CDN с хотя бы одной ссылкой; файлом займётся PR 4.
+- `storage-resolve`: `usable` — только CDN с хотя бы одной ссылкой; файл по ним готовит `SpotifyFiles` (ниже).
 
 Номера полей — константы рядом с сообщением, имена — как в `.proto` librespot: `extended_metadata.proto`, `metadata.proto`, `collection2v2.proto`, `playlist4_external.proto`, `storage-resolve.proto`.
 
