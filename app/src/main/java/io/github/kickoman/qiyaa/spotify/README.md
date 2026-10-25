@@ -1,6 +1,6 @@
 # `spotify/` — Spotify
 
-Клиент Spotify, порт `src/spotify` десктопа (Kickoman/QiYaa) файл в файл; план — [Kickoman/QiYaa-android#113](https://github.com/Kickoman/QiYaa-android/issues/113). Поведение — `spec/player/spotify.md` (SPOT-01…22) и `spec/player/errors.md`, общие тест-векторы протокола — `spec/spotify/`. В пакете — ядро протокола `protocol/` и сеть с входом поверх него: соединение с точкой доступа (AP) и ключи файлов, токены client-token и login5, запросы к spclient и Pathfinder, вход кодом и в браузере, состояние входа, а над ними — каталог: выборы SPOT-07…12, метаданные, Pathfinder, станция и запрос автоплея (#113 PR 3b). Над ними же — файл трека (#113 PR 4): `SpotifyFiles` готовит его (метаданные `TRACK_V4`, Ogg Vorbis по битрейтам, ключ, `storage-resolve`, кэш на процесс), `SpotifyStream` читает его диапазонами с CDN, расшифровывает и переходит по ссылкам; к Media3 их подключает `playback/SpotifyDataSource`. Пакет ничего не показывает и не знает очереди: склейка с ней в корне, как `YandexLyrics.kt`. Сохранённый вход лежит в `data/SpotifyStore`, к `SavedCredentials` его подключает корневой `SpotifySavedCredentials`. В графе (`AppGraph`, #113 PR 3c, PR 4) — `spotifySession`, `spotifyWeb`, `spotifyLibrary`, `spotifyAccount` (сохранённый вход — при старте, SPOT-04) и `spotifyFiles` (битрейты — `playback/SpotifyBitrates` по `qualityInEffect`), экран входа — PR 5. Продолжение очереди (автоплей и станция как `queue.Continuation`) — корневой `SpotifyContinuations` (верхний `README.md`, строка «корень»; правила очереди — `queue/README.md`, «Своё продолжение»), вид ошибки для статуса — корневой `SpotifyErrorKinds` («Вид ошибки для статуса» ниже).
+Клиент Spotify, порт `src/spotify` десктопа (Kickoman/QiYaa) файл в файл; план — [Kickoman/QiYaa-android#113](https://github.com/Kickoman/QiYaa-android/issues/113). Поведение — `spec/player/spotify.md` (SPOT-01…22) и `spec/player/errors.md`, общие тест-векторы протокола — `spec/spotify/`. В пакете — ядро протокола `protocol/` и сеть с входом поверх него: соединение с точкой доступа (AP) и ключи файлов, токены client-token и login5, запросы к spclient и Pathfinder, вход кодом и в браузере, состояние входа, а над ними — каталог: выборы SPOT-07…12, метаданные, Pathfinder, станция и запрос автоплея (#113 PR 3b). Над ними же — файл трека (#113 PR 4): `SpotifyFiles` готовит его (метаданные `TRACK_V4`, Ogg Vorbis по битрейтам, ключ, `storage-resolve`, кэш на процесс), `SpotifyStream` читает его диапазонами с CDN, расшифровывает и переходит по ссылкам; к Media3 их подключает `playback/SpotifyDataSource`. Пакет ничего не показывает и не знает очереди: склейка с ней в корне, как `YandexLyrics.kt`. Сохранённый вход лежит в `data/SpotifyStore`, к `SavedCredentials` его подключает корневой `SpotifySavedCredentials`. В графе (`AppGraph`, #113 PR 3c, PR 4) — `spotifySession`, `spotifyWeb`, `spotifyLibrary`, `spotifyAccount` (сохранённый вход — при старте, SPOT-04), `spotifyPairLogin`, `spotifyBrowserLogin` и `spotifyFiles` (битрейты — `playback/SpotifyBitrates` по `qualityInEffect`); экран входа, раздел Library, выборы и радио — `ui/SpotifyViewModel` (`ui/README.md`, «Spotify», #113 PR 5). Продолжение очереди (автоплей и станция как `queue.Continuation`) — корневой `SpotifyContinuations` (верхний `README.md`, строка «корень»; правила очереди — `queue/README.md`, «Своё продолжение»), вид ошибки для статуса — корневой `SpotifyErrorKinds` («Вид ошибки для статуса» ниже).
 
 Чистая JVM; из приложения пакет может импортировать только `track`, а `protocol/` — без ввода-вывода и не импортирует из приложения ничего:
 
@@ -87,7 +87,7 @@ fun errorKindOf(failed: Throwable): ErrorKind   // первое звено це�
 | `LoginRefusedException` от AP (кроме `BadCredentials`: например, `PremiumAccountRequired` у ключа) | `SpotifyLoginRefused` |
 | остальное (`AuthorizationException`, исключения `yandex`, сеть Java) | как `ErrorKind.of` |
 
-Его получает конструктор `QueueController` из `AppGraph` (статусы источников, автоплея, радио и поиска); `ui/ListLoader` принимает классификатор параметром (по умолчанию `ErrorKind.of`), его передадут списки Spotify и `ui/SpotifyViewModel` (PR 5); вид отказа воспроизведения (`FailureKind`: `TRACK`, `SESSION`, `NETWORK`) у трека и `ErrorKind` его статуса решает `playback/PlaybackFailures` (`playback/README.md`, «Классификация ошибок»), а какие отказы загрузчик не повторяет — `playback/LoadRetries`. Тексты четырёх видов Spotify — в `ui/ErrorText.kt`, по переводам ПК (`qiyaa_ru.ts`, `qiyaa_be.ts`):
+Его получает конструктор `QueueController` из `AppGraph` (статусы источников, автоплея, радио и поиска); `ui/ListLoader` принимает классификатор параметром (по умолчанию `ErrorKind.of`), его передают списки Spotify в `ui/SpotifyViewModel`; вид отказа воспроизведения (`FailureKind`: `TRACK`, `SESSION`, `NETWORK`) у трека и `ErrorKind` его статуса решает `playback/PlaybackFailures` (`playback/README.md`, «Классификация ошибок»), а какие отказы загрузчик не повторяет — `playback/LoadRetries`. Тексты четырёх видов Spotify — в `ui/ErrorText.kt`, по переводам ПК (`qiyaa_ru.ts`, `qiyaa_be.ts`):
 
 | Вид | Строка | Текст ПК |
 |---|---|---|
@@ -96,7 +96,15 @@ fun errorKindOf(failed: Throwable): ErrorKind   // первое звено це�
 | `SpotifyLoginRefused` | `error_spotify_login_refused` | «Spotify refused the login» (`spotify_account.cpp:110`, без `: %1`) |
 | `SpotifyTokenRefused` | `error_spotify_token_refused` | «Spotify did not give an access token» (`web.cpp:187–191`) |
 
-`SignInRefused` Яндекса («Яндекс отклонил вход») для Spotify не годится. Тест — `SpotifyErrorKindsTest`.
+`SignInRefused` Яндекса («Яндекс отклонил вход») для Spotify не годится.
+
+Экрану входа нужен ещё один вид — отказ OAuth, который `errorKindOf` оставляет `Unknown`:
+
+```kotlin
+fun spotifyLoginErrorKindOf(failed: Throwable): ErrorKind   // AuthorizationException в цепочке: expired_token — CodeExpired, иначе SpotifyLoginRefused; без неё — errorKindOf
+```
+
+`expired_token` — и ответ Spotify, и местный срок кода (`PairLogin.EXPIRED_TOKEN`); «код устарел» — `error_code_expired`, общий с Яндексом. `access_denied`, `state_mismatch`, `no_code` — `error_spotify_login_refused`. Тест — `SpotifyErrorKindsTest`.
 
 ## `SpotifyIdentity`
 
@@ -279,7 +287,7 @@ RFC 8628, как `yandex/DeviceAuth`. `requestCode`: `POST {accounts}/oauth2/dev
 
 ```kotlin
 class BrowserLogin(client: OkHttpClient, endpoints: Endpoints = Endpoints(), random: SecureRandom = SecureRandom(), readTimeoutMs: Int = 10_000) {
-    data class Pages(val loggingIn: String, val refused: String)   // тексты страницы для браузера: из R.string экрана (PR 5)
+    data class Pages(val loggingIn: String, val refused: String)   // тексты страницы для браузера: из R.string (ui/SpotifyViewModel)
     suspend fun login(pages: Pages, openPage: (String) -> Unit): String   // openPage — открыть адрес в браузере; результат — токен OAuth
     companion object { fun challengeOf(verifier: String): String }        // base64url(SHA-256(verifier)) без '='
 }
@@ -315,7 +323,7 @@ class SpotifyAccount(session: SpotifySession, saved: SavedCredentials) {
 - SPOT-03: на каждый `APWelcome` многоразовые данные сохраняются, если они другие, чем в хранилище; токен нигде не хранится.
 - SPOT-04: `start()` входит сохранёнными данными без диалога. `BadCredentials` удаляет их (`Expired`); сбой сети их не трогает, сессия повторяет, как ERR-02.
 - SPOT-05: `PremiumAccountRequired` ничего не сохраняет. Сохранённый вход, которому отказали так, остаётся (как у ПК): следующий запуск попробует снова.
-- SPOT-06: `logout()` — сначала `session.logout()` (соединение закрывается, ждущие ключи падают `NotLoggedInException`), потом `saved.forget()`.
+- SPOT-06: `logout()` — `saved.forget()`, `session.logout()` (соединение закрывается, состояние — `LoggedOut`, ждущие ключи падают `NotLoggedInException`) и ещё раз `saved.forget()`. Порядок важен. Первое `forget()` — до `LoggedOut`: сборщик `state` на `Dispatchers.Main.immediate` (`ui/SpotifyViewModel`) получает `LoggedOut` прямо внутри `session.logout()`, если выход идёт с главного потока, и должен уже не видеть сохранённого входа (`SpotifyAccountTest`: при первом `forget()` состояние ещё `Online`). Второе — для `APWelcome`, пришедшего между ними: слушатель сохраняет многоразовые данные на каждом `APWelcome`, если в хранилище другие, а после `session.logout()` (новое поколение, `listener = null` под тем же замком) старых вызовов слушателя уже не бывает.
 
 ## Каталог: `SpotifyLibrary`
 
@@ -349,7 +357,7 @@ data class SpotifyPick(val best: SpotifyItem?, val contextUri: String, val track
 data class ContextPage(val tracks: List<Track>, val next: String)                                  // next == "" — страница последняя
 ```
 
-Порт `Library` ПК (`src/sources/spotify/library.cpp`). Каждый вызов спрашивает Spotify заново, ничего не запоминается. Пакет не показывает текстов: заголовки «Liked Songs», «Search: <текст>», «<трек>: radio» и статусы — у очереди и экрана (PR 3c, PR 5); имена плейлистов, альбомов и исполнителей — данные с сервера. Отмена корутины отменяет все запросы вызова.
+Порт `Library` ПК (`src/sources/spotify/library.cpp`). Каждый вызов спрашивает Spotify заново, ничего не запоминается. Пакет не показывает текстов: заголовки «Liked Songs», «Search: <текст>», «<трек>: radio» и статусы — у очереди и `ui/SpotifyViewModel`; имена плейлистов, альбомов и исполнителей — данные с сервера. Отмена корутины отменяет все запросы вызова.
 
 | Выбор | Запрос | Что берётся |
 |---|---|---|
@@ -512,7 +520,7 @@ class SpotifyStream(
 
 ## `SpotifyProblem`
 
-| Член | Откуда | Код TEL-18 (PR 5) |
+| Член | Откуда | Код TEL-18 (`TelemetryCodes.error`) |
 |---|---|---|
 | `LoginRefused(code)` | `SpotifySession`: отказ входа в AP | `login-expired` (12), `premium-required` (11) |
 | `KeyRefused` | `SpotifySession`: ключ с кодом 1 | `key-refused` |
@@ -522,7 +530,7 @@ class SpotifyStream(
 | `Content` | `SpotifyWeb`: ответ не читается или больше предела, hashcash не решён; `unreadable` из `SpotifyLibrary` и `SpotifyFiles` | `content` |
 | `QueryOutdated` | `SpotifyLibrary`: Pathfinder отверг все хеши | `query-outdated` |
 
-У сессии и у `SpotifyWeb` свои потоки `problems` (буфер 16, `tryEmit`); телеметрия (PR 5) слушает оба. Сеть не сообщается, как у ПК.
+У сессии и у `SpotifyWeb` свои потоки `problems` (буфер 16, `tryEmit`); телеметрия (корневой `AppTelemetry`, `telemetry/README.md`) слушает оба. Сеть не сообщается, как у ПК.
 
 ## Лог
 
@@ -776,7 +784,7 @@ object CatalogMessages {
 
 ## Not here
 
-- Продолжение очереди — автоплей и станция как `queue.Continuation`, поиск для очереди — корневой `SpotifyContinuations`; их правила — `queue/README.md`, «Своё продолжение». Заголовки выборов и вызовы `loadSource`, `playContinuation`, `search` — `ui` (PR 5), статусы — очередь.
+- Продолжение очереди — автоплей и станция как `queue.Continuation`, поиск для очереди — корневой `SpotifyContinuations`; их правила — `queue/README.md`, «Своё продолжение». Заголовки выборов и вызовы `loadSource`, `playContinuation`, `search` — `ui/SpotifyViewModel`, статусы — очередь.
 - Файл трека в Media3 (маршрут под диском, память игры, `getUri`, битрейт, политика повторов, вид ошибки) — `playback/SpotifyDataSource`, `SchemeRoute`, `LoadRetries`, `PlaybackFailures` (`playback/README.md`).
-- Экран входа, открытие браузера, тексты страницы `BrowserLogin.Pages` — `ui`, PR 5; коды TEL-18 — корневой `TelemetryCodes`, PR 5.
+- Экран входа, открытие браузера, тексты страницы `BrowserLogin.Pages` — `ui/SpotifyViewModel` и `ui/screens/SpotifyLoginScreen` (`ui/README.md`, «Spotify»); коды TEL-18 — корневой `TelemetryCodes` (`telemetry/README.md`).
 - Ключи хранения входа — `data/README.md` (`SpotifyStore`).

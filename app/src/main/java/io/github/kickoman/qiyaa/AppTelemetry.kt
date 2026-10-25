@@ -17,6 +17,8 @@ import io.github.kickoman.qiyaa.playback.JamHost
 import io.github.kickoman.qiyaa.playback.JamHostPhase
 import io.github.kickoman.qiyaa.queue.QueueActivity
 import io.github.kickoman.qiyaa.queue.QueueController
+import io.github.kickoman.qiyaa.spotify.SpotifyAccount
+import io.github.kickoman.qiyaa.spotify.SpotifyProblem
 import io.github.kickoman.qiyaa.telemetry.Beginning
 import io.github.kickoman.qiyaa.telemetry.ExitInfo
 import io.github.kickoman.qiyaa.telemetry.FeatureName
@@ -55,6 +57,7 @@ class AppTelemetry(
     private val playing = MutableStateFlow(false)
     private val online = MutableStateFlow(false)
     private val connectedApi = CompletableDeferred<YandexApi>()
+    private val connectedSpotify = CompletableDeferred<SpotifyAccount>()
     private val sender = Sender(httpClient, endpoint)
     private val store = TelemetryStore(File(application.noBackupFilesDir, FOLDER))
     private val session =
@@ -83,8 +86,11 @@ class AppTelemetry(
         network: StateFlow<Boolean>,
         lyricsShown: StateFlow<Boolean>,
         lyricsLookups: Flow<LyricsLookup>,
+        spotify: SpotifyAccount,
+        spotifyProblems: Flow<SpotifyProblem>,
     ) {
         connectedApi.complete(api)
+        connectedSpotify.complete(spotify)
         collect(network) { online.value = it }
         collect(queue.activity) { activity ->
             when (activity) {
@@ -119,9 +125,15 @@ class AppTelemetry(
         collect(lyricsLookups) {
             session.countLyrics(TelemetryCodes.lyricsOutcome(it.shown), it.thirdPartyFailed)
         }
+        collect(spotifyProblems) { problem -> TelemetryCodes.error(problem)?.let(::record) }
     }
 
     fun loginFailed() = record(TelemetryCodes.LOGIN_FAILED)
+
+    fun spotifyLoggedIn(way: SpotifyLoginWay) =
+        session.recordFeature(FeatureName.SPOTIFY, TelemetryCodes.spotifyLogin(way))
+
+    fun spotifyLoggedOut() = session.recordFeature(FeatureName.SPOTIFY, TelemetryCodes.SPOTIFY_LOGOUT)
 
     fun audioFailed(failure: AudioFailure) = record(TelemetryCodes.error(failure))
 
@@ -152,13 +164,14 @@ class AppTelemetry(
 
     private suspend fun beginning(): Beginning {
         val loggedIn = connectedApi.await().token.isNotEmpty()
+        val spotifyLoggedIn = connectedSpotify.await().hasSavedLogin()
         settings.markTelemetryFirstStart()
         val machine = MachineId.resolve(androidId(), settings.telemetryMachine, settings::setTelemetryMachine)
         val exits = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) exits() else emptyMap()
-        return Beginning(startFields(loggedIn), machine, exits)
+        return Beginning(startFields(loggedIn, spotifyLoggedIn), machine, exits)
     }
 
-    private fun startFields(loggedIn: Boolean): StartFields {
+    private fun startFields(loggedIn: Boolean, spotifyLoggedIn: Boolean): StartFields {
         val system = Resources.getSystem().configuration.locales[0]
         return StartFields(
             osVersion = Build.VERSION.RELEASE.orEmpty(),
@@ -176,6 +189,7 @@ class AppTelemetry(
             quality = TelemetryCodes.quality(settings.quality.value),
             qualityMetered = TelemetryCodes.quality(settings.qualityMetered.value),
             loggedIn = loggedIn,
+            spotifyLoggedIn = spotifyLoggedIn,
             firstRun = settings.wasEmpty,
         )
     }

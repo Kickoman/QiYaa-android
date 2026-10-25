@@ -86,6 +86,74 @@ class BatchSchemaTest {
     }
 
     @Test
+    fun `TEL-18 the start with a saved Spotify login is encoded exactly as in android-start-spotify json`() {
+        val expected = example("android-start-spotify.json").single()
+        val start =
+            Event.Start(
+                Instant.parse(expected.string("at")),
+                expected.string("session"),
+                "0.9.0",
+                StartFields(
+                    osVersion = "14",
+                    sdk = 34,
+                    device = "Google Pixel 7",
+                    kernel = "5.10.198-android13-4-00050-g12f3388846c3-ab11920634",
+                    arch = "arm64",
+                    packaging = StartFields.Packaging.APK,
+                    locale = "be_BY",
+                    language = StartFields.Language.BE,
+                    dpr = 2.625,
+                    theme = StartFields.Theme.AMBER,
+                    vis = StartFields.Vis.SPECTRUM,
+                    equalizer = true,
+                    quality = StartFields.Quality.STANDARD,
+                    qualityMetered = StartFields.Quality.ECONOMY,
+                    loggedIn = true,
+                    spotifyLoggedIn = true,
+                    firstRun = false,
+                ),
+            )
+        assertEquals(expected, EventCodec.encode(start))
+    }
+
+    @Test
+    fun `TEL-18 Spotify's errors, its features and the start without a Spotify login validate`() = runTest {
+        val telemetry = TelemetryHarness(this, File(folder.root, "telemetry"), server.sender())
+        val reporter = telemetry.reporter()
+        reporter.begin(StartFields(spotifyLoggedIn = false), MACHINE, emptyMap())
+        val kinds =
+            listOf(
+                "login-expired",
+                "premium-required",
+                "key-refused",
+                "key-failed",
+                "access-point",
+                "content",
+                "query-outdated",
+            )
+        for (kind in kinds) reporter.recordError(ErrorArea.SPOTIFY, kind)
+        reporter.recordError(ErrorArea.SPOTIFY, "http", 403)
+        for (value in listOf("login-code", "login-browser", "logout")) {
+            reporter.recordFeature(FeatureName.SPOTIFY, value)
+        }
+        server.enqueue(MockResponse().setResponseCode(204))
+
+        reporter.send()
+
+        val body = server.takeRequest(10, TimeUnit.SECONDS)!!.body.readUtf8()
+        assertEquals(body, emptyList<String>(), TelemetrySchema.errors(body))
+        val sent = events(body)
+        assertEquals("false", sent.single { it.string("type") == "start" }.string("spotifyLoggedIn"))
+        val errors = sent.filter { it.string("type") == "error" }
+        assertEquals(kinds + "http", errors.map { it.string("kind") })
+        assertTrue(errors.all { it.string("area") == "spotify" })
+        assertEquals("403", errors.single { it.string("kind") == "http" }.string("httpStatus"))
+        val features = sent.filter { it.string("type") == "feature" }
+        assertEquals(listOf("login-code", "login-browser", "logout"), features.map { it.string("value") })
+        assertTrue(features.all { it.string("name") == "spotify" })
+    }
+
+    @Test
     fun `TEL-05 the crash from a report is encoded exactly as in android-crash-then-start json`() {
         val expected = example("android-crash-then-start.json").first()
         val report =

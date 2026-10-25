@@ -1,11 +1,13 @@
 package io.github.kickoman.qiyaa
 
+import io.github.kickoman.qiyaa.spotify.AuthorizationException
 import io.github.kickoman.qiyaa.spotify.CdnStatusException
 import io.github.kickoman.qiyaa.spotify.KeyFailedException
 import io.github.kickoman.qiyaa.spotify.KeyRefusedException
 import io.github.kickoman.qiyaa.spotify.LoginRefusedException
 import io.github.kickoman.qiyaa.spotify.NoPlayableFileException
 import io.github.kickoman.qiyaa.spotify.NotLoggedInException
+import io.github.kickoman.qiyaa.spotify.PairLogin
 import io.github.kickoman.qiyaa.spotify.QueryOutdatedException
 import io.github.kickoman.qiyaa.spotify.SpotifyContentException
 import io.github.kickoman.qiyaa.spotify.SpotifyHttpException
@@ -15,6 +17,15 @@ import io.github.kickoman.qiyaa.yandex.ErrorKind
 
 fun errorKindOf(failed: Throwable): ErrorKind =
     ErrorKind.causes(failed).firstNotNullOfOrNull(::spotifyKindOf) ?: ErrorKind.of(failed)
+
+fun spotifyLoginErrorKindOf(failed: Throwable): ErrorKind =
+    ErrorKind.causes(failed).firstNotNullOfOrNull(::authorizationKindOf) ?: errorKindOf(failed)
+
+private fun authorizationKindOf(failure: Throwable): ErrorKind? = when {
+    failure !is AuthorizationException -> null
+    failure.error == PairLogin.EXPIRED_TOKEN -> ErrorKind.CodeExpired
+    else -> ErrorKind.SpotifyLoginRefused
+}
 
 private fun spotifyKindOf(failure: Throwable): ErrorKind? = when (failure) {
     is SpotifyNetworkException -> ErrorKind.NoNetwork

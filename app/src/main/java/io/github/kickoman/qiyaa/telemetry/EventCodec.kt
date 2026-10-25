@@ -181,6 +181,7 @@ object EventCodec {
         put("quality", fields.quality.code)
         put("qualityMetered", fields.qualityMetered.code)
         put("loggedIn", fields.loggedIn)
+        fields.spotifyLoggedIn?.let { put("spotifyLoggedIn", it) }
         put("firstRun", fields.firstRun)
     }
 
