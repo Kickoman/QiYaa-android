@@ -121,7 +121,7 @@ class Lrclib(client: OkHttpClient, appVersion: String, baseUrl: String = "https:
 ## В приложении
 
 `AppGraph` держит один `LyricsFinder` на процесс (память переживает пересоздание активности) на своём `mainScope` (`SupervisorJob() + Dispatchers.Main.immediate`) — однопоточном, как он требует (`applicationScope` графа многопоточный и не годится):
-- `source` — корневой `SourceLyrics`: `when (track.source)` без `else` — `YandexLyrics` для Яндекса, `local/LocalLyrics` для своих файлов, так что Spotify (#113) остановит компиляцию здесь;
+- `source` — корневой `SourceLyrics`: `when (track.source)` без `else` — `YandexLyrics` для Яндекса, `local/LocalLyrics` для своих файлов, `LyricsAnswer.Missing()` без запроса для трека Spotify: свой текст Spotify не спрашивается, как на ПК (`spec/player/lyrics.md`, «Where the text comes from»), так что текст ему даёт только сервис, если он включён;
 - `thirdParty` — `Lrclib(httpClient, BuildConfig.VERSION_NAME)`;
 - `currentTrack` — `AppGraph.lyricsTrack` (его пишет `PlayerViewModel`), `active` — `lyricsShown && lyricsOnScreen`, `thirdPartyEnabled` — `Settings.lyricsThirdParty`, `connectivity` — `NetworkMonitor.available`, `signedIn` — `Session.state.signedIn` (токен API ставится раньше, чем состояние становится «вошёл», поэтому первый запрос после входа уже с ним);
 - `lookups` слушает `AppTelemetry` (`countLyrics`).

@@ -9,5 +9,6 @@ class SourceLyrics(private val yandex: LyricsSource, private val local: LyricsSo
     override suspend fun lyrics(track: Track): LyricsAnswer = when (track.source) {
         TrackSource.YANDEX -> yandex.lyrics(track)
         TrackSource.LOCAL -> local.lyrics(track)
+        TrackSource.SPOTIFY -> LyricsAnswer.Missing()
     }
 }

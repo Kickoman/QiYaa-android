@@ -41,4 +41,26 @@ class MediaItemsTest {
             MediaItems.uriTextFor(Track(id = "42", title = "B", source = TrackSource.LOCAL)),
         )
     }
+
+    @Test
+    fun `a Spotify track plays from the URI the spec gives it, spotify track and its id`() {
+        val spotify = Track(id = SPOTIFY_ID, title = "S", source = TrackSource.SPOTIFY)
+        assertEquals("spotify:track:$SPOTIFY_ID", MediaItems.uriTextFor(spotify))
+    }
+
+    @Test
+    fun `a Spotify track's media id says its source, and no id of one source reads as another's`() {
+        val spotify = Track(id = SPOTIFY_ID, title = "S", source = TrackSource.SPOTIFY)
+        assertEquals("spotify:$SPOTIFY_ID", MediaItems.mediaIdOf(spotify))
+        val sameId = TrackSource.entries.map { Track(id = "42", title = "A", source = it) }
+        for (track in sameId + spotify) {
+            val mediaId = MediaItems.mediaIdOf(track)
+            assertEquals(track.key, TrackKey(MediaItems.sourceOf(mediaId), MediaItems.idOf(mediaId)))
+        }
+        assertEquals(sameId.size, sameId.map(MediaItems::mediaIdOf).toSet().size)
+    }
+
+    private companion object {
+        const val SPOTIFY_ID = "6PCoZdjSPbRMehHviTrpB3"
+    }
 }

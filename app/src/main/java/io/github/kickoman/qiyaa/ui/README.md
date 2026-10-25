@@ -8,6 +8,7 @@ ui/
   AppViewModel.kt, PlayerViewModel.kt, JamViewModel.kt, JamGuestViewModel.kt  состояние экранов
   LinkRouting.kt                       куда ведёт ссылка на джем
   QueueEventText.kt, JamEventText.kt, Format.kt         рендер событий и чисел в строки
+  TrackPages.kt                        страница трека в браузере
   components/   QiText, кнопки, чипы, слайдеры, иконки, секции экранов джема
   screens/      по одному файлу на экран
   theme/        цвета, шрифты, стили текста
@@ -33,6 +34,7 @@ ui/
 | `QueueEventText.kt` | `QueueEvent.render(context)` — событие очереди → строка из ресурсов |
 | `ErrorText.kt` | `ErrorKind.text()` — строка вида ошибки (`error_*`, у `ServerError` со статусом), `render(context)` и `@Composable render()`; `LOG_TAG = "QiYaa"` |
 | `Format.kt` | `formatTime`, `positionAt` (доля полосы перемотки → мс), `timeLabel` (подпись времени плеера), `balanceLabel`, `formatReadout` (битрейт больше 999 — сотнями, «14H», как `Ui::BitrateText` десктопа), `formatDb` |
+| `TrackPages.kt` | `Track.webUrl` — страница трека в браузере по `track.source`: Яндекс — `https://music.yandex.ru/album/<albumId>/track/<id>`, без альбома `https://music.yandex.ru/track/<id>`; Spotify — `https://open.spotify.com/track/<id>` (SPOT-19); свой файл — `null` (`TrackPagesTest`). Здесь, а не в `yandex/`: зовут её только экраны, и `yandex` не знает адресов Spotify |
 | `components/Components.kt` | `QiText`, `Modifier.tap`, `ScreenHeader`, `ActionButton`, `IconActionButton`, `IconWideButton` (широкая кнопка с иконкой и описанием для экранного диктора), `LikeButton`, `PillToggle`, `OnOffPills` (пара `PillToggle` «вкл / выкл»), `RoundButton`, `LedDot`, `Chip` |
 | `components/Sliders.kt` | `HorizontalSlider` (0…1), `VerticalFader` (дБ) |
 | `components/Icons.kt` | `IconPaths`, `PathIcon` — SVG-пути (viewBox 24): транспорт из макета; сердце, палец вниз и «открыть снаружи» для кнопок лайка, дизлайка и браузера, контуром (`strokeWidth = IconPaths.OUTLINE`), сердце лайкнутого трека — заливкой. Подписи у этих кнопок нет (по-белорусски и по-русски она не помещается), текст — их `contentDescription` |
@@ -127,7 +129,7 @@ fun likeOrUnlikePicked();  fun dislikePicked()
   - прокрутка пользователя (LYR-08) — по `DragInteraction` списка, а не по `isScrollInProgress` (его включает и своя прокрутка): слежение снова через 5 с после конца жеста и инерции. Весь экран — `verticalScroll`, остаток прокрутки списка уходит ему;
   - обычный текст — колонка с прокруткой с начала, тап по ней — обратно к обложке. «Тап в любом месте» обычного текста и статусов — `pointerInput { detectTapGestures }`, а не `tap`: `clickable` сливает семантику детей, и TalkBack читал бы весь текст одним куском; доступная кнопка назад — подвал;
   - статусы `lyrics_nothing`, `lyrics_loading`, `lyrics_missing`, `lyrics_instrumental`, `lyrics_failed`, `lyrics_no_account` — тап в любом месте ведёт обратно; когда текста нет и LRCLIB выключен — кнопка `lyrics_search_lrclib` (LYR-15 на телефоне: настройка Library — другая вкладка, а там текст по определению закрыт);
-  - подвал — откуда текст (`lyrics_from_yandex` / `_lrc` / `_tags` / `_lrclib`) и `lyrics_better` («ещё ищу…»), пока лучший текст ещё может прийти, со значком обложки (`IconPaths.COVER`) справа; вся строка не ниже 48 dp — кнопка «назад к обложке» (`lyrics_back_to_cover`), с синхронного текста только так (решение владельца, issuecomment-6387858946).
+  - подвал — откуда текст (`lyrics_from_yandex` / `_lrc` / `_tags` / `_lrclib`; у `LyricsFrom.CATALOG` подпись выбирает `when (track.source)` без `else`: `lyrics_from_yandex` только у Яндекса, у своего файла и трека Spotify подписи нет) и `lyrics_better` («ещё ищу…»), пока лучший текст ещё может прийти, со значком обложки (`IconPaths.COVER`) справа; вся строка не ниже 48 dp — кнопка «назад к обложке» (`lyrics_back_to_cover`), с синхронного текста только так (решение владельца, issuecomment-6387858946).
 - **LRCLIB.** Блок `lyrics_title` в Library над «Качеством»: «Тексты из LRCLIB» (`OnOffPills` по `Settings.lyricsThirdParty`) и пояснение `lyrics_lrclib_note`. Включение там и «Искать в LRCLIB» на экране текста сначала показывают `LrclibConsentDialog` (`Dialog` Compose, что уходит в LRCLIB — `lyrics_lrclib_consent`); «Отмена» ничего не меняет. Выключить можно только в Library, и на тексте это действует, когда его откроют снова (оговорка Android в LYR-15).
 - **Джем** (LYR-13): у хозяина — текст его текущего трека, гостям ничего не уходит; в комнате гостя текста нет, а вкладка «Плеер» со своей очередью работает как обычно (GUEST-13).
 
@@ -305,7 +307,7 @@ key(trackId) { HorizontalSlider(value = fraction, onChange = …, onChangeFinish
 
 `EqScreen`: подписи полос `BAND_LABELS` живут здесь, а не в `audio`. График соединяет значения полос в координатах макета (x = 10 + i·344/9 из 364, y = 44 ∓ 36 из 88). `PresetsSheet` рисуется поверх всего приложения из `AppRoot`.
 
-**Трек не из Яндекса** (свой файл, LOCAL-08). Лайк, дизлайк и «открыть в браузере» ему не предлагаются: на экране плеера и в строке текущего трека в Library кнопки неактивны (`Track.isYandex`, браузер — `webUrl == null`), в листе действий три строки неактивны (`TrackActionRow(enabled = false)`, `DISABLED_ALPHA`), в уведомлении нет кнопок (`playback/NotificationButtons`). «Нравится ли» — `isYandex && id in likedIds`, «текущий ли» — по `TrackKey`: свой файл 42 не «лайкнут» треком Яндекса 42.
+**Трек не из Яндекса** (свой файл, LOCAL-08; трек Spotify, SPOT-19: дизлайка нет, лайка пока нет). Лайк и дизлайк ему не предлагаются: на экране плеера и в строке текущего трека в Library кнопки неактивны (`Track.isYandex`), в листе действий эти две строки неактивны (`TrackActionRow(enabled = false)`, `DISABLED_ALPHA`), в уведомлении нет кнопок (`playback/NotificationButtons`). «Открыть в браузере» (кнопка Library и строка листа) решает отдельно, по `webUrl != null`: у своего файла адреса нет, и кнопка неактивна, трек Spotify открывает `https://open.spotify.com/track/<id>`. «Нравится ли» — `isYandex && id in likedIds`, «текущий ли» — по `TrackKey`: свой файл 42 не «лайкнут» треком Яндекса 42.
 
 **Долгое нажатие на строку плейлиста.** Строка — `combinedClickable` без индикации (как `Chip`, отсюда `@OptIn(ExperimentalFoundationApi::class)` на `PlaylistScreen`): тап играет строку, долгое нажатие — `showTrackActions(track)`; `onLongClickLabel = playlist_actions`: без неё TalkBack предлагает безымянное долгое нажатие. Номер слева — свой `tap` внутри строки и получает касание первым: тап по номеру выделяет строку, долгое нажатие на номер лист не открывает. Подсказка `playlist_hold_hint` стоит отдельной строкой под «ВЫБРАНО n · m:ss / h:mm:ss». Оценка по ширине знака `HintStyle` (около 7,6 dp, не замер на устройстве): справа от счётчика, рядом с `playlist_tap_hint`, ей осталось бы 120–190 dp на телефоне 360–412 dp, то есть 2–3 строки; в своей строке ей нужно около 266 dp по-английски, 296 по-русски и 319 по-белорусски, и на 360 dp (328 dp внутри отступов) она помещается в одну.
 
@@ -315,7 +317,9 @@ key(trackId) { HorizontalSlider(value = fraction, onChange = …, onChangeFinish
 |---|---|---|
 | лайк | `player_like` с контуром сердца или `playlist_unlike` с залитым, по `liked` | `likeOrUnlikePicked()` |
 | дизлайк | `player_dislike_skip`, когда `isCurrent`, иначе `library_dislike` | `dislikePicked()` |
-| браузер | `playlist_open` | `Intent.ACTION_VIEW` с `track.webUrl`, как кнопка библиотеки; `Intent` нужен `Context`, поэтому живёт в листе |
+| браузер | `playlist_open` | `Intent.ACTION_VIEW` с `track.webUrl` (`TrackPages.kt`), как кнопка библиотеки; `Intent` нужен `Context`, поэтому живёт в листе |
+
+У каждой строки своё `enabled`: лайк и дизлайк — `track.isYandex`, браузер — `webUrl != null`.
 
 У строк `Role.Button`, подпись строки — её текст для TalkBack. Панель листа — `paneTitle = playlist_actions`, поэтому TalkBack объявляет лист, когда тот открывается. Каждое действие закрывает лист; «назад» — тоже (`BackHandler` в `AppRoot`).
 

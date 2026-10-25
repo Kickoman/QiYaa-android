@@ -30,4 +30,17 @@ class SourceLyricsTest {
         }
         assertEquals(listOf("yandex 42", "local 42"), asked)
     }
+
+    @Test
+    fun `a Spotify track's text is asked of no source, so only the lyrics service can give one`() {
+        val asked = ArrayList<String>()
+        val source = LyricsSource {
+            asked += it.id
+            LyricsAnswer.Instrumental
+        }
+        val lyrics = SourceLyrics(source, source)
+        val spotify = Track("6PCoZdjSPbRMehHviTrpB3", "S", source = TrackSource.SPOTIFY)
+        assertEquals(LyricsAnswer.Missing(), runBlocking { lyrics.lyrics(spotify) })
+        assertEquals(emptyList<String>(), asked)
+    }
 }
