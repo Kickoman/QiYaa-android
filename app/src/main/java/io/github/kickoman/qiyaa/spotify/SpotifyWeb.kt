@@ -56,7 +56,7 @@ class SpotifyWeb(
     private var bearerUntilMs = 0L
     private var bearerUsername = ""
     private val finishedFetches = AtomicInteger()
-    private var lastFetchFailure: SpotifyException? = null
+    private var lastFetchFailure: FetchFailure? = null
 
     private val mutableProblems = MutableSharedFlow<SpotifyProblem>(extraBufferCapacity = PROBLEM_BUFFER)
     val problems: SharedFlow<SpotifyProblem> = mutableProblems.asSharedFlow()
@@ -80,6 +80,12 @@ class SpotifyWeb(
 
     fun report(problem: SpotifyProblem) {
         mutableProblems.tryEmit(problem)
+    }
+
+    fun unreadable(method: String, label: String, detail: String): SpotifyContentException {
+        log("$method $label: $detail")
+        mutableProblems.tryEmit(SpotifyProblem.Content)
+        return SpotifyContentException("$method $label: $detail")
     }
 
     private suspend fun send(request: WebRequest, base: String): ByteArray {
@@ -134,8 +140,10 @@ class SpotifyWeb(
             val clientTokenDue = clientToken.isEmpty() || now >= clientTokenUntilMs
             val bearerDue = bearer.isEmpty() || now >= bearerUntilMs || bearerUsername != credentials.username
             if (clientTokenDue || bearerDue) {
-                val failedMeanwhile = lastFetchFailure.takeIf { finishedFetches.get() != seen }
-                if (failedMeanwhile != null) throw failedMeanwhile
+                val failedMeanwhile = lastFetchFailure?.takeIf {
+                    finishedFetches.get() != seen && it.username == credentials.username
+                }
+                if (failedMeanwhile != null) throw failedMeanwhile.failed
                 val failed =
                     try {
                         if (clientTokenDue) fetchClientToken()
@@ -144,7 +152,9 @@ class SpotifyWeb(
                     } catch (failed: SpotifyException) {
                         failed
                     }
-                lastFetchFailure = failed
+                lastFetchFailure = failed?.takeUnless { it is NotLoggedInException }?.let {
+                    FetchFailure(credentials.username, it)
+                }
                 finishedFetches.incrementAndGet()
                 if (failed != null) throw failed
             }
@@ -277,6 +287,8 @@ class SpotifyWeb(
         "${request.method} ${hostOf(base)}${request.label}"
 
     private fun hostOf(base: String): String = base.toHttpUrl().host
+
+    private class FetchFailure(val username: String, val failed: SpotifyException)
 
     companion object {
         const val PROTOBUF = "application/x-protobuf"
