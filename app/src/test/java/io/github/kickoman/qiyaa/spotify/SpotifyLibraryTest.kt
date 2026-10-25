@@ -458,7 +458,7 @@ class SpotifyLibraryTest {
                 SpotifyStack.protobuf(collectionPage(listOf(PLAYS)) + token)
             }
             val collection = expectFailure<SpotifyContentException> { library.likedTracks() }
-            assertEquals("POST /collection/v2/paging: a collection of more than 3 pages", collection.message)
+            assertEquals("POST /collection/v2/paging: collection set: more than 3 pages", collection.message)
             assertEquals(3, stack.requests(SpotifyLibrary.COLLECTION_PATH).size)
             stack.route("GET", ROOTLIST_PATH) {
                 SpotifyStack.protobuf(ProtoWriter().varint(2, Int.MAX_VALUE.toLong()).toByteArray())

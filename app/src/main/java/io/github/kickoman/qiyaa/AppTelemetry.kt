@@ -1,12 +1,10 @@
 package io.github.kickoman.qiyaa
 
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.app.ActivityManager
 import android.app.Application
 import android.content.res.Resources
 import android.os.Build
-import android.os.Bundle
 import android.os.Process
 import android.os.SystemClock
 import android.provider.Settings.Secure
@@ -52,8 +50,8 @@ class AppTelemetry(
     httpClient: OkHttpClient,
     endpoint: String,
     private val scope: CoroutineScope,
+    onScreen: Flow<Boolean>,
 ) {
-    private val onScreen = MutableStateFlow(false)
     private val playing = MutableStateFlow(false)
     private val online = MutableStateFlow(false)
     private val connectedApi = CompletableDeferred<YandexApi>()
@@ -74,7 +72,6 @@ class AppTelemetry(
         )
 
     fun start() {
-        application.registerActivityLifecycleCallbacks(ScreenCounter(onScreen))
         session.start()
     }
 
@@ -195,31 +192,6 @@ class AppTelemetry(
                 ProcessExit(it.processStateSummary?.toString(Charsets.UTF_8), it.reason, it.status)
             },
         )
-    }
-
-    private class ScreenCounter(private val onScreen: MutableStateFlow<Boolean>) :
-        Application.ActivityLifecycleCallbacks {
-        private var started = 0
-
-        override fun onActivityStarted(activity: Activity) {
-            started++
-            onScreen.value = true
-        }
-
-        override fun onActivityStopped(activity: Activity) {
-            started = (started - 1).coerceAtLeast(0)
-            if (!activity.isChangingConfigurations) onScreen.value = started > 0
-        }
-
-        override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
-
-        override fun onActivityResumed(activity: Activity) = Unit
-
-        override fun onActivityPaused(activity: Activity) = Unit
-
-        override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
-
-        override fun onActivityDestroyed(activity: Activity) = Unit
     }
 
     companion object {

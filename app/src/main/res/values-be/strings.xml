@@ -150,6 +150,7 @@
     <string name="queue_disliked_only">Не падабаецца</string>
     <string name="queue_wave_error">Памылка хвалі: %1$s</string>
     <string name="queue_wave_more_error">Хваля: %1$s</string>
+    <string name="queue_autoplay_error">Памылка аўтаплэю Spotify: %1$s</string>
     <string name="queue_search_error">Памылка пошуку: %1$s</string>
     <string name="queue_playback_error">Памылка прайгравання: %1$s</string>
     <string name="player_service_unavailable">Сэрвіс плэера недаступны</string>

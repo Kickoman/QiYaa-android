@@ -1,6 +1,6 @@
 # `spotify/` — Spotify
 
-Клиент Spotify, порт `src/spotify` десктопа (Kickoman/QiYaa) файл в файл; план — [Kickoman/QiYaa-android#113](https://github.com/Kickoman/QiYaa-android/issues/113). Поведение — `spec/player/spotify.md` (SPOT-01…22) и `spec/player/errors.md`, общие тест-векторы протокола — `spec/spotify/`. В пакете — ядро протокола `protocol/` и сеть с входом поверх него: соединение с точкой доступа (AP) и ключи файлов, токены client-token и login5, запросы к spclient и Pathfinder, вход кодом и в браузере, состояние входа, а над ними — каталог: выборы SPOT-07…12, метаданные, Pathfinder, станция и запрос автоплея (#113 PR 3b). Файл трека (PR 4) появится следующим шагом. Пакет ничего не показывает и не знает очереди: склейка с ней будет в корне, как `YandexLyrics.kt`. Сохранённый вход лежит в `data/SpotifyStore`, к `SavedCredentials` его подключает корневой `SpotifySavedCredentials`; в граф (`AppGraph`) пакет пока не включён — это PR 3c, экран входа — PR 5. Продолжение очереди (автоплей и станция как `queue.Continuation`) будет в корне (`SpotifyContinuations`, PR 3c), вид ошибки для статуса — уже в корне (`SpotifyErrorKinds`, «Вид ошибки для статуса» ниже).
+Клиент Spotify, порт `src/spotify` десктопа (Kickoman/QiYaa) файл в файл; план — [Kickoman/QiYaa-android#113](https://github.com/Kickoman/QiYaa-android/issues/113). Поведение — `spec/player/spotify.md` (SPOT-01…22) и `spec/player/errors.md`, общие тест-векторы протокола — `spec/spotify/`. В пакете — ядро протокола `protocol/` и сеть с входом поверх него: соединение с точкой доступа (AP) и ключи файлов, токены client-token и login5, запросы к spclient и Pathfinder, вход кодом и в браузере, состояние входа, а над ними — каталог: выборы SPOT-07…12, метаданные, Pathfinder, станция и запрос автоплея (#113 PR 3b). Файл трека (PR 4) появится следующим шагом. Пакет ничего не показывает и не знает очереди: склейка с ней в корне, как `YandexLyrics.kt`. Сохранённый вход лежит в `data/SpotifyStore`, к `SavedCredentials` его подключает корневой `SpotifySavedCredentials`. В графе (`AppGraph`, #113 PR 3c) — `spotifySession`, `spotifyWeb`, `spotifyLibrary` и `spotifyAccount` (сохранённый вход — при старте, SPOT-04), экран входа — PR 5. Продолжение очереди (автоплей и станция как `queue.Continuation`) — корневой `SpotifyContinuations` (верхний `README.md`, строка «корень»; правила очереди — `queue/README.md`, «Своё продолжение»), вид ошибки для статуса — корневой `SpotifyErrorKinds` («Вид ошибки для статуса» ниже).
 
 Чистая JVM; из приложения пакет может импортировать только `track`, а `protocol/` — без ввода-вывода и не импортирует из приложения ничего:
 
@@ -82,7 +82,7 @@ fun errorKindOf(failed: Throwable): ErrorKind   // первое звено це�
 | `LoginRefusedException` от AP (кроме `BadCredentials`: например, `PremiumAccountRequired` у ключа) | `SpotifyLoginRefused` |
 | остальное (`AuthorizationException`, исключения `yandex`, сеть Java) | как `ErrorKind.of` |
 
-Звать его будут `QueueController` и `ui/ListLoader` (классификатор в конструкторе, PR 3c) и `ui/SpotifyViewModel` (PR 5); вид отказа воспроизведения (`FailureKind`: `TRACK`, `SESSION`) у трека решает `playback/PlaybackFailures` (PR 4), а `ErrorKind` его статуса — по той же таблице плана. Тексты четырёх видов Spotify — в `ui/ErrorText.kt`, по переводам ПК (`qiyaa_ru.ts`, `qiyaa_be.ts`):
+Его получает конструктор `QueueController` из `AppGraph` (статусы источников, автоплея, радио и поиска); `ui/ListLoader` принимает классификатор параметром (по умолчанию `ErrorKind.of`), его передадут списки Spotify и `ui/SpotifyViewModel` (PR 5); вид отказа воспроизведения (`FailureKind`: `TRACK`, `SESSION`) у трека решает `playback/PlaybackFailures` (PR 4), а `ErrorKind` его статуса — по той же таблице плана. Тексты четырёх видов Spotify — в `ui/ErrorText.kt`, по переводам ПК (`qiyaa_ru.ts`, `qiyaa_be.ts`):
 
 | Вид | Строка | Текст ПК |
 |---|---|---|
@@ -104,7 +104,7 @@ class SpotifyIdentity(appVersion: String, deviceId: String, osRelease: String, a
 }
 ```
 
-Приложение представляется как ПК на Linux (решение 5 плана; абзац Android в «What the app tells Spotify» спеки). Параметры — простые строки, их подаст `AppGraph` (PR 3b): `System.getProperty("os.version")` (версия ядра), `Build.VERSION.RELEASE`, `Build.SUPPORTED_ABIS[0]`, `BuildConfig.VERSION_NAME` и device id из `data/SpotifyStore.deviceId(SpotifyIdentity::newDeviceId)`.
+Приложение представляется как ПК на Linux (решение 5 плана; абзац Android в «What the app tells Spotify» спеки). Параметры — простые строки, их подаёт `AppGraph`: `System.getProperty("os.version")` (версия ядра), `Build.VERSION.RELEASE`, `Build.SUPPORTED_ABIS[0]`, `BuildConfig.VERSION_NAME` и device id из `data/SpotifyStore.deviceId(SpotifyIdentity::newDeviceId)`.
 
 | ABI | Платформа AP | CPU входа | `hardware` client-token |
 |---|---|---|---|
@@ -132,7 +132,7 @@ class SpotifySession(
     client: OkHttpClient,                          // AppGraph.httpClient; для apresolve — копия с callTimeout 10 с
     identity: SpotifyIdentity,
     network: Flow<Boolean>,                        // NetworkMonitor.available
-    inUse: Flow<Boolean>,                          // приложение на экране или играет
+    inUse: Flow<Boolean>,                          // приложение на экране или играет: AppGraph — ScreenPresence.onScreen || QueueActivity.PlayingChanged
     scope: CoroutineScope,                         // applicationScope
     endpoints: Endpoints = Endpoints(),
     timing: SessionTiming = SessionTiming(),
@@ -358,7 +358,7 @@ data class ContextPage(val tracks: List<Track>, val next: String)               
 | SPOT-11 `search(text)` | Pathfinder `searchDesktop`: `searchTerm` — обрезанный текст, `offset` 0, `limit` 50, `numberOfTopResults` 5, пять `include…` — `false`. Пустой текст — без запроса, `Tracks(emptyList())` | `CatalogJson.found` |
 | `searchPick(text)` | `search`, потом `artistTopTracks` или `albumTracks` лучшего, иначе `tracks` найденных | `contextUri` — URI лучшего или первого найденного трека (`catalog.cpp:101–115`), `""` без треков. Пустые `tracks` (или ни одного доступного) — «ничего не найдено» (SRC-12): это решает вызывающий |
 | SPOT-12 `station(trackUri)` | `GET /context-resolve/v1/spotify:station:track:<id>`, `Accept: application/json`, без `product`, `country`, `salt` | первая страница контекста, её `next` |
-| SPOT-20 `autoplay(context, recent)` | `POST /context-resolve/v1/autoplay`, тело — protobuf `{1 context_uri, 2 recent_track_uri…}` (`CatalogMessages.autoplayRequest`, вектор `messages.json`), `Content-Type: application/x-protobuf`, `Accept: application/json`, без `product`, `country`, `salt` | то же. `recent` отбирает вызывающий: начавшиеся треки Spotify, старые первыми, до 50 (PR 3c) |
+| SPOT-20 `autoplay(context, recent)` | `POST /context-resolve/v1/autoplay`, тело — protobuf `{1 context_uri, 2 recent_track_uri…}` (`CatalogMessages.autoplayRequest`, вектор `messages.json`), `Content-Type: application/x-protobuf`, `Accept: application/json`, без `product`, `country`, `salt` | то же. `recent` отбирает вызывающий: начавшиеся треки Spotify, старые первыми, до 50 (корневой `SpotifyContinuations.recentUris`) |
 | `nextPage(url)` | `GET` на spclient по пути `url` без `hm:/` (`hm://radio-apollo/v5/…` → `/radio-apollo/v5/…`), с его запросом как есть, без `product`, `country`, `salt` | страница контекста. Не `hm://` — `SpotifyContentException` без запроса и без `Content`, как у ПК |
 
 `label` запросов (лог и исключения, «Лог» ниже) — путь без запроса, кроме двух: `/playlist/v2/user/{username}/rootlist` и у `nextPage` — путь без последнего сегмента и `/{page}`.
@@ -686,7 +686,7 @@ object CatalogMessages {
 
 ## Not here
 
-- Сборка в `AppGraph` (`network` из `NetworkMonitor`, `inUse`, device id, `SpotifySavedCredentials`, `SpotifyLibrary`), продолжение очереди — автоплей и станция как `queue.Continuation` (корневой `SpotifyContinuations`), классификатор ошибок в `QueueController` и `ListLoader` — #113 PR 3c. Заголовки и статусы выборов — очередь и `ui` (PR 3c, PR 5).
+- Продолжение очереди — автоплей и станция как `queue.Continuation`, поиск для очереди — корневой `SpotifyContinuations`; их правила — `queue/README.md`, «Своё продолжение». Заголовки выборов и вызовы `loadSource`, `playContinuation`, `search` — `ui` (PR 5), статусы — очередь.
 - Файл трека: `SpotifyFiles`, `SpotifyStream`, `SpotifyDataSource` в `playback` — PR 4.
 - Экран входа, открытие браузера, тексты страницы `BrowserLogin.Pages` — `ui`, PR 5; коды TEL-18 — корневой `TelemetryCodes`, PR 5.
 - Ключи хранения входа — `data/README.md` (`SpotifyStore`).

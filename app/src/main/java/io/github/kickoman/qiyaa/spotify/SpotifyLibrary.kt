@@ -200,7 +200,7 @@ class SpotifyLibrary(
             if (page.last) return uris
             token = page.nextPageToken
         }
-        throw web.unreadable("POST", COLLECTION_PATH, "a $set of more than $maxPages pages")
+        throw web.unreadable("POST", COLLECTION_PATH, "$set set: more than $maxPages pages")
     }
 
     private suspend fun listItems(path: String, label: String): List<ListItem> {

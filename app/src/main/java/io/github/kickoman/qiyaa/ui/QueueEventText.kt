@@ -45,6 +45,7 @@ private fun Stage.stringId(): Int = when (this) {
     Stage.SOURCE, Stage.LIKE -> R.string.error_generic
     Stage.WAVE -> R.string.queue_wave_error
     Stage.WAVE_MORE -> R.string.queue_wave_more_error
+    Stage.AUTOPLAY -> R.string.queue_autoplay_error
     Stage.SEARCH -> R.string.queue_search_error
     Stage.PLAYBACK -> R.string.queue_playback_error
 }

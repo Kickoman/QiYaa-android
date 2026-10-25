@@ -48,6 +48,21 @@ class ListLoaderTest {
     }
 
     @Test
+    fun `a failed list's kind comes from the classifier it was given`() = runTest {
+        val loader =
+            ListLoader<String>(
+                backgroundScope,
+                StandardTestDispatcher(testScheduler),
+                fetch = { throw IOException("no login") },
+                logFailure = {},
+                errorKindOf = { ErrorKind.SpotifyLoggedOut },
+            )
+        loader.load()
+        runCurrent()
+        assertEquals(ListState.Failed(ErrorKind.SpotifyLoggedOut), loader.state.value)
+    }
+
+    @Test
     fun `a loaded list is not fetched again unless forced`() = runTest {
         var calls = 0
         val loader = loader(this) { listOf("v${++calls}") }

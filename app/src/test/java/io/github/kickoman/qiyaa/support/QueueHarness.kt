@@ -1,8 +1,11 @@
 package io.github.kickoman.qiyaa.support
 
+import io.github.kickoman.qiyaa.queue.Continuation
+import io.github.kickoman.qiyaa.queue.ContinuationKey
 import io.github.kickoman.qiyaa.queue.QueueController
 import io.github.kickoman.qiyaa.queue.QueueEvent
 import io.github.kickoman.qiyaa.track.Track
+import io.github.kickoman.qiyaa.yandex.ErrorKind
 import io.github.kickoman.qiyaa.yandex.WaveBatch
 import kotlin.random.Random
 import kotlinx.coroutines.CompletableDeferred
@@ -21,6 +24,8 @@ class QueueHarness(
     val store: FakeQueueStore = FakeQueueStore(),
     var continueWithVibe: Boolean = false,
     random: Random = Random(0),
+    errorKindOf: (Throwable) -> ErrorKind = ErrorKind::of,
+    continuationOf: (ContinuationKey) -> Continuation? = { null },
 ) {
     private var playIds = 0
     val source = FakeMusicSource()
@@ -38,6 +43,8 @@ class QueueHarness(
             logFailure = { stage, failed -> logged += "$stage ${failed.message}" },
             continueWithVibeByDefault = { continueWithVibe },
             random = random,
+            errorKindOf = errorKindOf,
+            continuationOf = continuationOf,
         )
     val engine = FakeEngine(controller).also { if (attached) controller.attach(it) }
     val events = ArrayList<QueueEvent>()
