@@ -37,11 +37,9 @@ object MediaItems {
 
     fun mediaIdOf(track: Track): String = prefixOf(track.source) + track.id
 
-    fun sourceOf(mediaId: String): TrackSource = when {
-        mediaId.startsWith(LOCAL_PREFIX) -> TrackSource.LOCAL
-        mediaId.startsWith(SPOTIFY_PREFIX) -> TrackSource.SPOTIFY
-        else -> TrackSource.YANDEX
-    }
+    fun sourceOf(mediaId: String): TrackSource = TrackSource.entries.firstOrNull {
+        prefixOf(it).isNotEmpty() && mediaId.startsWith(prefixOf(it))
+    } ?: TrackSource.YANDEX
 
     fun idOf(mediaId: String): String = mediaId.removePrefix(prefixOf(sourceOf(mediaId)))
 

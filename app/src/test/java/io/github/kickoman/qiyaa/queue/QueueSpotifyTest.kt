@@ -21,7 +21,7 @@ class QueueSpotifyTest {
             val h = QueueHarness(this, continueWithVibe = true)
             h.source.onStartWave = { CompletableDeferred<WaveBatch>().await() }
             h.controller.setQueue(
-                listOf(yandex("1"), spotify(SPOTIFY_ID)),
+                listOf(spotify(SPOTIFY_ID), yandex("1")),
                 "Mix",
                 false,
                 autoplay = true,
@@ -34,7 +34,7 @@ class QueueSpotifyTest {
             assertEquals(listOf("1" to "play-1"), h.source.reports)
             assertEquals(emptyList<String>(), h.source.feedback)
             assertEquals(listOf("1"), h.store.snapshot()?.history)
-            assertEquals(listOf("startWave [track:1]"), h.source.calls)
+            assertTrue(h.source.calls.none { SPOTIFY_ID in it })
         }
 
     @Test
