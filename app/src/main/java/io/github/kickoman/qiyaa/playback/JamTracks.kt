@@ -24,12 +24,12 @@ object JamTracks {
     /** null for a track the protocol cannot carry: not Yandex's, an id of another shape or no title. */
     fun toJam(track: Track): JamTrack? = when (track.source) {
         TrackSource.YANDEX -> catalogTrack(track)
-        TrackSource.LOCAL -> null
+        TrackSource.LOCAL, TrackSource.SPOTIFY -> null
     }
 
     fun baseTrack(track: Track, hostSecret: String): JamTrack? = when (track.source) {
         TrackSource.YANDEX -> toJam(track)
-        TrackSource.LOCAL -> hostTrack(track, hostSecret)
+        TrackSource.LOCAL, TrackSource.SPOTIFY -> hostTrack(track, hostSecret)
     }
 
     private fun hostTrack(track: Track, hostSecret: String): JamTrack? =

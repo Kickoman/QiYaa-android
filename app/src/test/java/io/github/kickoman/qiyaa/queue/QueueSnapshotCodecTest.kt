@@ -76,6 +76,31 @@ class QueueSnapshotCodecTest {
     }
 
     @Test
+    fun `a Spotify track survives encoding and decoding with its source written`() {
+        val spotify =
+            Track(
+                "6PCoZdjSPbRMehHviTrpB3",
+                "Песня",
+                listOf("Гурт"),
+                "2noRn2Aes5aoNVsU6iWThc",
+                180_000,
+                true,
+                "https://i.scdn.co/image/ab67616d00004851e8b066f70c206551210d902b",
+                TrackSource.SPOTIFY,
+            )
+        val mixed = snapshot.copy(tracks = snapshot.tracks + spotify, batchIds = snapshot.batchIds + "")
+        val text = QueueSnapshotCodec.encode(mixed)
+        assertEquals(1, Regex("\"source\"").findAll(text).count())
+        assertTrue(text, "\"id\":\"6PCoZdjSPbRMehHviTrpB3\"" in text && "\"source\":\"spotify\"" in text)
+        assertEquals(mixed, QueueSnapshotCodec.decode(text))
+    }
+
+    @Test
+    fun `a queue of Yandex tracks is written byte for byte as before Spotify came`() {
+        assertEquals(YANDEX_QUEUE, QueueSnapshotCodec.encode(snapshot))
+    }
+
+    @Test
     fun `CONT-12 a local track's bitrate and a queue with no wave from history survive, written only then`() {
         val local = Track("42", "Свой файл", source = TrackSource.LOCAL, bitrateKbps = 1411)
         val files = snapshot.copy(
@@ -95,7 +120,7 @@ class QueueSnapshotCodecTest {
     fun `a source this build does not know gives no snapshot, not a Yandex track`() {
         val local = Track("42", "Свой файл", source = TrackSource.LOCAL)
         val text = QueueSnapshotCodec.encode(snapshot.copy(tracks = listOf(local), batchIds = listOf("")))
-        assertNull(QueueSnapshotCodec.decode(text.replace("\"source\":\"local\"", "\"source\":\"spotify\"")))
+        assertNull(QueueSnapshotCodec.decode(text.replace("\"source\":\"local\"", "\"source\":\"future\"")))
     }
 
     @Test
@@ -312,6 +337,14 @@ class QueueSnapshotCodecTest {
     }
 
     private companion object {
+        const val YANDEX_QUEUE =
+            """{"version":1,"title":"Моя волна","sourceId":"user:onyourwave","isWave":true,""" +
+                """"waveSessionId":"S1","waveStationId":"user:onyourwave","index":1,"positionMs":42000,""" +
+                """"shuffle":false,"repeat":true,"tracks":[""" +
+                """{"id":"1","title":"Кукушка","artists":["Кино"],"albumId":"4053","durationMs":398000,""" +
+                """"coverUrl":"https://avatars.yandex.net/x/400x400","batchId":"B1"},""" +
+                """{"id":"2","title":"Без обложки"}]}"""
+
         const val VERSION_1_WAVE =
             """{"version":1,"title":"Моя волна","sourceId":"user:onyourwave","isWave":true,""" +
                 """"waveSessionId":"S1","waveStationId":"user:onyourwave","index":2,""" +

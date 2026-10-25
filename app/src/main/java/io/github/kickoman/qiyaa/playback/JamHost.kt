@@ -376,7 +376,7 @@ class JamHost(
 
     private fun isYandex(track: Track): Boolean = when (track.source) {
         TrackSource.YANDEX -> true
-        TrackSource.LOCAL -> false
+        TrackSource.LOCAL, TrackSource.SPOTIFY -> false
     }
 
     private fun request(build: (String) -> ClientMessage): Boolean = connected && client.send(build(newId()))

@@ -163,6 +163,43 @@ class JamTracksTest {
     }
 
     @Test
+    fun `HOST-20 ROOM-66 a Spotify track, whose id passes the catalog's check, is never a catalog track`() {
+        assertNull(JamTracks.toJam(Track(id = SPOTIFY_ID, title = "Песня", source = TrackSource.SPOTIFY)))
+    }
+
+    @Test
+    fun `HOST-37 a Spotify base track is the host's own track, never its Spotify id or a cover`() {
+        val spotify =
+            Track(
+                id = SPOTIFY_ID,
+                title = "Песня",
+                artists = listOf("Гурт"),
+                albumId = "2noRn2Aes5aoNVsU6iWThc",
+                durationMs = 180_000,
+                coverUrl = "https://i.scdn.co/image/ab67616d00004851e8b066f70c206551210d902b",
+                source = TrackSource.SPOTIFY,
+            )
+        val track = JamTracks.baseTrack(spotify, HOST_SECRET)
+        assertEquals(
+            JamTrack(
+                id = "e30eec89bbabe228",
+                title = "Песня",
+                artists = listOf("Гурт"),
+                durationMs = 180_000,
+                source = JamTrackSource.HOST,
+            ),
+            track,
+        )
+        val playing = Playing(NowPlayingSource.WAVE, track = track, positionMs = 0, paused = false)
+        assertTrue(JamCodec.decodeClient(JamCodec.encode(playing)) is Decoded.Message)
+        val sameId = Track(id = "42", title = "A")
+        val ids = listOf(TrackSource.SPOTIFY, TrackSource.LOCAL).map {
+            JamTracks.baseTrack(sameId.copy(source = it), HOST_SECRET)?.id
+        }
+        assertEquals(listOf("292039a693c36956", "654c01b48d75abaf"), ids)
+    }
+
+    @Test
     fun `a cover URL without a size template gives no cover`() {
         assertEquals(template, JamTracks.coverUri("https://" + template.replace("%%", "400x400")))
         assertNull(JamTracks.coverUri("https://example.org/cover.jpg"))
@@ -172,5 +209,6 @@ class JamTracksTest {
     private companion object {
         const val HOST_SECRET = "R0CuY0ewFywBJU_1W65a_1GZ9ERuf21kPUAYWz9HUUU"
         const val OTHER_SECRET = "Kq8Vb2nT5xWm9Lp3Rz7Yc1Hd6Gf4Js0Ne8Ua2Io5Pk3"
+        const val SPOTIFY_ID = "6PCoZdjSPbRMehHviTrpB3"
     }
 }

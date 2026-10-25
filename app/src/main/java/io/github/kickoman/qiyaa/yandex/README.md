@@ -14,7 +14,7 @@ grep -rlnE '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiy
 | `ErrorKind.kt` | `ErrorKind` — вид ошибки для пользователя по типу исключения |
 | `RequestFailure.kt` | `RequestFailure` — неудачный запрос для телеметрии: `NETWORK`, `HTTP` со статусом, `CONTENT` |
 | `JsonFields.kt` | мягкий доступ к JSON: `objectOrEmpty`, `arrayOrEmpty`, `string`, `int`, `long`, `boolean`, `scalarString`, `idString`, `parseJsonObjectOrNull` |
-| `Models.kt` | `Account`, `Track.webUrl` (страница трека в Яндекс Музыке; `null` у трека не из Яндекса; сам `Track` — `track/`), `NamedRef`, `PlaylistRef`, `Station`, `WheelWave`, `WaveBatch`, `SearchResult`, `DownloadVariant`, `DownloadInfo`, `ResolvedUrl`, `WaveEvent`, `WaveContext` |
+| `Models.kt` | `Account` (сам `Track` — `track/`, его страница в браузере — `ui/TrackPages.kt`), `NamedRef`, `PlaylistRef`, `Station`, `WheelWave`, `WaveBatch`, `SearchResult`, `DownloadVariant`, `DownloadInfo`, `ResolvedUrl`, `WaveEvent`, `WaveContext` |
 | `YandexApi.kt` | `YandexApi` — транспорт (OkHttp), конверт, `accountStatus`, `tracks`, `lyricsText`, `resolveTrackUrl`, `reportPlayStarted` |
 | `TrackLyrics.kt` | `TrackLyrics` — текст трека из ответа `/tracks/{id}/supplement` (LYR-02) |
 | `TrackParsing.kt` | `TrackParsing` — `JsonElement` → `Track` |

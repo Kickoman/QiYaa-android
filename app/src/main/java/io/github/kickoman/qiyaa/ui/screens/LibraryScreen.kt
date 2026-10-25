@@ -74,8 +74,8 @@ import io.github.kickoman.qiyaa.ui.theme.LabelStyle
 import io.github.kickoman.qiyaa.ui.theme.Qi
 import io.github.kickoman.qiyaa.ui.theme.mono
 import io.github.kickoman.qiyaa.ui.theme.sans
+import io.github.kickoman.qiyaa.ui.webUrl
 import io.github.kickoman.qiyaa.yandex.signedIn
-import io.github.kickoman.qiyaa.yandex.webUrl
 
 @Composable
 fun LibraryScreen(

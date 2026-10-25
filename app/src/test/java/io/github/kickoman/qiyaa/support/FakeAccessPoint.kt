@@ -225,7 +225,7 @@ class FakeAccessPointServer : Closeable {
     fun awaitConnections(count: Int) = await { accepted >= count }
 
     fun dropConnections() {
-        while (true) closeQuietly(open.poll()?.socket ?: return)
+        repeat(open.size) { closeQuietly(open.poll()?.socket ?: return) }
     }
 
     fun sendBrokenPacket() {
