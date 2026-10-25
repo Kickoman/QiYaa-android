@@ -39,7 +39,7 @@ grep -nE '\\\\[sSpPdDwWbB]' app/src/main/java/io/github/kickoman/qiyaa/jam/{JamC
   сыграть только хозяин, например свой файл десктопа или телефона (протокол, «Tracks»; HOST-37, LISTEN-14).
   `null` при кодировании пропадает (`explicitNulls = false`), так что трек каталога уходит без ключа
   `source`, как и раньше, и старый сервер его не видит. `JamTrack.isCatalog` — не `HOST`. Хозяин на
-  Android шлёт `host`-трек только для трека базы не из Яндекса, то есть своего файла
+  Android шлёт `host`-трек только для трека базы не из Яндекса, то есть своего файла или трека Spotify
   (`playback/JamTracks.baseTrack`, HOST-37); трек каталога `playback/JamTracks.toJam` строит без `source`.
   Гость в приложении показывает `host`-треки без обложки и ссылки (GUEST-14) и сам не добавляет
   (`JamGuest.add`, ROOM-66).

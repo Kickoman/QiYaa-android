@@ -343,7 +343,7 @@ class QueueController(
         val entry = currentEntry()?.takeIf { it.track.key == track.key }
         val yandex = (entry?.track ?: track).isYandex
         if (jam == null && yandex) reportPlay(track)
-        val context = entry?.takeIf(::learnsFrom)?.wave
+        val context = entry?.takeIf { yandex && learnsFrom(it) }?.wave
         openWaveContext = context
         if (context != null) sendFeedback(context, WaveEvent.TRACK_STARTED, track, 0.0)
         if (yandex && entry != null && entry.part != EntryPart.CONTINUATION) history.note(track.id)

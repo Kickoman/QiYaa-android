@@ -3,6 +3,7 @@ package io.github.kickoman.qiyaa.track
 enum class TrackSource(val key: String) {
     YANDEX("yandex"),
     LOCAL("local"),
+    SPOTIFY("spotify"),
     ;
 
     companion object {
@@ -27,7 +28,7 @@ data class Track(
 
     val isYandex: Boolean get() = when (source) {
         TrackSource.YANDEX -> true
-        TrackSource.LOCAL -> false
+        TrackSource.LOCAL, TrackSource.SPOTIFY -> false
     }
 
     val artistLine: String get() = artists.joinToString(", ")

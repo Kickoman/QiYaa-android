@@ -550,6 +550,64 @@ class JamHostTest {
         }
 
     @Test
+    fun `HOST-37 a Spotify base track goes out as the host's own track, never with its Spotify id`() =
+        runTest {
+            val h = Harness(this)
+            val spotify = spotify(SPOTIFY_ID, "Песня")
+            h.queue.controller.setQueue(listOf(spotify), "Spotify", false, autoplay = true, sourceId = null)
+            h.created()
+            val sent = h.sent().last() as Playing
+            assertEquals(
+                Playing(NowPlayingSource.WAVE, track = hostTrack(spotify), positionMs = 0, paused = true),
+                sent,
+            )
+            assertEquals(JamTrackSource.HOST, sent.track?.source)
+            assertTrue(sent.track?.id != SPOTIFY_ID)
+            assertTrue(JamCodec.decodeClient(JamCodec.encode(sent)) is Decoded.Message)
+        }
+
+    @Test
+    fun `HOST-20 ROOM-66 a Spotify track is not added or played next, even with a guest's item of its id`() =
+        runTest {
+            val h = Harness(this)
+            h.created()
+            h.state(1, item("i1", SPOTIFY_ID))
+            val sentBefore = h.sent().size
+            val spotify = spotify(SPOTIFY_ID, "Песня")
+            assertFalse(h.host.add(spotify))
+            assertFalse(h.host.playNext(spotify))
+            assertEquals(sentBefore, h.sent().size)
+        }
+
+    @Test
+    fun `LISTEN-14 sharing on, a Spotify current track carries no links, a Spotify next one no next link`() =
+        runTest {
+            val h = Harness(this)
+            h.created()
+            h.config = h.config.copy(shareAudio = true)
+            val file = { name: String ->
+                "https://s1.storage.yandex.net/get-mp3/0123456789abcdef0123456789abcdef/65cd937b03427/$name.mp3"
+            }
+            h.signed["11"] = file("a")
+            h.signed["22"] = file("b")
+            h.signed[SPOTIFY_ID] = file("c")
+            val yandex = Track(id = "11", title = "A")
+            val yandexNext = Track(id = "22", title = "B")
+            val spotify = spotify(SPOTIFY_ID, "Песня")
+            fun report(track: Track, next: Track): Playing {
+                h.host.onPlayback(
+                    JamPlayback(JamPlayback.Kind.BASE, null, track, 0, paused = false, nextTrack = next),
+                )
+                return h.sent().last() as Playing
+            }
+            val spotifyFirst = report(spotify, yandexNext)
+            assertEquals(null to null, spotifyFirst.listenUrl to spotifyFirst.listenNextUrl)
+            assertTrue(JamCodec.decodeClient(JamCodec.encode(spotifyFirst)) is Decoded.Message)
+            val yandexFirst = report(yandex, spotify)
+            assertEquals(file("a") to null, yandexFirst.listenUrl to yandexFirst.listenNextUrl)
+        }
+
+    @Test
     fun `the connection lives with the playback service`() = runTest {
         val h = Harness(this)
         h.created()
@@ -607,6 +665,9 @@ class JamHostTest {
         }
 
     private fun hostTrack(track: Track) = JamTracks.baseTrack(track, HOST_SECRET)
+
+    private fun spotify(id: String, title: String) =
+        Track(id = id, title = title, artists = listOf("Гурт"), source = TrackSource.SPOTIFY)
 
     private fun base(track: Track) =
         Playing(NowPlayingSource.WAVE, track = JamTracks.toJam(track), positionMs = 0, paused = true)
@@ -696,6 +757,7 @@ class JamHostTest {
         const val HOST_SECRET = "R0CuY0ewFywBJU_1W65a_1GZ9ERuf21kPUAYWz9HUUU"
         const val JOIN_SECRET = "WDkyFgMr5iV3hKwManPvsg"
         const val JOIN_URL = "https://jam.example.org/j/$ROOM#$JOIN_SECRET"
+        const val SPOTIFY_ID = "6PCoZdjSPbRMehHviTrpB3"
 
         private val examples = File(Spec.root, "jam/protocol/examples")
 

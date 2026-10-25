@@ -276,13 +276,11 @@ private fun LyricsFooter(view: LyricsView, onCover: () -> Unit) {
     val colors = Qi.colors
     val from =
         when (view.from) {
-            LyricsFrom.CATALOG -> if (view.track?.source ==
-                TrackSource.LOCAL
-            ) {
-                null
-            } else {
-                R.string.lyrics_from_yandex
-            }
+            LyricsFrom.CATALOG ->
+                when (view.track?.source) {
+                    TrackSource.YANDEX, null -> R.string.lyrics_from_yandex
+                    TrackSource.LOCAL, TrackSource.SPOTIFY -> null
+                }
 
             LyricsFrom.LRC_FILE -> R.string.lyrics_from_lrc
 

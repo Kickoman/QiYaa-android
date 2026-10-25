@@ -20,6 +20,8 @@ object MediaItems {
     private const val EXTRA_BITRATE_KBPS = "kbps"
     private const val LOCAL_PREFIX = "local:"
     private const val LOCAL_URI = "content://media/external/audio/media/"
+    private const val SPOTIFY_PREFIX = "spotify:"
+    private const val SPOTIFY_URI = "spotify:track:"
 
     fun uriText(trackId: String, revision: Int = 0): String {
         require(revision >= 0) { "The revision of track $trackId is $revision" }
@@ -30,17 +32,22 @@ object MediaItems {
     fun uriTextFor(track: Track): String = when (track.source) {
         TrackSource.YANDEX -> uriText(track.id)
         TrackSource.LOCAL -> LOCAL_URI + track.id
+        TrackSource.SPOTIFY -> SPOTIFY_URI + track.id
     }
 
-    fun mediaIdOf(track: Track): String = when (track.source) {
-        TrackSource.YANDEX -> track.id
-        TrackSource.LOCAL -> LOCAL_PREFIX + track.id
+    fun mediaIdOf(track: Track): String = prefixOf(track.source) + track.id
+
+    fun sourceOf(mediaId: String): TrackSource = TrackSource.entries.firstOrNull {
+        prefixOf(it).isNotEmpty() && mediaId.startsWith(prefixOf(it))
+    } ?: TrackSource.YANDEX
+
+    fun idOf(mediaId: String): String = mediaId.removePrefix(prefixOf(sourceOf(mediaId)))
+
+    private fun prefixOf(source: TrackSource): String = when (source) {
+        TrackSource.YANDEX -> ""
+        TrackSource.LOCAL -> LOCAL_PREFIX
+        TrackSource.SPOTIFY -> SPOTIFY_PREFIX
     }
-
-    fun sourceOf(mediaId: String): TrackSource =
-        if (mediaId.startsWith(LOCAL_PREFIX)) TrackSource.LOCAL else TrackSource.YANDEX
-
-    fun idOf(mediaId: String): String = mediaId.removePrefix(LOCAL_PREFIX)
 
     fun revised(item: MediaItem, trackId: String, revision: Int): MediaItem =
         item.buildUpon().setUri(uriText(trackId, revision)).build()

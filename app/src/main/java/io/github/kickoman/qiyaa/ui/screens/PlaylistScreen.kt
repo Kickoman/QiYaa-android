@@ -59,7 +59,7 @@ import io.github.kickoman.qiyaa.ui.theme.Qi
 import io.github.kickoman.qiyaa.ui.theme.ReadoutStyle
 import io.github.kickoman.qiyaa.ui.theme.mono
 import io.github.kickoman.qiyaa.ui.theme.sans
-import io.github.kickoman.qiyaa.yandex.webUrl
+import io.github.kickoman.qiyaa.ui.webUrl
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -312,10 +312,10 @@ fun TrackActionsSheet(actions: TrackActions, viewModel: PlayerViewModel) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            val yandex = track.isYandex
+            val likeable = track.isYandex
             TrackActionRow(
                 stringResource(if (actions.liked) R.string.playlist_unlike else R.string.player_like),
-                enabled = yandex,
+                enabled = likeable,
                 onClick = viewModel::likeOrUnlikePicked,
             ) {
                 if (actions.liked) {
@@ -328,17 +328,18 @@ fun TrackActionsSheet(actions: TrackActions, viewModel: PlayerViewModel) {
                 if (actions.isCurrent) R.string.player_dislike_skip else R.string.library_dislike
             TrackActionRow(
                 stringResource(dislikeText),
-                enabled = yandex,
+                enabled = likeable,
                 onClick = viewModel::dislikePicked,
             ) {
                 PathIcon(IconPaths.THUMB_DOWN, 22.dp, colors.muted, strokeWidth = IconPaths.OUTLINE)
             }
+            val webUrl = track.webUrl
             TrackActionRow(
                 stringResource(R.string.playlist_open),
-                enabled = yandex,
+                enabled = webUrl != null,
                 onClick = {
                     viewModel.closeTrackActions()
-                    track.webUrl?.let { url ->
+                    webUrl?.let { url ->
                         context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
                     }
                 },
