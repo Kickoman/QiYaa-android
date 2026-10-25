@@ -72,6 +72,9 @@ class LoadRetriesTest {
         LoginRefusedException(11, SpotifySession.ACCESS_POINT),
         LoginRefusedException(3, SpotifyWeb.LOGIN5_PATH),
         LoginRefusedException(1, SpotifyWeb.LOGIN5_PATH),
+        LoginRefusedException(Login5Reply.Error.TIMEOUT, SpotifyWeb.LOGIN5_PATH),
+        LoginRefusedException(Login5Reply.Error.TOO_MANY_ATTEMPTS, SpotifyWeb.LOGIN5_PATH),
+        LoginRefusedException(Login5Reply.Error.TRY_AGAIN_LATER, SpotifyWeb.LOGIN5_PATH),
         CdnStatusException(403, "audio-fa.scdn.co/audio/03"),
         CdnStatusException(503, "audio-ak.spotifycdn.com/audio/03"),
         NoPlayableFileException(TRACK),
@@ -82,9 +85,6 @@ class LoadRetriesTest {
     private fun retriedFailures(): List<IOException> = listOf(
         SpotifyNetworkException("an audio key", SocketTimeoutException("no access point login in 20000 ms")),
         SpotifyHttpException(503, "POST", "/extended-metadata/v0/extended-metadata"),
-        LoginRefusedException(Login5Reply.Error.TIMEOUT, SpotifyWeb.LOGIN5_PATH),
-        LoginRefusedException(Login5Reply.Error.TOO_MANY_ATTEMPTS, SpotifyWeb.LOGIN5_PATH),
-        LoginRefusedException(Login5Reply.Error.TRY_AGAIN_LATER, SpotifyWeb.LOGIN5_PATH),
         NetworkException("GET", "/tracks/1/download-info", IOException("offline")),
         HttpException(404, "GET", "/tracks/1/download-info", "Not found"),
         HttpDataSource.InvalidResponseCodeException(

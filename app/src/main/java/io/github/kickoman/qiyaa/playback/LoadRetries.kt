@@ -24,7 +24,7 @@ class LoadRetries : DefaultLoadErrorHandlingPolicy() {
         private fun isFinalCause(failure: Throwable): Boolean = failure is KeyRefusedException ||
             failure is KeyFailedException ||
             failure is CdnStatusException ||
-            (failure is LoginRefusedException && !failure.isTransient) ||
+            failure is LoginRefusedException ||
             failure is NoPlayableFileException ||
             failure is NotLoggedInException ||
             failure is SpotifyContentException

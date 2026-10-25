@@ -60,6 +60,7 @@ class SpotifyStream(
     private var failures = 0
     private var allExpired = true
     private var relinked = false
+    private var networkFailure: Pair<String, IOException>? = null
 
     val oggLength: Long get() = if (fileLength == UNKNOWN) UNKNOWN else fileLength - AudioFile.HEADER_SIZE
 
@@ -102,7 +103,7 @@ class SpotifyStream(
                     guard.during(current.call) { current.read(buffer, offset, wanted) }
                 } catch (failed: IOException) {
                     if (canceled(current.call)) throw failed
-                    linkFailed(LinkFailure.Network(failed))
+                    if (current.delivered > 0) brokeOff(failed) else linkFailed(LinkFailure.Network(failed))
                     continue
                 }
             if (count == END) {
@@ -159,6 +160,7 @@ class SpotifyStream(
         val label = labelOf(links[linkIndex])
         log("GET $label: ${describe(failure)}")
         failures++
+        if (failure is LinkFailure.Network) networkFailure = label to failure.cause
         if (failure !is LinkFailure.Status || failure.code !in EXPIRED) allExpired = false
         linkIndex = (linkIndex + 1) % links.size
         if (failures < links.size) return
@@ -176,17 +178,29 @@ class SpotifyStream(
         throw when (failure) {
             is LinkFailure.Network -> SpotifyNetworkException("GET $label", failure.cause)
 
-            is LinkFailure.Status -> {
-                report(SpotifyProblem.Http(failure.code))
-                CdnStatusException(failure.code, label)
-            }
+            is LinkFailure.Status ->
+                networkFailure?.let { (where, cause) -> SpotifyNetworkException("GET $where", cause) }
+                    ?: statusFailure(failure.code, label)
         }
+    }
+
+    private fun statusFailure(status: Int, label: String): CdnStatusException {
+        report(SpotifyProblem.Http(status))
+        return CdnStatusException(status, label)
+    }
+
+    private fun brokeOff(failed: IOException) {
+        dropReply()
+        val label = labelOf(links[linkIndex])
+        log("GET $label: ${failed.javaClass.simpleName} after some bytes, on from byte $position")
+        linkIndex = (linkIndex + 1) % links.size
     }
 
     private fun newStreak() {
         failures = 0
         allExpired = true
         relinked = false
+        networkFailure = null
     }
 
     private fun dropReply() {

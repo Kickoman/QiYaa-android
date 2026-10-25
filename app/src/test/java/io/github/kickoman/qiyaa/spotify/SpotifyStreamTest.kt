@@ -144,11 +144,44 @@ class SpotifyStreamTest {
 
     @Test
     fun `SPOT-14 every byte read starts the count of failed links again`() {
-        val a = cdn.link("a", Answer.Disconnect, Answer.Partial)
-        val stream = stream(cdn.file(a, cdn.link("b", Answer.Disconnect)))
+        val b = cdn.link("b", Answer.Disconnect, Answer.Partial)
+        val stream = stream(cdn.file(cdn.link("a", Answer.Status(500)), b))
         stream.open(0)
         assertArrayEquals(cdn.ogg, stream.readAll())
-        assertEquals(listOf("a", "b", "a"), cdn.links())
+        assertEquals(listOf("a", "b", "a", "b"), cdn.links())
+        assertEquals(0, relinks.get())
+    }
+
+    @Test
+    fun `SPOT-14 ERR-03 a reply broken after its bytes, then expired links, ask storage-resolve again`() {
+        val a = cdn.link("a", Answer.Disconnect, Answer.Status(403))
+        val stream = stream(cdn.file(a, cdn.link("b", Answer.Status(403))), relinked = listOf(cdn.link("c")))
+        stream.open(0)
+        assertArrayEquals(cdn.ogg, stream.readAll())
+        assertEquals(1, relinks.get())
+        assertEquals(listOf("a", "b", "a", "c"), cdn.links())
+        val resumed = cdn.ranges("c").single()!!.removePrefix("bytes=").removeSuffix("-").toLong()
+        assertEquals(cdn.ranges("b").single(), "bytes=$resumed-")
+        assertTrue("$resumed", resumed > AudioFile.HEADER_SIZE)
+    }
+
+    @Test
+    fun `SPOT-14 ERR-03 a single link broken after its bytes, then expired, asks storage-resolve again`() {
+        val a = cdn.link("a", Answer.Disconnect, Answer.Status(410))
+        val stream = stream(cdn.file(a), relinked = listOf(cdn.link("c")))
+        stream.open(0)
+        assertArrayEquals(cdn.ogg, stream.readAll())
+        assertEquals(1, relinks.get())
+        assertEquals(listOf("a", "a", "c"), cdn.links())
+        assertEquals(emptyList<SpotifyProblem>(), problems)
+    }
+
+    @Test
+    fun `SPOT-14 ERR-01 a run of failed links with any network failure is a network failure, not a status`() {
+        val stream = stream(cdn.file(cdn.refusedLink(), cdn.link("b", Answer.Status(503))))
+        val failed = assertThrows(SpotifyNetworkException::class.java) { stream.open(0) }
+        assertTrue("${failed.cause}", failed.cause is ConnectException)
+        assertEquals(emptyList<SpotifyProblem>(), problems)
         assertEquals(0, relinks.get())
     }
 
@@ -197,8 +230,8 @@ class SpotifyStreamTest {
     }
 
     @Test
-    fun `SPOT-14 when every link failed and the last by its status, it is a track failure with it`() {
-        val stream = stream(cdn.file(cdn.refusedLink(), cdn.link("b", Answer.Status(503))))
+    fun `SPOT-14 when every link failed by its status, it is a track failure with the last status`() {
+        val stream = stream(cdn.file(cdn.link("a", Answer.Status(500)), cdn.link("b", Answer.Status(503))))
         val failed = assertThrows(CdnStatusException::class.java) { stream.open(0) }
         assertEquals(503, failed.status)
         assertEquals(listOf<SpotifyProblem>(SpotifyProblem.Http(503)), problems)
