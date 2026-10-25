@@ -276,7 +276,7 @@ class QueueSpotifyTest {
     }
 
     @Test
-    fun `SPOT-21 a failed autoplay reply for a replaced queue shows nothing`() = runTest {
+    fun `SPOT-21 WAVE-07 a failed autoplay reply for a replaced queue shows nothing`() = runTest {
         val autoplay = FakeContinuation()
         val reply = CompletableDeferred<List<Track>>()
         autoplay.replies(then = reply)
