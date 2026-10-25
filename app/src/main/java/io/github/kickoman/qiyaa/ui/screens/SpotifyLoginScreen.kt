@@ -34,6 +34,10 @@ import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -140,6 +144,7 @@ fun SpotifyLoginScreen(viewModel: SpotifyViewModel) {
         )
         Spacer(Modifier.height(16.dp))
         val failed = login.code is SpotifyCodeStatus.Failed
+        val newCode = stringResource(R.string.spotify_login_new_code)
         Box(
             Modifier
                 .fillMaxWidth()
@@ -147,6 +152,12 @@ fun SpotifyLoginScreen(viewModel: SpotifyViewModel) {
                 .background(colors.deep)
                 .border(1.dp, colors.insetBorder, RoundedCornerShape(8.dp))
                 .tap(enabled = failed, onClick = viewModel::startCodeLogin)
+                .semantics(mergeDescendants = true) {
+                    if (failed) {
+                        role = Role.Button
+                        contentDescription = newCode
+                    }
+                }
                 .padding(vertical = 22.dp, horizontal = 16.dp),
             contentAlignment = Alignment.Center,
         ) {
@@ -176,27 +187,26 @@ fun SpotifyLoginScreen(viewModel: SpotifyViewModel) {
         if (pairUrl.isNotEmpty()) {
             val copied = stringResource(R.string.jam_copied)
             Spacer(Modifier.height(12.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ActionButton(
-                    stringResource(R.string.spotify_login_open_pair),
-                    Modifier.weight(3f),
-                    background = colors.surface2,
-                    color = colors.text,
-                    height = 48.dp,
-                ) {
-                    if (!openInBrowser(context, pairUrl)) viewModel.noBrowser()
-                }
-                ActionButton(
-                    stringResource(R.string.spotify_login_copy),
-                    Modifier.weight(2f),
-                    background = colors.background,
-                    color = colors.text,
-                    height = 48.dp,
-                    border = colors.border,
-                ) {
-                    scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(null, pairUrl))) }
-                    viewModel.say(copied)
-                }
+            ActionButton(
+                stringResource(R.string.spotify_login_open_pair),
+                Modifier.fillMaxWidth(),
+                background = colors.surface2,
+                color = colors.text,
+                height = 48.dp,
+            ) {
+                if (!openInBrowser(context, pairUrl)) viewModel.noBrowser()
+            }
+            Spacer(Modifier.height(8.dp))
+            ActionButton(
+                stringResource(R.string.spotify_login_copy),
+                Modifier.fillMaxWidth(),
+                background = colors.background,
+                color = colors.text,
+                height = 48.dp,
+                border = colors.border,
+            ) {
+                scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(null, pairUrl))) }
+                viewModel.say(copied)
             }
             Spacer(Modifier.height(16.dp))
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {

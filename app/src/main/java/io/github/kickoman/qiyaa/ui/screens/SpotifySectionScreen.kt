@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -26,6 +27,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.spotify.SpotifyItem
 import io.github.kickoman.qiyaa.ui.ListState
+import io.github.kickoman.qiyaa.ui.SpotifyAccess
 import io.github.kickoman.qiyaa.ui.SpotifyList
 import io.github.kickoman.qiyaa.ui.SpotifyViewModel
 import io.github.kickoman.qiyaa.ui.components.QiText
@@ -43,8 +45,11 @@ fun SpotifySectionScreen(viewModel: SpotifyViewModel, list: SpotifyList, onClose
     val colors = Qi.colors
     val state by viewModel.list(list).state.collectAsStateWithLifecycle()
     val queue by viewModel.queueState.collectAsStateWithLifecycle()
+    val ui by viewModel.ui.collectAsStateWithLifecycle()
     BackHandler(onBack = onClose)
     LaunchedEffect(list) { viewModel.load(list) }
+    val close by rememberUpdatedState(onClose)
+    LaunchedEffect(ui.access) { if (ui.access != SpotifyAccess.LOGGED_IN) close() }
     val title =
         stringResource(
             when (list) {

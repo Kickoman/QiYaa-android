@@ -415,6 +415,7 @@
     <string name="spotify_login_code_requesting">GETTING THE CODE…</string>
     <string name="spotify_login_code_waiting">WAITING FOR THE CONFIRMATION…</string>
     <string name="spotify_login_code_failed">LOGGING IN WITH THE CODE FAILED: %1$s · TAP THE CODE TO RETRY</string>
+    <string name="spotify_login_new_code">Get a new code</string>
     <string name="spotify_page_logging_in">QiYaa is logging in to Spotify. Go back to the app: this page can be closed.</string>
     <string name="spotify_page_refused">QiYaa did not get access to Spotify. Go back to the app and try again.</string>
     <string name="queue_autoplay_on">Spotify autoplay will follow this queue</string>

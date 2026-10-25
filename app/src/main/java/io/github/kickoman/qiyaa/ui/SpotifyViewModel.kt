@@ -36,6 +36,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -45,17 +46,9 @@ enum class SpotifyList { FOR_YOU, PLAYLISTS, ALBUMS, ARTISTS }
 
 enum class SpotifyAccess { LOG_IN, CONNECTING, LOGGED_IN, EXPIRED, PREMIUM_REQUIRED, REFUSED }
 
-val SpotifyAccess.canLogOut: Boolean
-    get() = when (this) {
-        SpotifyAccess.LOG_IN, SpotifyAccess.EXPIRED -> false
-
-        SpotifyAccess.CONNECTING, SpotifyAccess.LOGGED_IN, SpotifyAccess.PREMIUM_REQUIRED,
-        SpotifyAccess.REFUSED,
-        -> true
-    }
-
 data class SpotifyUi(
     val access: SpotifyAccess = SpotifyAccess.LOG_IN,
+    val canLogOut: Boolean = false,
     val username: String = "",
     val searchText: String = "",
 )
@@ -85,6 +78,7 @@ data class SpotifyLoginUi(
 
 interface SpotifyGateway {
     val state: StateFlow<SpotifyState>
+    val onScreen: StateFlow<Boolean>
     val username: String
     val likedSongsUri: String
 
@@ -126,6 +120,9 @@ interface SpotifyGateway {
 
     fun loggedOut()
 }
+
+fun spotifyCanLogOut(access: SpotifyAccess, savedLogin: Boolean): Boolean =
+    access == SpotifyAccess.LOGGED_IN || savedLogin
 
 fun spotifyAccessOf(state: SpotifyState, savedLogin: Boolean): SpotifyAccess = when (state) {
     SpotifyState.LoggedOut -> SpotifyAccess.LOG_IN
@@ -175,6 +172,7 @@ class SpotifyViewModel(
     private var codeJob: Job? = null
     private var browserJob: Job? = null
     private var pendingWay: SpotifyLoginWay? = null
+    private var heldNotice: Job? = null
 
     init {
         viewModelScope.launch {
@@ -333,15 +331,20 @@ class SpotifyViewModel(
     }
 
     private fun onState(state: SpotifyState, announce: Boolean) {
-        val access = spotifyAccessOf(state, spotify.hasSavedLogin())
+        val savedLogin = spotify.hasSavedLogin()
+        val access = spotifyAccessOf(state, savedLogin)
         val username = (state as? SpotifyState.Online)?.username ?: spotify.username
-        mutableUi.update { it.copy(access = access, username = username) }
+        val canLogOut = spotifyCanLogOut(access, savedLogin)
+        mutableUi.update { it.copy(access = access, canLogOut = canLogOut, username = username) }
         if (access != SpotifyAccess.LOGGED_IN) for (list in lists) list.reset()
         when (state) {
-            is SpotifyState.Online -> pendingWay?.let { way ->
-                pendingWay = null
-                spotify.loggedIn(way)
-                notice(string(R.string.spotify_logged_in, username))
+            is SpotifyState.Online -> {
+                for (list in lists) if (list.state.value is ListState.Failed) list.load()
+                pendingWay?.let { way ->
+                    pendingWay = null
+                    spotify.loggedIn(way)
+                    noticeOnScreen(string(R.string.spotify_logged_in, username))
+                }
             }
 
             SpotifyState.Expired -> refused(R.string.spotify_expired, announce)
@@ -356,11 +359,20 @@ class SpotifyViewModel(
 
     private fun refused(text: Int, announce: Boolean) {
         pendingWay = null
-        if (announce) notice(string(text))
+        if (announce) noticeOnScreen(string(text))
     }
 
     private fun notice(message: String) {
         mutableNotices.tryEmit(message)
+    }
+
+    private fun noticeOnScreen(message: String) {
+        heldNotice?.cancel()
+        heldNotice =
+            viewModelScope.launch {
+                spotify.onScreen.first { it }
+                notice(message)
+            }
     }
 
     private fun move(screen: Screen) {
@@ -399,6 +411,7 @@ class SpotifyViewModel(
 
 private class GraphSpotify(private val graph: AppGraph) : SpotifyGateway {
     override val state: StateFlow<SpotifyState> get() = graph.spotifyAccount.state
+    override val onScreen: StateFlow<Boolean> get() = graph.screen.onScreen
     override val username: String get() = graph.spotifyLibrary.username
     override val likedSongsUri: String get() = graph.spotifyLibrary.likedSongsUri
 

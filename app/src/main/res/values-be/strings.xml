@@ -402,6 +402,7 @@
     <string name="spotify_login_code_requesting">АТРЫМЛІВАЮ КОД…</string>
     <string name="spotify_login_code_waiting">ЧАКАЮ ПАЦВЕРДЖАННЯ…</string>
     <string name="spotify_login_code_failed">УВАЙСЦІ ПА КОДЗЕ НЕ ЎДАЛОСЯ: %1$s · НАЦІСНІЦЕ НА КОД, КАБ ПАЎТАРЫЦЬ</string>
+    <string name="spotify_login_new_code">Атрымаць новы код</string>
     <string name="spotify_page_logging_in">QiYaa ўваходзіць у Spotify. Вярніцеся ў праграму: гэтую старонку можна закрыць.</string>
     <string name="spotify_page_refused">QiYaa не атрымала доступу да Spotify. Вярніцеся ў праграму і паспрабуйце зноў.</string>
     <string name="queue_autoplay_on">За гэтай чаргой пойдзе аўтаплэй Spotify</string>

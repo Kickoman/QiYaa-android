@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -21,7 +22,6 @@ import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.ui.LibrarySection
 import io.github.kickoman.qiyaa.ui.SpotifyAccess
 import io.github.kickoman.qiyaa.ui.SpotifyViewModel
-import io.github.kickoman.qiyaa.ui.canLogOut
 import io.github.kickoman.qiyaa.ui.components.QiText
 import io.github.kickoman.qiyaa.ui.components.tap
 import io.github.kickoman.qiyaa.ui.theme.HintStyle
@@ -40,20 +40,43 @@ internal fun SpotifySources(spotify: SpotifyViewModel, onOpenSection: (LibrarySe
         Modifier.padding(start = 16.dp, end = 16.dp, top = 18.dp).fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        QiText(stringResource(R.string.library_spotify), LabelStyle, Modifier.weight(1f), color = colors.dim)
-        val canLogOut = access.canLogOut
-        val logOut = stringResource(R.string.spotify_log_out)
         QiText(
-            if (canLogOut) {
-                if (ui.username.isEmpty()) logOut else "${ui.username} · $logOut"
-            } else {
-                stringResource(R.string.spotify_log_in)
-            },
-            mono(11.sp, 500, 1.sp),
-            Modifier.tap { if (canLogOut) spotify.logout() else spotify.openLogin() },
-            color = if (canLogOut) colors.muted else colors.accent,
+            stringResource(R.string.library_spotify),
+            LabelStyle,
+            Modifier.weight(1f),
+            color = colors.dim,
             maxLines = 1,
         )
+        val action = mono(11.sp, 500, 1.sp)
+        if (ui.canLogOut) {
+            val logOut = Modifier.tap(onClick = spotify::logout)
+            val word = stringResource(R.string.spotify_log_out)
+            if (ui.username.isNotEmpty()) {
+                QiText(
+                    ui.username,
+                    action,
+                    logOut.weight(1f, fill = false),
+                    color = colors.muted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            QiText(
+                if (ui.username.isEmpty()) word else " · $word",
+                action,
+                logOut,
+                color = colors.muted,
+                maxLines = 1,
+            )
+        } else {
+            QiText(
+                stringResource(R.string.spotify_log_in),
+                action,
+                Modifier.tap(onClick = spotify::openLogin),
+                color = colors.accent,
+                maxLines = 1,
+            )
+        }
     }
 
     when (access) {

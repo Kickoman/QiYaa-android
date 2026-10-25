@@ -74,7 +74,8 @@ class SpotifyViewModelTest {
             runCurrent()
             assertEquals(listOf("code", "login token-1", "telemetry CODE"), spotify.calls)
             assertEquals("spotify_logged_in(me)", subject.notices.last())
-            assertEquals(SpotifyUi(SpotifyAccess.LOGGED_IN, "me"), subject.model.ui.value)
+            val online = SpotifyUi(SpotifyAccess.LOGGED_IN, canLogOut = true, username = "me")
+            assertEquals(online, subject.model.ui.value)
             spotify.state.value = SpotifyState.Offline
             runCurrent()
             spotify.state.value = SpotifyState.Online("me")
@@ -242,17 +243,111 @@ class SpotifyViewModelTest {
     }
 
     @Test
-    fun `SPOT-05 SPOT-06 log out is offered whenever a login is kept, log in when none is`() {
-        val canLogOut = SpotifyAccess.entries.filter { it.canLogOut }
-        val expected =
-            listOf(
-                SpotifyAccess.CONNECTING,
-                SpotifyAccess.LOGGED_IN,
-                SpotifyAccess.PREMIUM_REQUIRED,
-                SpotifyAccess.REFUSED,
-            )
-        assertEquals(expected, canLogOut)
+    fun `SPOT-05 SPOT-06 log out is offered when logged in or a login is saved, log in otherwise`() {
+        for (access in SpotifyAccess.entries) {
+            assertTrue(access.name, spotifyCanLogOut(access, savedLogin = true))
+            val withoutSaved = spotifyCanLogOut(access, savedLogin = false)
+            assertEquals(access.name, access == SpotifyAccess.LOGGED_IN, withoutSaved)
+        }
     }
+
+    @Test
+    fun `SPOT-05 a refused fresh token offers log in, a refused saved login can be logged out`() = runTest {
+        val subject = Subject(this)
+        spotify.onToken = { "token-4" }
+        subject.model.openLogin()
+        runCurrent()
+        spotify.state.value = SpotifyState.Connecting
+        runCurrent()
+        assertFalse(subject.model.ui.value.canLogOut)
+
+        spotify.state.value = SpotifyState.PremiumRequired
+        runCurrent()
+        assertEquals(SpotifyAccess.PREMIUM_REQUIRED, subject.model.ui.value.access)
+        assertFalse(subject.model.ui.value.canLogOut)
+        spotify.saved = true
+        spotify.state.value = SpotifyState.Refused(9)
+        runCurrent()
+
+        assertEquals(SpotifyAccess.REFUSED, subject.model.ui.value.access)
+        assertTrue(subject.model.ui.value.canLogOut)
+    }
+
+    @Test
+    fun `SPOT-03 the login's status waits for the app to be on screen, the telemetry does not`() = runTest {
+        val subject = Subject(this)
+        spotify.onToken = { "token-5" }
+        subject.model.openLogin()
+        runCurrent()
+        spotify.onScreen.value = false
+
+        spotify.saved = true
+        spotify.state.value = SpotifyState.Online("me")
+        runCurrent()
+
+        assertEquals("telemetry CODE", spotify.calls.last())
+        assertEquals(listOf("spotify_connecting"), subject.notices)
+        spotify.onScreen.value = true
+        runCurrent()
+        assertEquals(listOf("spotify_connecting", "spotify_logged_in(me)"), subject.notices)
+    }
+
+    @Test
+    fun `SPOT-04 SPOT-05 only the latest refusal waits for the screen`() = runTest {
+        val subject = Subject(this)
+        spotify.onScreen.value = false
+
+        spotify.state.value = SpotifyState.Expired
+        runCurrent()
+        spotify.state.value = SpotifyState.PremiumRequired
+        runCurrent()
+        assertEquals(emptyList<String>(), subject.notices)
+        spotify.onScreen.value = true
+        runCurrent()
+
+        assertEquals(listOf("spotify_premium_required"), subject.notices)
+    }
+
+    @Test
+    fun `lists that failed offline load again when the session comes online, loaded ones do not`() = runTest {
+        val subject = Subject(this)
+        spotify.saved = true
+        spotify.state.value = SpotifyState.Offline
+        runCurrent()
+        spotify.onPlaylists = { throw NotLoggedInException() }
+        subject.model.loadLists()
+        runCurrent()
+        assertTrue(subject.model.playlists.state.value is ListState.Failed)
+
+        spotify.onPlaylists = { listOf(PLAYLIST) }
+        spotify.state.value = SpotifyState.Online("me")
+        runCurrent()
+
+        assertEquals(ListState.Loaded(listOf(PLAYLIST)), subject.model.playlists.state.value)
+        assertEquals(2, spotify.calls.count { it == "playlists" })
+        assertEquals(1, spotify.calls.count { it == "forYou" })
+    }
+
+    @Test
+    fun `a lost login empties the lists and loads nothing, so an open section has nothing to wait for`() =
+        runTest {
+            val subject = Subject(this)
+            loggedIn()
+            subject.model.loadLists()
+            runCurrent()
+            val asked = spotify.calls.size
+
+            spotify.state.value = SpotifyState.Expired
+            runCurrent()
+            for (list in SpotifyList.entries) subject.model.load(list)
+            runCurrent()
+
+            assertEquals(SpotifyAccess.EXPIRED, subject.model.ui.value.access)
+            for (list in SpotifyList.entries) {
+                assertEquals(ListState.Idle, subject.model.list(list).state.value)
+            }
+            assertEquals(asked, spotify.calls.size)
+        }
 
     @Test
     fun `SPOT-06 TEL-18 logging out forgets the lists, leaves the queue and counts the logout`() = runTest {
@@ -442,6 +537,7 @@ class SpotifyViewModelTest {
         val calls = ArrayList<String>()
         var saved = false
         override val state = MutableStateFlow<SpotifyState>(SpotifyState.LoggedOut)
+        override val onScreen = MutableStateFlow(true)
         override var username = ""
         override val likedSongsUri: String get() = "spotify:user:$username:collection"
         var onToken: suspend (PairLogin.Code) -> String = { CompletableDeferred<String>().await() }
