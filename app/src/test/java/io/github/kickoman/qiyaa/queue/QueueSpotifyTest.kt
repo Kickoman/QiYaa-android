@@ -244,6 +244,86 @@ class QueueSpotifyTest {
     }
 
     @Test
+    fun `SPOT-22 the 50 started tracks are counted per source, other sources do not crowd out Spotify`() {
+        val started = StartedTracks()
+        (1..40).forEach { started.note(spotify("s$it")) }
+        (1..60).forEach { started.note(yandex("y$it")) }
+        assertEquals((1..40).map { "s$it" }, idsOf(started, TrackSource.SPOTIFY))
+        assertEquals((11..60).map { "y$it" }, idsOf(started, TrackSource.YANDEX))
+        (41..60).forEach { started.note(spotify("s$it")) }
+        assertEquals((11..60).map { "s$it" }, idsOf(started, TrackSource.SPOTIFY))
+    }
+
+    @Test
+    fun `SPOT-20 WAVE-09 a later autoplay page failure does not stall, the next change asks`() = runTest {
+        val autoplay = FakeContinuation()
+        var call = 0
+        autoplay.onMore = {
+            call++
+            when (call) {
+                1 -> listOf(spotify("x1"), spotify("x2"), spotify("x3"))
+                2 -> throw IOException("offline")
+                else -> CompletableDeferred<List<Track>>().await()
+            }
+        }
+        val h = pick(this, "s1", "s2", "s3", autoplay = autoplay)
+        h.engine.startPlaying()
+        repeat(5) {
+            h.engine.finishTrack()
+            runCurrent()
+        }
+        assertEquals(3, autoplay.asked.size)
+    }
+
+    @Test
+    fun `SPOT-21 a failed autoplay reply for a replaced queue shows nothing`() = runTest {
+        val autoplay = FakeContinuation()
+        val reply = CompletableDeferred<List<Track>>()
+        autoplay.replies(then = reply)
+        val h = pick(this, "s1", "s2", autoplay = autoplay)
+        assertEquals(1, autoplay.asked.size)
+        h.controller.loadSource("Road") { listOf(spotify("r1"), spotify("r2"), spotify("r3")) }
+        runCurrent()
+        reply.completeExceptionally(IOException("late"))
+        runCurrent()
+        assertEquals(listOf(QueueEvent.SourceLoaded("Road", 3)), h.events)
+    }
+
+    @Test
+    fun `SPOT-12 a radio after a Yandex wave has no wave seed and no wave session in the file`() = runTest {
+        val h = QueueHarness(this)
+        h.source.onStartWave = { WaveBatch("S1", "B1", QueueHarness.tracks("w1", "w2", "w3")) }
+        h.source.onMoreWave = { _, _ -> CompletableDeferred<WaveBatch>().await() }
+        h.controller.playWave(listOf("genre:rock"), "Rock")
+        runCurrent()
+        val radio = FakeContinuation()
+        radio.replies(listOf(spotify("r1"), spotify("r2"), spotify("r3")))
+        h.controller.playContinuation("Song: radio", "spotify:radio:r", radio)
+        runCurrent()
+        assertNull(h.controller.currentWaveSeed())
+        assertEquals("", h.store.snapshot()!!.waveSessionId)
+    }
+
+    @Test
+    fun `SPOT-20 a new Spotify pick does not send the old pick's started tracks`() = runTest {
+        val first = FakeContinuation()
+        first.onMore = { CompletableDeferred<List<Track>>().await() }
+        val h = pick(this, "s1", "s2", "s3", "s4", "s5", autoplay = first)
+        h.engine.startPlaying()
+        h.engine.finishTrack()
+        runCurrent()
+        val second = FakeContinuation()
+        second.onMore = { CompletableDeferred<List<Track>>().await() }
+        h.controller.loadSource("Other", continuation = second) { listOf(spotify("t1"), spotify("t2")) }
+        runCurrent()
+        h.engine.startPlaying()
+        h.engine.finishTrack()
+        runCurrent()
+        assertTrue(second.asked.isNotEmpty())
+        assertTrue(second.asked.flatten().none { it.startsWith("s") })
+    }
+
+    @Test
     fun `SPOT-21 CONT-07 a failed autoplay shows its error, appends nothing, the head stops at its end`() =
         runTest {
             val autoplay = FakeContinuation()
@@ -626,6 +706,9 @@ class QueueSpotifyTest {
     }
 
     private fun yandex(id: String) = Track(id = id, title = "T$id")
+
+    private fun idsOf(started: StartedTracks, source: TrackSource) =
+        started.tracks.filter { it.source == source }.map(Track::id)
 
     private fun spotify(id: String, available: Boolean = true) =
         Track(id = id, title = "Spotify $id", available = available, source = TrackSource.SPOTIFY)

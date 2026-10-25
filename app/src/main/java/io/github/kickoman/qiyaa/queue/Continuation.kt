@@ -24,7 +24,9 @@ class StartedTracks(tracks: List<Track> = emptyList()) {
     fun note(track: Track) {
         oldestFirst.removeAll { it.key == track.key }
         oldestFirst.addLast(track)
-        while (oldestFirst.size > MAX) oldestFirst.removeFirst()
+        if (oldestFirst.count { it.source == track.source } > MAX) {
+            oldestFirst.removeAt(oldestFirst.indexOfFirst { it.source == track.source })
+        }
     }
 
     fun clear() = oldestFirst.clear()
