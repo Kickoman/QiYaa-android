@@ -1,5 +1,6 @@
 package io.github.kickoman.qiyaa.spotify
 
+import io.github.kickoman.qiyaa.spotify.protocol.Login5Reply
 import java.io.IOException
 
 open class SpotifyException(message: String) : IOException(message)
@@ -17,7 +18,13 @@ class SpotifyNetworkException(what: String, cause: IOException) :
 class SpotifyContentException(detail: String) : SpotifyException(detail)
 
 class LoginRefusedException(val code: Int, val where: String) :
-    SpotifyException("Spotify refused the login at $where: code $code")
+    SpotifyException("Spotify refused the login at $where: code $code") {
+    val isTransient: Boolean
+        get() = where == SpotifyWeb.LOGIN5_PATH && code in Login5Reply.Error.TRANSIENT_CODES
+}
+
+class CdnStatusException(val status: Int, val path: String) :
+    SpotifyException("HTTP $status on GET $path, the last of the CDN links")
 
 class AuthorizationException(val error: String, val path: String) :
     SpotifyException("Spotify did not authorize the login on $path: $error")

@@ -2,8 +2,11 @@ package io.github.kickoman.qiyaa.spotify
 
 import io.github.kickoman.qiyaa.spotify.protocol.AudioFileRef
 import io.github.kickoman.qiyaa.spotify.protocol.AudioFormat
+import io.github.kickoman.qiyaa.spotify.protocol.AuthenticationType
 import io.github.kickoman.qiyaa.spotify.protocol.Bytes
+import io.github.kickoman.qiyaa.spotify.protocol.Credentials
 import io.github.kickoman.qiyaa.spotify.protocol.Ids
+import io.github.kickoman.qiyaa.spotify.protocol.LoginError
 import io.github.kickoman.qiyaa.spotify.protocol.ProtoWriter
 import io.github.kickoman.qiyaa.spotify.protocol.SpotifyTrack
 import io.github.kickoman.qiyaa.support.SpotifyFixtures
@@ -227,6 +230,55 @@ class SpotifyFilesTest {
         assertEquals(listOf("https://audio-gm-off.spotifycdn.com/audio/fresh?t=2"), files.storageUrls(file))
         assertEquals(2, stack.requests(storagePath(OGG_320)).size)
         assertEquals(1, stack.accessPoint.keyPackets().size)
+        val next = files.prepare(A)
+        assertEquals(listOf("https://audio-gm-off.spotifycdn.com/audio/fresh?t=2"), next.urls)
+        assertEquals(file.key, next.key)
+        assertEquals(2, stack.requests(storagePath(OGG_320)).size)
+        assertEquals(1, stack.requests(SpotifyLibrary.METADATA_PATH).size)
+    }
+
+    @Test
+    fun `SPOT-06 after a logout a track prepared a minute ago is not logged in, without a request`() =
+        runBlocking {
+            stack.loginStored()
+            track(A, OGG_320)
+            val files = files()
+            files.prepare(A)
+            stack.session.logout()
+            expectFailure<NotLoggedInException> { files.prepare(A) }
+            assertEquals(1, stack.requests(SpotifyLibrary.METADATA_PATH).size)
+            assertEquals(1, stack.accessPoint.keyPackets().size)
+        }
+
+    @Test
+    fun `SPOT-05 after the access point refused the login a prepared track is that refusal`() = runBlocking {
+        stack.loginStored()
+        track(A, OGG_320)
+        val files = files()
+        files.prepare(A)
+        stack.accessPoint.loginRefusal = LoginError.PREMIUM_ACCOUNT_REQUIRED.code
+        stack.session.login(SpotifyStack.STORED)
+        stack.awaitState(SpotifyState.PremiumRequired)
+        val refused = expectFailure<LoginRefusedException> { files.prepare(A) }
+        assertEquals(LoginError.PREMIUM_ACCOUNT_REQUIRED.code, refused.code)
+        assertEquals(1, stack.requests(SpotifyLibrary.METADATA_PATH).size)
+    }
+
+    @Test
+    fun `SPOT-17 another account never gets a file the first one prepared`() = runBlocking {
+        stack.loginStored()
+        track(A, OGG_320)
+        val files = files()
+        val first = files.prepare(A)
+        val other = Credentials("other", AuthenticationType.STORED_CREDENTIALS, Bytes.of(byteArrayOf(4)))
+        stack.session.login(other)
+        assertEquals("other", stack.awaitOnline().username)
+        stack.accessPoint.keyRefusal = { 1 }
+        expectFailure<KeyRefusedException> { files.prepare(A) }
+        stack.accessPoint.keyRefusal = { null }
+        assertFalse(first === files.prepare(A))
+        assertEquals(3, stack.requests(SpotifyLibrary.METADATA_PATH).size)
+        assertEquals(3, stack.accessPoint.keyPackets().size)
     }
 
     private fun files(capacity: Int = SpotifyFiles.CAPACITY) =

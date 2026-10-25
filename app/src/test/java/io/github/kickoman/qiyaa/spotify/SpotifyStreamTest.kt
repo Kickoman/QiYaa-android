@@ -72,10 +72,21 @@ class SpotifyStreamTest {
     }
 
     @Test
-    fun `the length is unknown when Content-Range has no total, and then the reply's end is the end`() {
+    fun `without a total in Content-Range the length is the open reply's Content-Length from the position`() {
         val stream = stream(cdn.file(cdn.link("a", Answer.WithoutTotal)))
-        assertEquals(SpotifyStream.UNKNOWN, stream.open(100))
+        assertEquals(cdn.ogg.size - 100L, stream.open(100))
+        assertEquals(cdn.ogg.size.toLong(), stream.oggLength)
         assertArrayEquals(cdn.ogg.copyOfRange(100, cdn.ogg.size), stream.readAll())
+        assertEquals(cdn.ogg.size - 2_000L, stream.open(2_000))
+        assertArrayEquals(cdn.ogg.copyOfRange(2_000, cdn.ogg.size), stream.readAll())
+    }
+
+    @Test
+    fun `a bounded open without a total in Content-Range does not take its range for the file`() {
+        val stream = stream(cdn.file(cdn.link("a", Answer.WithoutTotal)))
+        assertEquals(500L, stream.open(1_000, 500))
+        assertEquals(SpotifyStream.UNKNOWN, stream.oggLength)
+        assertArrayEquals(cdn.ogg.copyOfRange(1_000, 1_500), stream.readAll())
     }
 
     @Test
@@ -85,7 +96,20 @@ class SpotifyStreamTest {
         stream.close()
         assertEquals(0L, stream.open(cdn.ogg.size.toLong()))
         assertEquals(SpotifyStream.END, stream.read(ByteArray(16), 0, 16))
+        assertEquals(16L, stream.open(cdn.ogg.size.toLong(), 16))
+        assertEquals(SpotifyStream.END, stream.read(ByteArray(16), 0, 16))
         assertEquals(1, cdn.asked.size)
+    }
+
+    @Test
+    fun `an open past the end of a file of known length is refused, a range past it ends with the file`() {
+        val stream = stream(cdn.file(cdn.link("a")))
+        stream.open(0)
+        val past = cdn.ogg.size + 1L
+        val failed = assertThrows(IllegalArgumentException::class.java) { stream.open(past) }
+        assertEquals("Ogg position $past is past the end of ${cdn.ogg.size} bytes", failed.message)
+        assertEquals(1_000L, stream.open(cdn.ogg.size - 100L, 1_000))
+        assertArrayEquals(cdn.ogg.copyOfRange(cdn.ogg.size - 100, cdn.ogg.size), stream.readAll())
     }
 
     @Test
@@ -119,6 +143,41 @@ class SpotifyStreamTest {
     }
 
     @Test
+    fun `SPOT-14 every byte read starts the count of failed links again`() {
+        val a = cdn.link("a", Answer.Disconnect, Answer.Partial)
+        val stream = stream(cdn.file(a, cdn.link("b", Answer.Disconnect)))
+        stream.open(0)
+        assertArrayEquals(cdn.ogg, stream.readAll())
+        assertEquals(listOf("a", "b", "a"), cdn.links())
+        assertEquals(0, relinks.get())
+    }
+
+    @Test
+    fun `SPOT-14 on Android links that expire again in the same play ask storage-resolve again`() {
+        val fresh = ArrayDeque(listOf(listOf(cdn.link("c")), listOf(cdn.link("d"))))
+        val stream =
+            SpotifyStream(
+                calls = client,
+                file = cdn.file(cdn.link("a")),
+                userAgent = USER_AGENT,
+                relink = {
+                    relinks.incrementAndGet()
+                    fresh.removeFirst()
+                },
+            )
+        stream.open(0)
+        stream.read(ByteArray(1_000), 0, 1_000)
+        cdn.answer("a", Answer.Status(403))
+        stream.open(10_000)
+        stream.read(ByteArray(1_000), 0, 1_000)
+        cdn.answer("c", Answer.Status(410))
+        stream.open(30_000)
+        assertArrayEquals(cdn.ogg.copyOfRange(30_000, cdn.ogg.size), stream.readAll())
+        assertEquals(2, relinks.get())
+        assertEquals(listOf("a", "a", "c", "c", "d"), cdn.links())
+    }
+
+    @Test
     fun `SPOT-14 a hop to the next link comes after the failed read's watch, never inside it`() {
         val guard = RecordingGuard()
         val stream = stream(cdn.file(cdn.link("a", Answer.Disconnect), cdn.link("b")), guard = guard)
@@ -140,7 +199,7 @@ class SpotifyStreamTest {
     @Test
     fun `SPOT-14 when every link failed and the last by its status, it is a track failure with it`() {
         val stream = stream(cdn.file(cdn.refusedLink(), cdn.link("b", Answer.Status(503))))
-        val failed = assertThrows(SpotifyHttpException::class.java) { stream.open(0) }
+        val failed = assertThrows(CdnStatusException::class.java) { stream.open(0) }
         assertEquals(503, failed.status)
         assertEquals(listOf<SpotifyProblem>(SpotifyProblem.Http(503)), problems)
         val said = logged + failed.message.orEmpty()
@@ -191,7 +250,7 @@ class SpotifyStreamTest {
                 cdn.file(cdn.link("a", Answer.Status(403))),
                 relinked = listOf(cdn.link("b", Answer.Status(403))),
             )
-        val failed = assertThrows(SpotifyHttpException::class.java) { stream.open(0) }
+        val failed = assertThrows(CdnStatusException::class.java) { stream.open(0) }
         assertEquals(403, failed.status)
         assertEquals(1, relinks.get())
         assertEquals(listOf("a", "b"), cdn.links())
@@ -200,7 +259,7 @@ class SpotifyStreamTest {
     @Test
     fun `SPOT-14 links that fail in other ways too ask no storage-resolve`() {
         val stream = stream(cdn.file(cdn.link("a", Answer.Status(403)), cdn.link("b", Answer.Status(500))))
-        val failed = assertThrows(SpotifyHttpException::class.java) { stream.open(0) }
+        val failed = assertThrows(CdnStatusException::class.java) { stream.open(0) }
         assertEquals(500, failed.status)
         assertEquals(0, relinks.get())
     }

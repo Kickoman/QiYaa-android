@@ -6,6 +6,7 @@ import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.source.LoadEventInfo
 import androidx.media3.exoplayer.source.MediaLoadData
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
+import io.github.kickoman.qiyaa.spotify.CdnStatusException
 import io.github.kickoman.qiyaa.spotify.KeyFailedException
 import io.github.kickoman.qiyaa.spotify.KeyRefusedException
 import io.github.kickoman.qiyaa.spotify.LoginRefusedException
@@ -16,6 +17,7 @@ import io.github.kickoman.qiyaa.spotify.SpotifyHttpException
 import io.github.kickoman.qiyaa.spotify.SpotifyNetworkException
 import io.github.kickoman.qiyaa.spotify.SpotifySession
 import io.github.kickoman.qiyaa.spotify.SpotifyWeb
+import io.github.kickoman.qiyaa.spotify.protocol.Login5Reply
 import io.github.kickoman.qiyaa.yandex.HttpException
 import io.github.kickoman.qiyaa.yandex.NetworkException
 import java.io.FileNotFoundException
@@ -69,6 +71,9 @@ class LoadRetriesTest {
         KeyFailedException("AesKeyError code 2"),
         LoginRefusedException(11, SpotifySession.ACCESS_POINT),
         LoginRefusedException(3, SpotifyWeb.LOGIN5_PATH),
+        LoginRefusedException(1, SpotifyWeb.LOGIN5_PATH),
+        CdnStatusException(403, "audio-fa.scdn.co/audio/03"),
+        CdnStatusException(503, "audio-ak.spotifycdn.com/audio/03"),
         NoPlayableFileException(TRACK),
         NotLoggedInException(),
         SpotifyContentException("POST /extended-metadata/v0/extended-metadata: entities that do not parse"),
@@ -76,8 +81,10 @@ class LoadRetriesTest {
 
     private fun retriedFailures(): List<IOException> = listOf(
         SpotifyNetworkException("an audio key", SocketTimeoutException("no access point login in 20000 ms")),
-        SpotifyHttpException(403, "GET", "audio-fa.scdn.co/audio/03"),
         SpotifyHttpException(503, "POST", "/extended-metadata/v0/extended-metadata"),
+        LoginRefusedException(Login5Reply.Error.TIMEOUT, SpotifyWeb.LOGIN5_PATH),
+        LoginRefusedException(Login5Reply.Error.TOO_MANY_ATTEMPTS, SpotifyWeb.LOGIN5_PATH),
+        LoginRefusedException(Login5Reply.Error.TRY_AGAIN_LATER, SpotifyWeb.LOGIN5_PATH),
         NetworkException("GET", "/tracks/1/download-info", IOException("offline")),
         HttpException(404, "GET", "/tracks/1/download-info", "Not found"),
         HttpDataSource.InvalidResponseCodeException(

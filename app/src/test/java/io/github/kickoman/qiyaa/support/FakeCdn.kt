@@ -44,7 +44,7 @@ class FakeCdn(oggBytes: Int = OGG_BYTES) : Closeable {
     val asked = CopyOnWriteArrayList<Asked>()
 
     private val encrypted = ByteArray(plain.size)
-    private val answers = ConcurrentHashMap<String, Answer>()
+    private val answers = ConcurrentHashMap<String, List<Answer>>()
     private val reserved = CopyOnWriteArrayList<Socket>()
 
     init {
@@ -57,19 +57,21 @@ class FakeCdn(oggBytes: Int = OGG_BYTES) : Closeable {
                     val link = request.requestUrl!!.pathSegments.first()
                     val range = request.getHeader("Range")
                     asked += Asked(link, range, request.getHeader("User-Agent"))
-                    return respond(answers[link] ?: Answer.Status(404), range)
+                    val turn = asked.count { it.link == link } - 1
+                    val planned = answers[link] ?: listOf(Answer.Status(404))
+                    return respond(planned[minOf(turn, planned.size - 1)], range)
                 }
             }
         server.start()
     }
 
-    fun link(name: String, answer: Answer = Answer.Partial): String {
-        answers[name] = answer
+    fun link(name: String, vararg answers: Answer): String {
+        this.answers[name] = answers.toList().ifEmpty { listOf(Answer.Partial) }
         return server.url("/$name/audio/$FILE_HEX?$TOKEN_QUERY").toString()
     }
 
     fun answer(name: String, answer: Answer) {
-        answers[name] = answer
+        answers[name] = List(asked.count { it.link == name } + 1) { answer }
     }
 
     fun refusedLink(): String {

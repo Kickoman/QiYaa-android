@@ -6,6 +6,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.TrackGroup
 import androidx.media3.common.Tracks
 import io.github.kickoman.qiyaa.queue.FailureKind
+import io.github.kickoman.qiyaa.spotify.CdnStatusException
 import io.github.kickoman.qiyaa.spotify.KeyFailedException
 import io.github.kickoman.qiyaa.spotify.KeyRefusedException
 import io.github.kickoman.qiyaa.spotify.LoginRefusedException
@@ -16,6 +17,7 @@ import io.github.kickoman.qiyaa.spotify.SpotifyHttpException
 import io.github.kickoman.qiyaa.spotify.SpotifyNetworkException
 import io.github.kickoman.qiyaa.spotify.SpotifySession
 import io.github.kickoman.qiyaa.spotify.SpotifyWeb
+import io.github.kickoman.qiyaa.spotify.protocol.Login5Reply
 import io.github.kickoman.qiyaa.yandex.ErrorKind
 import io.github.kickoman.qiyaa.yandex.HttpException
 import io.github.kickoman.qiyaa.yandex.MalformedResponseException
@@ -136,6 +138,20 @@ class PlaybackFailuresTest {
     }
 
     @Test
+    fun `SPOT-18 login5's timeout, too many attempts and try again later wait for the network instead`() {
+        val io = PlaybackException.ERROR_CODE_IO_UNSPECIFIED
+        val codes = listOf(4, 6, 8)
+        for (code in codes) {
+            val failed = LoginRefusedException(code, SpotifyWeb.LOGIN5_PATH)
+            assertEquals("$code", FailureKind.NETWORK, classify(io, IOException("load failed", failed)))
+            assertEquals("$code", ErrorKind.NoNetwork, kind(io, failed))
+            val accessPoint = LoginRefusedException(code, SpotifySession.ACCESS_POINT)
+            assertEquals("access point $code", FailureKind.SESSION, classify(io, accessPoint))
+        }
+        assertEquals(Login5Reply.Error.TRANSIENT_CODES, codes.toSet())
+    }
+
+    @Test
     fun `SPOT-14 SPOT-18 a network failure on the way to the access point or the CDN is a network failure`() {
         val io = PlaybackException.ERROR_CODE_IO_UNSPECIFIED
         val reset = SpotifyNetworkException("GET audio-fa.scdn.co/a", SocketException("Connection reset"))
@@ -147,7 +163,7 @@ class PlaybackFailuresTest {
     }
 
     @Test
-    fun `SPOT-14 SPOT-15 SPOT-16 a failed key, no playable file and a CDN status are track failures`() {
+    fun `SPOT-14 SPOT-15 SPOT-16 a failed key, no playable file and a status are track failures`() {
         val io = PlaybackException.ERROR_CODE_IO_UNSPECIFIED
         val failures =
             mapOf(
@@ -155,8 +171,8 @@ class PlaybackFailuresTest {
                 NoPlayableFileException("6PCoZdjSPbRMehHviTrpB3") to ErrorKind.TrackUnplayable,
                 SpotifyContentException("GET /storage-resolve: a reply that does not parse") to
                     ErrorKind.TrackUnplayable,
-                SpotifyHttpException(403, "GET", "audio-fa.scdn.co/audio/03") to ErrorKind.ServerError(403),
-                SpotifyHttpException(401, "GET", "audio-fa.scdn.co/audio/03") to ErrorKind.ServerError(401),
+                CdnStatusException(403, "audio-fa.scdn.co/audio/03") to ErrorKind.ServerError(403),
+                CdnStatusException(401, "audio-fa.scdn.co/audio/03") to ErrorKind.ServerError(401),
                 SpotifyHttpException(502, "POST", "/extended-metadata/v0/extended-metadata") to
                     ErrorKind.ServerError(502),
             )

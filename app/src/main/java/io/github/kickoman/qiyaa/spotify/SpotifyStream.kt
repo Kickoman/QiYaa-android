@@ -61,6 +61,8 @@ class SpotifyStream(
     private var allExpired = true
     private var relinked = false
 
+    val oggLength: Long get() = if (fileLength == UNKNOWN) UNKNOWN else fileLength - AudioFile.HEADER_SIZE
+
     init {
         require(links.isNotEmpty()) { "no CDN link for track ${file.trackId}" }
     }
@@ -68,11 +70,15 @@ class SpotifyStream(
     fun open(oggPosition: Long, length: Long = UNKNOWN): Long {
         require(oggPosition >= 0) { "an Ogg position of $oggPosition" }
         require(length >= 0 || length == UNKNOWN) { "a length of $length" }
+        require(fileLength == UNKNOWN || oggPosition <= oggLength) {
+            "Ogg position $oggPosition is past the end of $oggLength bytes"
+        }
         close()
         position = oggPosition + AudioFile.HEADER_SIZE
         rangeEnd = if (length == UNKNOWN) UNKNOWN else position + length
+        if (rangeEnd != UNKNOWN && fileLength != UNKNOWN) rangeEnd = minOf(rangeEnd, fileLength)
         newStreak()
-        if (length == 0L || (fileLength != UNKNOWN && position >= fileLength)) {
+        if (length == 0L || position == fileLength) {
             rangeEnd = position
             return if (length == UNKNOWN) 0 else length
         }
@@ -87,7 +93,7 @@ class SpotifyStream(
     fun read(buffer: ByteArray, offset: Int, length: Int): Int {
         if (length == 0) return 0
         while (true) {
-            val limit = if (rangeEnd != UNKNOWN) rangeEnd else fileLength
+            val limit = limit()
             if (limit != UNKNOWN && position >= limit) return END
             val current = reply ?: connect().also { reply = it }
             val wanted = if (limit == UNKNOWN) length else minOf(length.toLong(), limit - position).toInt()
@@ -172,7 +178,7 @@ class SpotifyStream(
 
             is LinkFailure.Status -> {
                 report(SpotifyProblem.Http(failure.code))
-                SpotifyHttpException(failure.code, "GET", label)
+                CdnStatusException(failure.code, label)
             }
         }
     }
@@ -188,14 +194,24 @@ class SpotifyStream(
         reply = null
     }
 
+    private fun limit(): Long = when {
+        rangeEnd == UNKNOWN -> fileLength
+        fileLength == UNKNOWN -> rangeEnd
+        else -> minOf(rangeEnd, fileLength)
+    }
+
     private fun rangeHeader(): String =
         "bytes=$position-" + if (rangeEnd == UNKNOWN) "" else "${rangeEnd - 1}"
 
     private fun canceled(call: Call?): Boolean =
         Thread.currentThread().isInterrupted || call?.isCanceled() == true
 
-    private fun totalOf(response: Response): Long =
-        response.header(CONTENT_RANGE)?.substringAfterLast('/', "")?.trim()?.toLongOrNull() ?: UNKNOWN
+    private fun totalOf(response: Response): Long {
+        val total = response.header(CONTENT_RANGE)?.substringAfterLast('/', "")?.trim()?.toLongOrNull()
+        if (total != null) return total
+        val replyLength = response.body.contentLength()
+        return if (rangeEnd == UNKNOWN && replyLength >= 0) position + replyLength else UNKNOWN
+    }
 
     private fun describe(failure: LinkFailure): String = when (failure) {
         is LinkFailure.Network -> failure.cause.javaClass.simpleName

@@ -2,8 +2,10 @@ package io.github.kickoman.qiyaa.playback
 
 import android.net.Uri
 import androidx.media3.common.C
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.BaseDataSource
+import androidx.media3.datasource.DataSourceException
 import androidx.media3.datasource.DataSpec
 import io.github.kickoman.qiyaa.spotify.ReadGuard
 import io.github.kickoman.qiyaa.spotify.SpotifyFiles
@@ -32,6 +34,9 @@ class SpotifyDataSource(
             }
         transferInitializing(dataSpec)
         val play = stream ?: firstOpen(trackId).also { stream = it }
+        if (play.oggLength != SpotifyStream.UNKNOWN && dataSpec.position > play.oggLength) {
+            throw DataSourceException(PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE)
+        }
         val length = play.open(dataSpec.position, dataSpec.length)
         opened = true
         transferStarted(dataSpec)

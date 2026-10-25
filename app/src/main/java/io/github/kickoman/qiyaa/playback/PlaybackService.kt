@@ -30,8 +30,6 @@ import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.appGraph
 import io.github.kickoman.qiyaa.audio.AudioBus
 import io.github.kickoman.qiyaa.queue.QueueController
-import io.github.kickoman.qiyaa.spotify.SpotifyFiles
-import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.track.TrackSource
 import io.github.kickoman.qiyaa.yandex.Library
 import kotlinx.coroutines.CoroutineStart
@@ -122,7 +120,13 @@ class PlaybackService : MediaSessionService() {
         graph.jamHost.onServiceStarted()
         serviceScope.launch(start = CoroutineStart.UNDISPATCHED) {
             graph.qualityInEffect.drop(1).collect {
-                graph.queue.onFilesChanged { track -> askedInOtherQuality(track, links, graph.spotifyFiles) }
+                graph.queue.onFilesChanged { track ->
+                    QualityCheck.askedInOtherQuality(
+                        track,
+                        links::askedInOtherQuality,
+                        graph.spotifyFiles::askedInOtherQuality,
+                    )
+                }
             }
         }
 
@@ -180,13 +184,6 @@ class PlaybackService : MediaSessionService() {
         val playing = player != null && player.playWhenReady && player.mediaItemCount > 0
         if (!playing) pauseAllPlayersAndStopSelf()
     }
-
-    private fun askedInOtherQuality(track: Track, links: TrackUrlCache, spotify: SpotifyFiles): Boolean =
-        when (track.source) {
-            TrackSource.YANDEX -> links.askedInOtherQuality(track.id)
-            TrackSource.SPOTIFY -> spotify.askedInOtherQuality(track.id)
-            TrackSource.LOCAL -> false
-        }
 
     private fun localBitrate(bitrate: CurrentBitrate, item: MediaItem) {
         val track = MediaItems.toTrack(item)

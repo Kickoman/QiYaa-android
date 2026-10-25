@@ -27,7 +27,7 @@ class SpotifyFiles(
     private val capacity: Int = CAPACITY,
     private val log: (String) -> Unit = {},
 ) {
-    private data class Key(val trackId: String, val bitrates: List<Int>)
+    private data class Key(val username: String, val trackId: String, val bitrates: List<Int>)
 
     private class Entry(val file: SpotifyFile, val preparedAtMs: Long)
 
@@ -38,21 +38,36 @@ class SpotifyFiles(
     val userAgent: String get() = web.userAgent
 
     suspend fun prepare(trackId: String): SpotifyFile {
+        val username = session.loggedInUsername()
         val now = clock()
-        val wanted: List<Int>
+        val key: Key
         synchronized(lock) {
-            wanted = bitrates()
+            val wanted = bitrates()
             require(wanted.isNotEmpty()) { "no bitrates to ask track $trackId in" }
             asked[trackId] = wanted
-            val cached = prepared[Key(trackId, wanted)]
+            key = Key(username, trackId, wanted)
+            val cached = prepared[key]
             if (cached != null && now - cached.preparedAtMs < ttlMs) return cached.file
         }
-        val file = fetch(trackId, wanted)
-        synchronized(lock) { prepared[Key(trackId, wanted)] = Entry(file, now) }
+        val file = fetch(trackId, key.bitrates)
+        synchronized(lock) { prepared[key] = Entry(file, now) }
         return file
     }
 
-    suspend fun storageUrls(file: SpotifyFile): List<String> = storage(file.trackId, file.fileId)
+    suspend fun storageUrls(file: SpotifyFile): List<String> {
+        val urls = storage(file.trackId, file.fileId)
+        val username = session.credentials?.username
+        synchronized(lock) {
+            for (entry in prepared.entries) {
+                val kept = entry.value.file
+                if (entry.key.username != username || kept.trackId != file.trackId) continue
+                if (kept.fileId != file.fileId) continue
+                val fresh = SpotifyFile(kept.trackId, kept.fileId, kept.kbps, kept.key, urls)
+                entry.setValue(Entry(fresh, entry.value.preparedAtMs))
+            }
+        }
+        return urls
+    }
 
     fun askedInOtherQuality(trackId: String): Boolean {
         synchronized(lock) {

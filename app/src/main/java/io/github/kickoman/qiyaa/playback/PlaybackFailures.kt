@@ -5,6 +5,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Tracks
 import androidx.media3.datasource.HttpDataSource
 import io.github.kickoman.qiyaa.queue.FailureKind
+import io.github.kickoman.qiyaa.spotify.CdnStatusException
 import io.github.kickoman.qiyaa.spotify.KeyRefusedException
 import io.github.kickoman.qiyaa.spotify.LoginRefusedException
 import io.github.kickoman.qiyaa.spotify.NotLoggedInException
@@ -65,13 +66,14 @@ object PlaybackFailures {
         FailureKind.TRACK -> httpStatus(cause)?.let(ErrorKind::ServerError) ?: ErrorKind.TrackUnplayable
     }
 
-    private fun isNetworkFailure(failure: Throwable): Boolean =
-        ErrorKind.isNetworkFailure(failure) || failure is SpotifyNetworkException
+    private fun isNetworkFailure(failure: Throwable): Boolean = ErrorKind.isNetworkFailure(failure) ||
+        failure is SpotifyNetworkException ||
+        (failure is LoginRefusedException && failure.isTransient)
 
     private fun spotifyAccountKind(failure: Throwable): ErrorKind? = when (failure) {
         is NotLoggedInException -> ErrorKind.SpotifyLoggedOut
         is KeyRefusedException -> ErrorKind.SpotifyKeyRefused
-        is LoginRefusedException -> loginRefusalKind(failure)
+        is LoginRefusedException -> loginRefusalKind(failure).takeUnless { failure.isTransient }
         else -> null
     }
 
@@ -84,6 +86,7 @@ object PlaybackFailures {
         when (it) {
             is HttpException -> it.status
             is SpotifyHttpException -> it.status
+            is CdnStatusException -> it.status
             is HttpDataSource.InvalidResponseCodeException -> it.responseCode
             else -> null
         }

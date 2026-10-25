@@ -4,6 +4,7 @@ import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
+import io.github.kickoman.qiyaa.spotify.CdnStatusException
 import io.github.kickoman.qiyaa.spotify.KeyFailedException
 import io.github.kickoman.qiyaa.spotify.KeyRefusedException
 import io.github.kickoman.qiyaa.spotify.LoginRefusedException
@@ -22,7 +23,8 @@ class LoadRetries : DefaultLoadErrorHandlingPolicy() {
 
         private fun isFinalCause(failure: Throwable): Boolean = failure is KeyRefusedException ||
             failure is KeyFailedException ||
-            failure is LoginRefusedException ||
+            failure is CdnStatusException ||
+            (failure is LoginRefusedException && !failure.isTransient) ||
             failure is NoPlayableFileException ||
             failure is NotLoggedInException ||
             failure is SpotifyContentException

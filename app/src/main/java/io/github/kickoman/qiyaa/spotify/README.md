@@ -48,7 +48,8 @@ SpotifyException : IOException
 ├── SpotifyHttpException(status, method, path)   // Spotify ответил не 2xx: "HTTP 503 on GET /thing"
 ├── SpotifyNetworkException(what, cause)         // ответа нет; cause — исходное IOException
 ├── SpotifyContentException(detail)              // ответ не читается: разбор, нет полей, тело больше предела, hashcash не решён
-├── LoginRefusedException(code, where)           // вход отклонён: AP (кроме BadCredentials) или ошибка login5
+├── LoginRefusedException(code, where)           // вход отклонён: AP (кроме BadCredentials) или ошибка login5; isTransient — login5 4, 6, 8
+├── CdnStatusException(status, path)             // все ссылки CDN упали, последняя — этим статусом (SpotifyStream)
 ├── AuthorizationException(error, path)          // OAuth не дал токена: access_denied, expired_token, state_mismatch…
 ├── KeyRefusedException                          // AesKeyError 1: ключей этому аккаунту не дают (SPOT-17)
 ├── KeyFailedException(detail)                   // две попытки без ключа (SPOT-16)
@@ -56,6 +57,8 @@ SpotifyException : IOException
 ├── QueryOutdatedException(operation)            // все хеши Pathfinder отвергнуты, последний — ответом 2xx без data
 └── NoPlayableFileException(trackId, detail)     // нечего играть: нет Ogg Vorbis, нет метаданных, нет ссылки CDN (SpotifyFiles)
 ```
+
+- `LoginRefusedException.isTransient` — отказ login5 с кодом `TIMEOUT` (4), `TOO_MANY_ATTEMPTS` (6) или `TRY_AGAIN_LATER` (8) (`Login5Reply.Error.TRANSIENT_CODES`; номера — `LoginError` в `protocol/proto/spotify/login5/v3/login5.proto:84–94` librespot 7289e92, у ПК имён нет). Остальные коды login5 и любой отказ AP — не временные. Что с этим делает воспроизведение — `playback/README.md`, «Классификация ошибок».
 
 - Корень наследует `IOException`: Media3 пропускает из источника данных только `IOException` (`playback/SpotifyDataSource`).
 - `NotLoggedInException` — только «нет сохранённого входа»: ещё не входили, вышли или `BadCredentials` (он удаляет сохранённое). Пока AP подключается или переподключается, ключ ждёт входа до 20 с и падает `SpotifyNetworkException`, а не этой ошибкой: иначе холодный старт и обрыв давали бы ERR-08 вместо ожидания (SPOT-04, SPOT-18).
@@ -75,12 +78,12 @@ fun errorKindOf(failed: Throwable): ErrorKind   // первое звено це�
 | Звено | Вид |
 |---|---|
 | `SpotifyNetworkException` | `NoNetwork` |
-| `SpotifyHttpException(status)` | `ServerError(status)` при любом статусе: 401 и 403 Spotify — не `TokenRejected` Яндекса |
+| `SpotifyHttpException(status)`, `CdnStatusException(status)` | `ServerError(status)` при любом статусе: 401 и 403 Spotify — не `TokenRejected` Яндекса |
 | `SpotifyContentException`, `QueryOutdatedException` | `Malformed` (ПК: «Spotify sent an answer QiYaa cannot read») |
 | `NotLoggedInException` | `SpotifyLoggedOut` (ERR-08, SPOT-06) |
 | `KeyRefusedException` | `SpotifyKeyRefused` (SPOT-17) |
 | `KeyFailedException` (SPOT-16), `NoPlayableFileException` (SPOT-15) | `TrackUnplayable` |
-| `LoginRefusedException` с `where` = `/v3/login` (ошибка login5) | `SpotifyTokenRefused` |
+| `LoginRefusedException` с `where` = `/v3/login` (ошибка login5) | `SpotifyTokenRefused`, и у временных кодов тоже: статус выбора или автоплея говорит, что токена не дали; трек же с таким отказом ждёт сети (`playback/PlaybackFailures`) |
 | `LoginRefusedException` от AP (кроме `BadCredentials`: например, `PremiumAccountRequired` у ключа) | `SpotifyLoginRefused` |
 | остальное (`AuthorizationException`, исключения `yandex`, сеть Java) | как `ErrorKind.of` |
 
@@ -149,6 +152,7 @@ class SpotifySession(
     val spclients: List<String>                    // хосты spclient от apresolve
     fun login(credentials: Credentials, listener: SessionListener? = null)
     fun logout()
+    fun loggedInUsername(): String                 // имя входа; без входа — NotLoggedInException, после отказа AP — LoginRefusedException
     suspend fun audioKey(track: Bytes, file: Bytes): Bytes   // gid 16 байт, id файла 20; ключ 16 байт
 }
 sealed interface SpotifyState { LoggedOut; Connecting; Online(username, country, product); Offline; Expired; PremiumRequired; Refused(code) }
@@ -449,7 +453,7 @@ class SpotifyFiles(
 }
 ```
 
-`prepare(id)` — порт `FileDownload::prepare` ПК (`file_download.cpp`), по шагам SPOT-13:
+`prepare(id)` — порт `FileDownload::prepare` ПК (`file_download.cpp`), по шагам SPOT-13. Сначала, до кэша, — вход: `SpotifySession.loggedInUsername()` с логикой проверки ключа (`credentials` нет — `NotLoggedInException`, отказ AP, кроме `BadCredentials`, — `LoginRefusedException`), как `hasAccount()` у каждого открытия ПК (`src/sources/spotify/source.cpp:72–74`). Пока AP переподключается, `credentials` не сбрасываются, так что ложного «нет входа» нет.
 1. `POST /extended-metadata/v0/extended-metadata` с `TRACK_V4` одного URI (`SpotifyLibrary.METADATA_PATH`). Конверт, который не читается, — `unreadable`: `SpotifyContentException` и `Content`. Сущность не 200, без тела или с телом, которое не разбирается, — `NoPlayableFileException(id, "no metadata to play")`, как трек без файла.
 2. Файл — `pick(track, bitrates)`: первый битрейт списка, который у трека есть точно, а без него — ближайший к первому Ogg Vorbis (`Metadata.pickOggVorbis`). Ищется среди своих файлов трека, а когда своих Ogg Vorbis нет, — у замен по порядку. MP3, AAC и FLAC не берутся никогда; без Ogg Vorbis — `NoPlayableFileException(id)` (SPOT-15). Списки — `playback/SpotifyBitrates`: стандарт `[320, 160]`, экономия `[96, 160]`, дальше любой Ogg Vorbis. Список, а не `yandex.Quality`: пакет не импортирует `yandex`.
 3. Ключ — `SpotifySession.audioKey(gid трека, у которого файл, id файла)`; у трека с заменой это gid замены (`PlayableFile.track`). Отказы идут как есть: `KeyRefusedException` (SPOT-17), `KeyFailedException` (SPOT-16), `NotLoggedInException`, `LoginRefusedException`, `SpotifyNetworkException` (вход AP не дождались, SPOT-18).
@@ -457,11 +461,11 @@ class SpotifyFiles(
 
 В `log` — одна строка на подготовку: `the file of track <id>: Ogg Vorbis <kbps> kbps, <n> CDN links`.
 
-**Кэш на процесс**, как `playback/TrackUrlCache` у Яндекса: ключ — трек и список битрейтов, 64 записи по давности использования, 15 минут от начала подготовки; часы — `SystemClock.elapsedRealtime` (`AppGraph`). Попадание отдаёт тот же `SpotifyFile` без запросов. Упавшая подготовка не кэшируется. Так частые первые открытия одного трека (следующий круг, следующая строка, `reload`, повтор после ожидания сети) обходятся без метаданных, ключа и `storage-resolve`. Ключ файла не меняется; ссылки CDN, которые истекли раньше 15 минут (срок не проверен), `SpotifyStream` спросит заново сам.
+**Кэш на процесс**, как `playback/TrackUrlCache` у Яндекса: ключ — имя входа, трек и список битрейтов, 64 записи по давности использования, 15 минут от начала подготовки; часы — `SystemClock.elapsedRealtime` (`AppGraph`). Попадание отдаёт тот же `SpotifyFile` без запросов. Упавшая подготовка не кэшируется. Так частые первые открытия одного трека (следующий круг, следующая строка, `reload`, повтор после ожидания сети) обходятся без метаданных, ключа и `storage-resolve`. Запись прежнего аккаунта новому не отдаётся: у него другое имя входа, и его подготовка спрашивает свой ключ (SPOT-17 «until the account changes»); старые записи уходят по давности. Ключ файла не меняется; ссылки CDN, которые истекли раньше 15 минут (срок не проверен), `SpotifyStream` спросит заново сам.
 
 **Какие битрейты просили** (QUAL-05). Карта `asked: trackId → битрейты` той же ёмкости. `prepare` пишет её в том же замке, где читает `bitrates()`, до сети: попадание в кэш, идущая и упавшая подготовка тоже считаются. `askedInOtherQuality(id)` — `true`, если последняя подготовка трека просила не те битрейты, что действуют сейчас; трек, который не готовили (или вытесненный), — `false`. Подготовка либо записала старые битрейты до проверки, либо прочла уже новые; середины нет.
 
-`storageUrls(file)` — шаг 4 для готового файла (второй `storage-resolve`, SPOT-14 на Android); кэш он не трогает.
+`storageUrls(file)` — шаг 4 для готового файла (второй `storage-resolve`, SPOT-14 на Android). Новые ссылки он пишет и в записи этого файла у текущего входа (возраст записи прежний), так что следующая игра трека в пределах 15 минут не проходит истёкшие ссылки заново.
 
 **Traps:**
 - Сигнатура в плане — `prepare(id, bitrates)`. Здесь битрейты — поставщик в конструкторе, и `prepare` читает его в замке кэша: иначе смена качества между чтением битрейтов вызывающим и записью `asked` осталась бы незамеченной, как избегает и `TrackUrlCache`.
@@ -480,6 +484,7 @@ class SpotifyStream(
     relink: () -> List<String>,                                    // второй storage-resolve
     guard: ReadGuard = ReadGuard.NONE, report: (SpotifyProblem) -> Unit = {}, log: (String) -> Unit = {},
 ) : Closeable {
+    val oggLength: Long                                          // длина Ogg файла; UNKNOWN, пока CDN не сказал
     fun open(oggPosition: Long, length: Long = UNKNOWN): Long     // сколько байт Ogg осталось; UNKNOWN — CDN не сказал
     fun read(buffer: ByteArray, offset: Int, length: Int): Int    // END в конце
     override fun close()
@@ -490,10 +495,10 @@ class SpotifyStream(
 Байты одного файла с CDN: порт второй половины `FileDownload` ПК (`start`, `fetchFrom`, `deliver`), но диапазонами по запросу плеера, а не целиком. Чистая JVM на OkHttp, без Media3 и `OkHttpDataSource`, поэтому весь перебор ссылок проверяется на `MockWebServer`. Переходник к Media3 — `playback/SpotifyDataSource`; он же отдаёт `CallTracker` и `ReadGuard`, через которые работает защита от зависшего чтения (TR-09). Один поток — одна игра: файл, ключ и ссылки её. Загрузки игры идут по одной, поэтому замков нет.
 
 - **Позиции.** Байт `p` Ogg — байт `p + 167` файла. `open(p, n)` просит `Range: bytes=<p+167>-`, с длиной — `bytes=<p+167>-<p+167+n−1>`; `User-Agent` — `userAgent` (тот же, что у spclient, как на ПК). Расшифровка — `AudioDecryptor.apply` с абсолютного смещения файла, поэтому любой ответ расшифровывается со своего первого байта, а заголовок Spotify наружу не попадает.
-- **Длина.** У 206 — число после `/` в `Content-Range`, у 200 — `Content-Length`: длина файла. `open` отдаёт остаток от позиции, а у открытия с длиной — её. Без длины файла (`Content-Range: bytes a-b/*`) — `UNKNOWN`, и конец ответа — конец файла. С известной длиной открытие в конце или за ним — 0 без запроса.
+- **Длина.** У 206 — число после `/` в `Content-Range`, у 200 — `Content-Length`: длина файла. Без итога (`Content-Range: bytes a-b/*`) на открытый диапазон `bytes=p-` длина файла — `p + Content-Length` ответа (ревью PR #140), а у открытия с длиной итог остаётся неизвестным: конец диапазона — не конец файла. `oggLength` — длина файла без заголовка или `UNKNOWN`. `open` отдаёт остаток от позиции, а у открытия с длиной — её; без длины файла — `UNKNOWN`, и конец ответа — конец файла. Как у `DataSource.open`: открытие ровно в конце известного файла — 0 без запроса и сразу `END`, за концом — `require` (переходник проверяет раньше и бросает `POSITION_OUT_OF_RANGE`), диапазон за концом кончается с файлом.
 - **200 на запрос диапазона** — ответ с начала файла: поток сам пропускает байты до нужного в первом чтении (ловушка ПК, `src/spotify/client/README.md:117–118`).
 - **Сбой ссылки** (SPOT-14): сеть (`IOException` открытия или чтения, в том числе `SocketTimeoutException`) или статус не 200/206, в том числе 401 и 403 — это не ERR-08. Поток берёт следующую ссылку списка, по кругу, и продолжает с того же байта. Ответ, который кончился раньше конца без ошибки (206 короче, чем просили), продолжается на той же ссылке с байта, где кончился, если принёс хоть байт; пустой — сбой ссылки.
-- **Все упали.** Сбои считаются с последнего прочитанного байта и с каждого `open` заново. Когда их столько же, сколько ссылок: если все были ответами 403 или 410 и в этой серии `relink` ещё не звали, поток спрашивает `relink()` (второй `storage-resolve`) и идёт по новым ссылкам с того же байта; они остаются для следующих открытий. Это оговорка «On Android…» в SPOT-14: перемотка после долгой паузы идёт по ссылкам, которые истекли. Иначе итог — по последнему сбою: сеть — `SpotifyNetworkException("GET <хост><путь>", причина)` (ERR-01…03), статус — `SpotifyHttpException(статус, "GET", "<хост><путь>")` и `report(Http(статус))` (ERR-04), как у ПК.
+- **Все упали.** Сбои считаются с последнего прочитанного байта и с каждого `open` заново. Когда их столько же, сколько ссылок: если все были ответами 403 или 410 и в этой серии `relink` ещё не звали, поток спрашивает `relink()` (второй `storage-resolve`) и идёт по новым ссылкам с того же байта; они остаются для следующих открытий. Это оговорка «On Android…» в SPOT-14: перемотка после долгой паузы идёт по ссылкам, которые истекли. Иначе итог — по последнему сбою: сеть — `SpotifyNetworkException("GET <хост><путь>", причина)` (ERR-01…03), статус — `CdnStatusException(статус, "<хост><путь>")` и `report(Http(статус))` (ERR-04), как у ПК. Отдельный тип, потому что для загрузчика он окончателен, а статус spclient — нет (`playback/README.md`, «`LoadRetries`»).
 - **Отмена — не сбой ссылки.** Если поток прерван (`Thread.currentThread().isInterrupted`) или вызов отменён (`call.isCanceled()`), исключение уходит наверх как есть: без следующей ссылки и без `relink`. `SocketTimeoutException` — тоже `InterruptedIOException`, но поток не прерван и вызов не отменён, так что это обычный сбой ссылки.
 - **`during` не вкладываются.** Открытие ссылки (`newCall`, `execute`, до заголовков ответа) идёт внутри `guard.during(null)`, каждое чтение тела вместе с пропуском при 200 — внутри `guard.during(call)` её вызова. Переход к следующей ссылке делается после выхода из `during` упавшего чтения, а чтение новой ссылки — в своём `during`. Почему это важно — `playback/README.md`, «`SpotifyDataSource`».
 - **Тела** целиком не читаются: тело 200 или 206 — кусками не больше того, что просил плеер, и не дальше конца диапазона; тело ответа с другим статусом не читается вовсе.
@@ -540,8 +545,8 @@ class SpotifyStream(
 - `SpotifyTracksTest` — обложка SPOT-19 и `Track` трека Spotify; `SpotifyWebTest` — неудача выдачи токена не уходит другому аккаунту, а местная `NotLoggedInException` — никому; `SpotifyErrorKindsTest` (корень) — виды ошибок.
 
 Файл трека (#113 PR 4):
-- `SpotifyFilesTest` — на `support/SpotifyStack`: выбор файла SPOT-13 (стандарт, экономия, 160, любой; MP3, AAC и FLAC — никогда), ключ — для файла и gid трека, у которого он есть (и у замены), ссылки в порядке ответа, фикстуры `storage-resolve-files-audio-interactive` (`restricted`, `storage`, `cdn-without-urls` — `NoPlayableFileException` без `Content`), нечитаемые `storage-resolve` и `extended-metadata` — `SpotifyContentException` и `Content`, отказы ключа как есть и без кэша, кэш 15 минут и по битрейтам, вытеснение, `askedInOtherQuality`, второй `storage-resolve`.
-- `SpotifyStreamTest` — на `support/FakeCdn` (`MockWebServer`, файл зашифрован тем же ключом): смещения и 167 байт, 206 и 200, длина и её отсутствие, открытие в конце, короткий ответ, следующая ссылка с того же байта при статусе и при обрыве посреди тела, `during` без вложений, итог по последнему сбою, 401 и 403 как сбой ссылки, второй `storage-resolve` (и после перемотки через час — новые ссылки остаются), новые 403 — отказ, смесь сбоев — без него, тайм-аут чтения — сбой ссылки, отменённый вызов и прерванный поток — без следующей ссылки.
+- `SpotifyFilesTest` — на `support/SpotifyStack`: выбор файла SPOT-13 (стандарт, экономия, 160, любой; MP3, AAC и FLAC — никогда), ключ — для файла и gid трека, у которого он есть (и у замены), ссылки в порядке ответа, фикстуры `storage-resolve-files-audio-interactive` (`restricted`, `storage`, `cdn-without-urls` — `NoPlayableFileException` без `Content`), нечитаемые `storage-resolve` и `extended-metadata` — `SpotifyContentException` и `Content`, отказы ключа как есть и без кэша, кэш 15 минут и по битрейтам, вытеснение, `askedInOtherQuality`, второй `storage-resolve` и его ссылки в записи; после выхода и после отказа AP подготовленный трек — `NotLoggedInException` и `LoginRefusedException` без запросов, другой аккаунт не получает файл первого.
+- `SpotifyStreamTest` — на `support/FakeCdn` (`MockWebServer`, файл зашифрован тем же ключом): смещения и 167 байт, 206 и 200, длина, длина из `Content-Length` без итога и её отсутствие у ограниченного открытия, открытие в конце и за концом, диапазон за концом, короткий ответ, следующая ссылка с того же байта при статусе и при обрыве посреди тела, `during` без вложений, итог по последнему сбою (статус — `CdnStatusException`), каждый прочитанный байт начинает счёт сбоев заново (два обрыва на двух ссылках), 401 и 403 как сбой ссылки, второй `storage-resolve` (и после перемотки через час — новые ссылки остаются; истекли снова — спрашивается снова), новые 403 — отказ, смесь сбоев — без него, тайм-аут чтения — сбой ссылки, отменённый вызов и прерванный поток — без следующей ссылки.
 - `playback/SpotifyStalledReadTest` — зависшее чтение потока отменяется через настоящие `ReadInterrupts` и `CallTracker` за доли секунды: на первой ссылке и на следующей после обрыва первой.
 
 Живой тест `SpotifyLiveTest` выполняется, только когда задана `QIYAA_SPOTIFY_CREDENTIALS`: JSON сохранённого входа ПК (`{"username": …, "type": 1, "data": "<base64>"}`) или путь к файлу с ним; иначе он пропускается (`Assume`). Он входит в настоящую AP с device id из 40 `d`, как живой тест ПК, проверяет, что `Online` — тот же аккаунт (имя не печатается ни в сообщениях проверок, ни в отчёте; ошибка разбора `QIYAA_SPOTIFY_CREDENTIALS` называет только класс исключения), берёт `TRACK_V4` трека (`QIYAA_SPOTIFY_TRACK`, по умолчанию `6PCoZdjSPbRMehHviTrpB3`) через spclient (а с ним client-token и login5), выбирает Ogg Vorbis и получает ключ файла. Затем готовит файл через `SpotifyFiles` (битрейты `[320, 160]`, ключ ещё раз и `storage-resolve`), открывает `SpotifyStream` с начала (CDN обязан сказать длину: без неё не было бы перемотки), читает первый КиБ и проверяет, что расшифрованное после 167 байт начинается с `OggS`. В выводе — лог сессии, `SpotifyWeb`, `SpotifyFiles` и потока по правилу «Лог» выше (у ссылок CDN — только хост и путь без запроса, где токен), страна, битрейт файла и число ссылок; ни данных входа, ни токенов, ни ключа, ни ссылок CDN целиком. В CI не выполняется; запуск с настоящим аккаунтом (сохранённым входом ПК) владелец разрешил, запускает его координатор; работает ли вход ПК при другом device id, не проверено.
