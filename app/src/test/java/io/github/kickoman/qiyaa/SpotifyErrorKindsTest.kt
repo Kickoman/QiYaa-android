@@ -1,11 +1,13 @@
 package io.github.kickoman.qiyaa
 
+import io.github.kickoman.qiyaa.spotify.AuthorizationException
 import io.github.kickoman.qiyaa.spotify.CdnStatusException
 import io.github.kickoman.qiyaa.spotify.KeyFailedException
 import io.github.kickoman.qiyaa.spotify.KeyRefusedException
 import io.github.kickoman.qiyaa.spotify.LoginRefusedException
 import io.github.kickoman.qiyaa.spotify.NoPlayableFileException
 import io.github.kickoman.qiyaa.spotify.NotLoggedInException
+import io.github.kickoman.qiyaa.spotify.PairLogin
 import io.github.kickoman.qiyaa.spotify.QueryOutdatedException
 import io.github.kickoman.qiyaa.spotify.SpotifyContentException
 import io.github.kickoman.qiyaa.spotify.SpotifyHttpException
@@ -66,5 +68,25 @@ class SpotifyErrorKindsTest {
         assertEquals(ErrorKind.TokenRejected, errorKindOf(HttpException(401, "GET", "/x", "")))
         assertEquals(ErrorKind.NoNetwork, errorKindOf(IOException("load failed", SocketTimeoutException())))
         assertEquals(ErrorKind.Unknown, errorKindOf(IllegalStateException("broken")))
+    }
+
+    @Test
+    fun `SPOT-01 SPOT-02 the login screen says an expired code expired and any other refusal is Spotify's`() {
+        val expired = AuthorizationException(PairLogin.EXPIRED_TOKEN, "POST /api/token")
+        assertEquals(ErrorKind.CodeExpired, spotifyLoginErrorKindOf(expired))
+        for (error in listOf("access_denied", "state_mismatch", "no_code")) {
+            val refused = AuthorizationException(error, "GET /login")
+            assertEquals(error, ErrorKind.SpotifyLoginRefused, spotifyLoginErrorKindOf(refused))
+        }
+        assertEquals(ErrorKind.Unknown, errorKindOf(expired))
+    }
+
+    @Test
+    fun `the login screen classifies everything else as the lists do`() {
+        val network = SpotifyNetworkException("POST /api/token", SocketTimeoutException("read timed out"))
+        assertEquals(ErrorKind.NoNetwork, spotifyLoginErrorKindOf(network))
+        val status = SpotifyHttpException(503, "POST", "/x")
+        assertEquals(ErrorKind.ServerError(503), spotifyLoginErrorKindOf(status))
+        assertEquals(ErrorKind.Malformed, spotifyLoginErrorKindOf(SpotifyContentException("no access_token")))
     }
 }

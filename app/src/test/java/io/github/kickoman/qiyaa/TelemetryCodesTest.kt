@@ -9,10 +9,12 @@ import io.github.kickoman.qiyaa.lyrics.LyricsShown
 import io.github.kickoman.qiyaa.playback.AudioFailure
 import io.github.kickoman.qiyaa.playback.JamHostEvent
 import io.github.kickoman.qiyaa.queue.FailureKind
+import io.github.kickoman.qiyaa.spotify.SpotifyProblem
 import io.github.kickoman.qiyaa.telemetry.ErrorArea
 import io.github.kickoman.qiyaa.telemetry.EventCodec
 import io.github.kickoman.qiyaa.telemetry.ExitInfo
 import io.github.kickoman.qiyaa.telemetry.ExitReason
+import io.github.kickoman.qiyaa.telemetry.FeatureName
 import io.github.kickoman.qiyaa.telemetry.LyricsOutcome
 import io.github.kickoman.qiyaa.telemetry.StartFields
 import io.github.kickoman.qiyaa.yandex.RequestFailure
@@ -96,6 +98,48 @@ class TelemetryCodesTest {
     @Test
     fun `a removal the host makes without a connection is not a jam error`() {
         assertNull(TelemetryCodes.error(JamHostEvent.NotConnected))
+    }
+
+    @Test
+    fun `TEL-18 Spotify's problems are spotify errors, http with its status`() {
+        val codes =
+            listOf(
+                SpotifyProblem.LoginRefused(12),
+                SpotifyProblem.LoginRefused(11),
+                SpotifyProblem.KeyRefused,
+                SpotifyProblem.KeyFailed,
+                SpotifyProblem.AccessPoint,
+                SpotifyProblem.Http(403),
+                SpotifyProblem.Content,
+                SpotifyProblem.QueryOutdated,
+            ).map(TelemetryCodes::error)
+        val expected =
+            listOf(
+                ErrorCode(ErrorArea.SPOTIFY, "login-expired"),
+                ErrorCode(ErrorArea.SPOTIFY, "premium-required"),
+                ErrorCode(ErrorArea.SPOTIFY, "key-refused"),
+                ErrorCode(ErrorArea.SPOTIFY, "key-failed"),
+                ErrorCode(ErrorArea.SPOTIFY, "access-point"),
+                ErrorCode(ErrorArea.SPOTIFY, "http", 403),
+                ErrorCode(ErrorArea.SPOTIFY, "content"),
+                ErrorCode(ErrorArea.SPOTIFY, "query-outdated"),
+            )
+        assertEquals(expected, codes)
+    }
+
+    @Test
+    fun `TEL-18 another refusal of the login sends nothing, as on the desktop`() {
+        assertNull(TelemetryCodes.error(SpotifyProblem.LoginRefused(9)))
+        assertNull(TelemetryCodes.error(SpotifyProblem.LoginRefused(0)))
+    }
+
+    @Test
+    fun `TEL-18 a Spotify login says its way, a logout says logout`() {
+        assertEquals("login-code", TelemetryCodes.spotifyLogin(SpotifyLoginWay.CODE))
+        assertEquals("login-browser", TelemetryCodes.spotifyLogin(SpotifyLoginWay.BROWSER))
+        assertEquals("logout", TelemetryCodes.SPOTIFY_LOGOUT)
+        assertEquals("spotify", FeatureName.SPOTIFY.code)
+        assertEquals("spotify", ErrorArea.SPOTIFY.code)
     }
 
     @Test

@@ -39,6 +39,7 @@ import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.playback.JamHostPhase
+import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.ui.JamViewModel
 import io.github.kickoman.qiyaa.ui.PlayerViewModel
 import io.github.kickoman.qiyaa.ui.TrackActions
@@ -265,7 +266,7 @@ fun PlaylistScreen(viewModel: PlayerViewModel, jam: JamViewModel, onAdd: () -> U
 }
 
 @Composable
-fun TrackActionsSheet(actions: TrackActions, viewModel: PlayerViewModel) {
+fun TrackActionsSheet(actions: TrackActions, viewModel: PlayerViewModel, onRadio: (Track) -> Unit) {
     val colors = Qi.colors
     val context = LocalContext.current
     val track = actions.track
@@ -332,6 +333,18 @@ fun TrackActionsSheet(actions: TrackActions, viewModel: PlayerViewModel) {
                 onClick = viewModel::dislikePicked,
             ) {
                 PathIcon(IconPaths.THUMB_DOWN, 22.dp, colors.muted, strokeWidth = IconPaths.OUTLINE)
+            }
+            if (actions.radio) {
+                TrackActionRow(
+                    stringResource(R.string.spotify_radio),
+                    enabled = true,
+                    onClick = {
+                        viewModel.closeTrackActions()
+                        onRadio(track)
+                    },
+                ) {
+                    PathIcon(IconPaths.RADIO, 22.dp, colors.muted, strokeWidth = IconPaths.OUTLINE)
+                }
             }
             val webUrl = track.webUrl
             TrackActionRow(

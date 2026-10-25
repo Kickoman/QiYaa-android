@@ -8,6 +8,8 @@ import io.github.kickoman.qiyaa.lyrics.LyricsShown
 import io.github.kickoman.qiyaa.playback.AudioFailure
 import io.github.kickoman.qiyaa.playback.JamHostEvent
 import io.github.kickoman.qiyaa.queue.FailureKind
+import io.github.kickoman.qiyaa.spotify.SpotifyProblem
+import io.github.kickoman.qiyaa.spotify.protocol.LoginError
 import io.github.kickoman.qiyaa.telemetry.ErrorArea
 import io.github.kickoman.qiyaa.telemetry.EventCodec
 import io.github.kickoman.qiyaa.telemetry.ExitInfo
@@ -20,6 +22,8 @@ data class ErrorCode(val area: ErrorArea, val kind: String, val httpStatus: Int?
 
 data class ProcessExit(val summary: String?, val reason: Int, val status: Int)
 
+enum class SpotifyLoginWay { CODE, BROWSER }
+
 object TelemetryCodes {
     const val REASON_CRASH = 4
     const val REASON_CRASH_NATIVE = 5
@@ -27,10 +31,15 @@ object TelemetryCodes {
     const val ON = "on"
     const val OFF = "off"
     const val RELEASE = "release"
+    const val SPOTIFY_LOGOUT = "logout"
 
     val LOGIN_FAILED = ErrorCode(ErrorArea.LOGIN, "failed")
 
     private val ARCHES = mapOf("arm64-v8a" to "arm64", "armeabi-v7a" to "arm", "x86" to "i386")
+    private val SPOTIFY_REFUSALS = mapOf(
+        LoginError.BAD_CREDENTIALS.code to "login-expired",
+        LoginError.PREMIUM_ACCOUNT_REQUIRED.code to "premium-required",
+    )
 
     fun error(kind: FailureKind): ErrorCode = ErrorCode(
         ErrorArea.PLAYBACK,
@@ -68,6 +77,21 @@ object TelemetryCodes {
             }?.let { ErrorCode(ErrorArea.JAM, it) }
 
         JamHostEvent.NotConnected -> null
+    }
+
+    fun error(problem: SpotifyProblem): ErrorCode? = when (problem) {
+        is SpotifyProblem.LoginRefused -> SPOTIFY_REFUSALS[problem.code]?.let(::spotify)
+        SpotifyProblem.KeyRefused -> spotify("key-refused")
+        SpotifyProblem.KeyFailed -> spotify("key-failed")
+        SpotifyProblem.AccessPoint -> spotify("access-point")
+        is SpotifyProblem.Http -> spotify("http", problem.status)
+        SpotifyProblem.Content -> spotify("content")
+        SpotifyProblem.QueryOutdated -> spotify("query-outdated")
+    }
+
+    fun spotifyLogin(way: SpotifyLoginWay): String = when (way) {
+        SpotifyLoginWay.CODE -> "login-code"
+        SpotifyLoginWay.BROWSER -> "login-browser"
     }
 
     fun onOff(on: Boolean): String = if (on) ON else OFF
@@ -136,4 +160,7 @@ object TelemetryCodes {
         }
         return exits
     }
+
+    private fun spotify(kind: String, httpStatus: Int? = null): ErrorCode =
+        ErrorCode(ErrorArea.SPOTIFY, kind, httpStatus)
 }

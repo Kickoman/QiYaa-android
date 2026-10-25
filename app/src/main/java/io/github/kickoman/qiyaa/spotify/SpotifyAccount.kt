@@ -40,6 +40,7 @@ class SpotifyAccount(private val session: SpotifySession, private val saved: Sav
     }
 
     fun logout() {
+        saved.forget()
         session.logout()
         saved.forget()
     }

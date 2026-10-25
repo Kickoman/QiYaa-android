@@ -62,6 +62,7 @@ enum class ErrorArea(val code: String) {
     API("api"),
     LOGIN("login"),
     JAM("jam"),
+    SPOTIFY("spotify"),
 }
 
 enum class FeatureName(val code: String) {
@@ -71,6 +72,7 @@ enum class FeatureName(val code: String) {
     VIS("vis"),
     LYRICS("lyrics"),
     LYRICS_SERVICES("lyrics-services"),
+    SPOTIFY("spotify"),
 }
 
 data class StartFields(
@@ -89,6 +91,7 @@ data class StartFields(
     val quality: Quality = Quality.STANDARD,
     val qualityMetered: Quality = Quality.STANDARD,
     val loggedIn: Boolean = false,
+    val spotifyLoggedIn: Boolean? = null,
     val firstRun: Boolean = false,
 ) {
     enum class Packaging(val code: String) { APK("apk"), DEBUG("debug") }

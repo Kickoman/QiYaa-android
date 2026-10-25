@@ -36,6 +36,8 @@ import io.github.kickoman.qiyaa.queue.QueueController
 import io.github.kickoman.qiyaa.queue.QueueStore
 import io.github.kickoman.qiyaa.queue.SearchPick
 import io.github.kickoman.qiyaa.queue.ShuffleAlgorithm
+import io.github.kickoman.qiyaa.spotify.BrowserLogin
+import io.github.kickoman.qiyaa.spotify.PairLogin
 import io.github.kickoman.qiyaa.spotify.SpotifyAccount
 import io.github.kickoman.qiyaa.spotify.SpotifyFiles
 import io.github.kickoman.qiyaa.spotify.SpotifyIdentity
@@ -61,6 +63,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -135,6 +138,8 @@ class AppGraph(val context: Context) {
     val spotifyLibrary = SpotifyLibrary(spotifyWeb, spotifySession)
     val spotifyAccount =
         SpotifyAccount(spotifySession, SpotifySavedCredentials(spotifyStore)).also { it.start() }
+    val spotifyPairLogin = PairLogin(httpClient)
+    val spotifyBrowserLogin = BrowserLogin(httpClient)
     val spotifyContinuations = SpotifyContinuations(spotifyLibrary.asCatalog())
     val spotifySearch: suspend (String) -> SearchPick = spotifyContinuations::searchPick
 
@@ -299,6 +304,8 @@ class AppGraph(val context: Context) {
             networkMonitor.available,
             lyricsShown,
             lyricsFinder.lookups,
+            spotifyAccount,
+            merge(spotifySession.problems, spotifyWeb.problems),
         )
     }
 
