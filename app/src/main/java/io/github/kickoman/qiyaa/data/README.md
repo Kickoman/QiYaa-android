@@ -1,6 +1,6 @@
 # `data/` — сохранение настроек
 
-Всё, что переживает перезапуск: пользовательские настройки и OAuth-токен в приватных `SharedPreferences` приложения (`MODE_PRIVATE`), очередь и джем — в файлах `queue.json`, `jam.json` и `jam-guest.json` во внутренней памяти (`filesDir`); что из этого уходит в копии и на другое устройство — в «Резервном копировании» ниже. Пакет **не** применяет настройки к плееру: EQ и баланс в `AudioBus` передаёт `AppGraph` (подписки на `StateFlow` в `applicationScope`), громкость — `playback/PlaybackService`. Экраны только меняют настройки.
+Всё, что переживает перезапуск: пользовательские настройки, OAuth-токен Яндекса и вход Spotify в приватных `SharedPreferences` приложения (`MODE_PRIVATE`), очередь и джем — в файлах `queue.json`, `jam.json` и `jam-guest.json` во внутренней памяти (`filesDir`); что из этого уходит в копии и на другое устройство — в «Резервном копировании» ниже. Пакет **не** применяет настройки к плееру: EQ и баланс в `AudioBus` передаёт `AppGraph` (подписки на `StateFlow` в `applicationScope`), громкость — `playback/PlaybackService`. Экраны только меняют настройки.
 
 | Файл | Содержит |
 |---|---|
@@ -9,6 +9,7 @@
 | `ShuffleChoice.kt` | `ShuffleChoice` — алгоритм shuffle: без повторов / случайный трек (SHUF-09, SHUF-10, `spec/player/shuffle.md`) |
 | `AppLanguage.kt` | `AppLanguage` — языки интерфейса: белорусский (по умолчанию), русский, английский |
 | `TokenStore.kt` | `TokenStore` — токен |
+| `SpotifyStore.kt` | `SpotifyStore` — сохранённый вход Spotify и device id |
 | `QueueFile.kt` | `QueueFile` — сохранённая очередь, файл `queue.json` |
 | `JamFile.kt` | `JamFile` — сессия хозяина джема (`jam.json`) и членства гостя (`jam-guest.json`) |
 | `AccentTheme.kt` | `AccentTheme` — три акцентные темы |
@@ -20,7 +21,7 @@
 
 | Домен | Путь | Что это |
 |---|---|---|
-| `sharedpref` | `.` | все `SharedPreferences`: токен (`auth`) и настройки (`settings`) |
+| `sharedpref` | `.` | все `SharedPreferences`: токен (`auth`), настройки (`settings`) и вход Spotify с device id (`spotify`) |
 | `file` | `jam-guest.json`, `jam-guest.json.new` | членства гостя с секретами входа (`JamFile.GUEST`); `.new` — недописанная копия `AtomicFile` |
 
 `queue.json` и `jam.json` при переносе на Android 12+ уезжают на новое устройство. В `jam.json` — `hostSecret` и `joinUrl` с секретом входа идущего джема (`jam/README.md`, HOST-22).
@@ -75,6 +76,28 @@
 ## `TokenStore`
 
 Файл `auth`, ключ `token`. `load()` возвращает `""`, если токена нет; `clear()` удаляет ключ. Пустая строка означает «не вошли».
+
+## `SpotifyStore`
+
+```kotlin
+class SpotifyStore(context: Context) {
+    fun username(): String;  fun type(): Int;  fun blob(): ByteArray   // "", NO_TYPE, пусто — нет входа
+    fun save(username: String, type: Int, blob: ByteArray);  fun clear()
+    fun deviceId(create: () -> String): String                            // сделать один раз и хранить
+    companion object { const val FILE = "spotify"; const val NO_TYPE = -1 }
+}
+```
+
+Файл `spotify`. Многоразовые данные входа из `APWelcome` (SPOT-03) — те же три поля, что в JSON-файле сохранённого входа ПК (`username`, `type`, `data`), — и device id:
+
+| Ключ | Тип | По умолчанию | Что |
+|---|---|---|---|
+| `username` | string | `""` | имя пользователя Spotify |
+| `type` | int | `-1` (`NO_TYPE`) | тип данных входа — код `AuthenticationType` Spotify; сохраняет `spotify/SpotifyAccount` только `1` (`STORED_CREDENTIALS`) |
+| `blob` | string, base64 (`java.util.Base64`, с `=`) | `""` | многоразовые данные входа; не base64 — читается как пустые, то есть входа нет |
+| `deviceId` | string, 40 цифр hex | нет | device id (spec «What the app tells Spotify»): делается при первом `deviceId(create)` (в приложении — `SpotifyIdentity::newDeviceId`) и больше не меняется; `clear()` его не трогает |
+
+Пакет хранит только строки и байты и типов `spotify` не знает: в `spotify.SavedCredentials` его переводит корневой `SpotifySavedCredentials` (нет `type` — нет входа), потому что `data` не импортирует `spotify`. Сохранённым входом данные считает `SpotifyAccount` (тип `1`, непустые имя и данные). Запись — `apply()`. `deviceId` — `@Synchronized`: два первых вызова не сделают двух разных id. Без шифрования, как у ПК (там файл с правами владельца): данные лежат в закрытой папке приложения, а потеря ключа Android Keystore выкидывала бы из входа (решение 6 плана #113). В резервную копию и на другое устройство не уходит («Резервное копирование» выше), так что device id остаётся «один на установку».
 
 ## `QueueFile`
 

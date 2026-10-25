@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The OAuth token and the jam guest's join secrets must stay on this device: no cloud backup, no device-to-device transfer. -->
+<!-- The OAuth token, the Spotify login with its device id and the jam guest's join secrets must stay on this device: no cloud backup, no device-to-device transfer. -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="." />
