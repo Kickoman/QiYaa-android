@@ -140,21 +140,23 @@ class SpotifySession(
         private set
 
     fun login(credentials: Credentials, listener: SessionListener? = null) {
-        synchronized(lock) {
-            loop?.cancel()
-            val current = ++generation
-            this.listener = listener
-            this.credentials = credentials
-            refusal = null
-            country = ""
-            mutableState.value = SpotifyState.Connecting
-            failKeys(SpotifyNetworkException("an audio key", SocketException("the Spotify login changed")))
-            loop = scope.launch(accessPointThread) { keepConnected(current) }
-        }
+        val dropped =
+            synchronized(lock) {
+                loop?.cancel()
+                val current = ++generation
+                this.listener = listener
+                this.credentials = credentials
+                refusal = null
+                country = ""
+                mutableState.value = SpotifyState.Connecting
+                loop = scope.launch(accessPointThread) { keepConnected(current) }
+                takeKeys()
+            }
+        fail(dropped, SpotifyNetworkException("an audio key", SocketException("the Spotify login changed")))
     }
 
     fun logout() {
-        val stopped =
+        val (stopped, dropped) =
             synchronized(lock) {
                 generation++
                 listener = null
@@ -162,10 +164,10 @@ class SpotifySession(
                 refusal = null
                 country = ""
                 mutableState.value = SpotifyState.LoggedOut
-                failKeys(NotLoggedInException())
-                loop.also { loop = null }
+                (loop.also { loop = null }) to takeKeys()
             }
         stopped?.cancel()
+        fail(dropped, NotLoggedInException())
     }
 
     suspend fun audioKey(track: Bytes, file: Bytes): Bytes {
@@ -198,20 +200,23 @@ class SpotifySession(
     }
 
     private suspend fun ask(track: Bytes, file: Bytes): KeyAnswer {
-        val request =
-            withContext(accessPointThread) {
-                val request =
-                    synchronized(lock) {
-                        checkLoggedIn()
-                        KeyRequest(track, file, generation).also {
-                            keys += it
-                            mutableKeysWaiting.value = keys.size
-                        }
-                    }
-                link?.takeIf { it.generation == request.generation && it.accessPoint.loggedIn }?.send(request)
-                request
-            }
+        var registered: KeyRequest? = null
         try {
+            val request =
+                withContext(accessPointThread) {
+                    val request =
+                        synchronized(lock) {
+                            checkLoggedIn()
+                            KeyRequest(track, file, generation).also {
+                                registered = it
+                                keys += it
+                                mutableKeysWaiting.value = keys.size
+                            }
+                        }
+                    val current = link?.takeIf { it.generation == request.generation }
+                    if (current != null && current.accessPoint.loggedIn) current.send(request)
+                    request
+                }
             withTimeoutOrNull(timing.loginWaitMs) { request.sent.await() }
                 ?: throw SpotifyNetworkException(
                     "an audio key",
@@ -219,9 +224,11 @@ class SpotifySession(
                 )
             return withTimeoutOrNull(timing.keyTimeoutMs) { request.answer.await() } ?: KeyAnswer.Silent
         } finally {
-            synchronized(lock) {
-                keys.remove(request)
-                mutableKeysWaiting.value = keys.size
+            registered?.let { request ->
+                synchronized(lock) {
+                    keys.remove(request)
+                    mutableKeysWaiting.value = keys.size
+                }
             }
         }
     }
@@ -233,8 +240,15 @@ class SpotifySession(
         throw LoginRefusedException(refused.code, ACCESS_POINT)
     }
 
-    private fun failKeys(failure: SpotifyException) {
-        for (request in keys) {
+    private fun takeKeys(): List<KeyRequest> {
+        val taken = keys.toList()
+        keys.clear()
+        mutableKeysWaiting.value = 0
+        return taken
+    }
+
+    private fun fail(requests: List<KeyRequest>, failure: SpotifyException) {
+        for (request in requests) {
             request.sent.completeExceptionally(failure)
             request.answer.completeExceptionally(failure)
         }
@@ -258,7 +272,7 @@ class SpotifySession(
             when (ended) {
                 Ending.Refused -> return
                 Ending.TryNext -> addresses = emptyList()
-                is Ending.Lost -> if (ended.afterLogin) attempt = 0
+                Ending.Dropped -> attempt = 0
             }
             publish(current, SpotifyState.Offline)
             attempt = if (awaitReconnect(attempt)) 0 else attempt + 1
@@ -369,7 +383,7 @@ class SpotifySession(
                     if (bytes == null) {
                         val why = link.cause().javaClass.simpleName
                         log("access point $address: the connection closed ($why)")
-                        return if (link.welcomed) Ending.Lost(afterLogin = true) else Ending.TryNext
+                        return if (link.welcomed) Ending.Dropped else Ending.TryNext
                     }
                     link.accessPoint.receive(bytes, monotonicMs())
                 }
@@ -433,7 +447,7 @@ class SpotifySession(
                 is ApEvent.Failure -> {
                     log("access point $address: ${event.reason}")
                     mutableProblems.tryEmit(SpotifyProblem.AccessPoint)
-                    return Ending.Lost(afterLogin = link.welcomed)
+                    return if (link.welcomed) Ending.Dropped else Ending.TryNext
                 }
             }
         }
@@ -455,25 +469,27 @@ class SpotifySession(
     }
 
     private fun refused(current: Int, error: LoginError) {
-        synchronized(lock) {
-            if (generation != current) return
-            credentials = null
-            refusal = error
-            listener?.refused(error)
-            mutableState.value =
-                when (error) {
-                    LoginError.BAD_CREDENTIALS -> SpotifyState.Expired
-                    LoginError.PREMIUM_ACCOUNT_REQUIRED -> SpotifyState.PremiumRequired
-                    else -> SpotifyState.Refused(error.code)
-                }
-            failKeys(
-                if (error == LoginError.BAD_CREDENTIALS) {
-                    NotLoggedInException()
-                } else {
-                    LoginRefusedException(error.code, ACCESS_POINT)
-                },
-            )
-        }
+        val dropped =
+            synchronized(lock) {
+                if (generation != current) return
+                credentials = null
+                refusal = error
+                listener?.refused(error)
+                mutableState.value =
+                    when (error) {
+                        LoginError.BAD_CREDENTIALS -> SpotifyState.Expired
+                        LoginError.PREMIUM_ACCOUNT_REQUIRED -> SpotifyState.PremiumRequired
+                        else -> SpotifyState.Refused(error.code)
+                    }
+                takeKeys()
+            }
+        val failure =
+            if (error == LoginError.BAD_CREDENTIALS) {
+                NotLoggedInException()
+            } else {
+                LoginRefusedException(error.code, ACCESS_POINT)
+            }
+        fail(dropped, failure)
         log("the access point refused the login: code ${error.code}")
         mutableProblems.tryEmit(SpotifyProblem.LoginRefused(error.code))
     }
@@ -561,7 +577,7 @@ class SpotifySession(
 
         data object Refused : Ending
 
-        data class Lost(val afterLogin: Boolean) : Ending
+        data object Dropped : Ending
     }
 
     private data class Address(val host: String, val port: Int) {

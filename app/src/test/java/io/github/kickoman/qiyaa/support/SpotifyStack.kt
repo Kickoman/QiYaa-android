@@ -12,7 +12,9 @@ import io.github.kickoman.qiyaa.spotify.protocol.Bytes
 import io.github.kickoman.qiyaa.spotify.protocol.Credentials
 import io.github.kickoman.qiyaa.spotify.protocol.ProtoWriter
 import java.io.Closeable
-import java.net.ServerSocket
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.Socket
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicLong
@@ -60,10 +62,14 @@ class SpotifyStack(
     var maxPauses = Int.MAX_VALUE
 
     @Volatile
+    var onLog: (String) -> Unit = {}
+
+    @Volatile
     var accessPoints: List<String> = listOf(accessPoint.address)
 
     private val routes = ConcurrentHashMap<String, (RecordedRequest) -> MockResponse>()
     private val recorded = CopyOnWriteArrayList<RecordedRequest>()
+    private val reserved = CopyOnWriteArrayList<Socket>()
 
     val identity = SpotifyIdentity(APP_VERSION, deviceId, "6.1.25-android16", "16", "arm64-v8a")
     val session: SpotifySession
@@ -97,7 +103,10 @@ class SpotifyStack(
                     if (pauses.value.size >= maxPauses) awaitCancellation()
                     yield()
                 },
-                log = { logged += it },
+                log = {
+                    logged += it
+                    onLog(it)
+                },
             )
         web =
             SpotifyWeb(
@@ -168,11 +177,18 @@ class SpotifyStack(
         pauses.first { it.size >= count }
     }
 
+    fun refusingAddress(): String {
+        val socket = Socket().apply { bind(InetSocketAddress(InetAddress.getByAddress(LOOPBACK), 0)) }
+        reserved += socket
+        return "127.0.0.1:${socket.localPort}"
+    }
+
     override fun close() {
         session.logout()
         accessPoint.close()
         scope.cancel()
         http.shutdown()
+        reserved.forEach(Socket::close)
     }
 
     private fun apresolve(): JsonObject = JsonObject(
@@ -208,11 +224,7 @@ class SpotifyStack(
             ProtoWriter()
                 .message(1, ProtoWriter().string(1, username).string(2, bearer).varint(4, expiresInSeconds))
                 .toByteArray()
-
-        fun closedAddress(): String {
-            val port = ServerSocket(0).use { it.localPort }
-            return "127.0.0.1:$port"
-        }
+        private val LOOPBACK = byteArrayOf(127, 0, 0, 1)
     }
 }
 

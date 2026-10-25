@@ -2,8 +2,13 @@ package io.github.kickoman.qiyaa.spotify
 
 import io.github.kickoman.qiyaa.support.expectFailure
 import java.io.IOException
-import java.net.ConnectException
+import java.net.Inet4Address
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.NetworkInterface
 import java.net.Socket
+import java.net.SocketException
+import java.net.SocketTimeoutException
 import java.net.URLDecoder
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.CompletableDeferred
@@ -29,7 +34,6 @@ import okhttp3.mockwebserver.RecordedRequest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 
@@ -148,20 +152,37 @@ class BrowserLoginTest {
     }
 
     @Test
-    fun `canceling the login closes its port`() = runBlocking {
-        val (page, token) = start()
-        val redirect = page.queryParameter("redirect_uri")!!.toHttpUrl()
-        val idle = withContext(Dispatchers.IO) { Socket(redirect.host, redirect.port) }
-        withTimeout(WAIT_MS) { token.cancelAndJoin() }
-        withContext(Dispatchers.IO) {
-            try {
-                Socket(redirect.host, redirect.port).close()
-                fail("the port still accepts connections")
-            } catch (ignored: ConnectException) {
-                // Refused: the login's port is closed, as it should be.
+    fun `canceling the login closes its port and every connection it took`() = runBlocking {
+        repeat(CANCEL_ROUNDS) { round ->
+            val (page, token) = start()
+            val redirect = page.queryParameter("redirect_uri")!!.toHttpUrl()
+            val idle = withContext(Dispatchers.IO) { Socket(redirect.host, redirect.port) }
+            withTimeout(WAIT_MS) { token.cancelAndJoin() }
+            withContext(Dispatchers.IO) {
+                val host = InetAddress.getByName(redirect.host)
+                assertTrue("round $round: the port still accepts", refuses(host, redirect.port))
+                assertTrue("round $round: a connection stays open", closedByPeer(idle))
             }
-            assertEquals(-1, readOrEnd(idle))
         }
+    }
+
+    @Test
+    fun `SPOT-02 the login listens on 127 0 0 1 only`() = runBlocking {
+        val (page, token) = start()
+        val port = page.queryParameter("redirect_uri")!!.toHttpUrl().port
+        val others = listOf(InetAddress.getByName("127.0.0.2")) + ownAddresses()
+        withContext(Dispatchers.IO) {
+            for (address in others) assertTrue("listens on $address", refuses(address, port))
+        }
+        withTimeout(WAIT_MS) { token.cancelAndJoin() }
+    }
+
+    @Test
+    fun `the PKCE challenge is RFC 7636's S256 example, base64url without padding`() {
+        assertEquals(
+            "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+            BrowserLogin.challengeOf("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"),
+        )
     }
 
     private suspend fun start(): Pair<HttpUrl, Deferred<String>> {
@@ -183,14 +204,28 @@ class BrowserLoginTest {
     private fun HttpUrl.Builder.state(page: HttpUrl): HttpUrl.Builder =
         addQueryParameter("state", page.queryParameter("state"))
 
-    private fun readOrEnd(socket: Socket): Int = try {
-        socket.soTimeout = WAIT_MS.toInt()
-        socket.getInputStream().read()
-    } catch (closed: IOException) {
-        -1
-    } finally {
-        socket.close()
+    private fun closedByPeer(socket: Socket): Boolean = socket.use {
+        it.soTimeout = CLOSE_WAIT_MS
+        try {
+            it.getInputStream().read() == -1
+        } catch (ignored: SocketTimeoutException) {
+            false
+        } catch (ignored: SocketException) {
+            true
+        }
     }
+
+    private fun refuses(address: InetAddress, port: Int): Boolean = try {
+        Socket().use { it.connect(InetSocketAddress(address, port), CLOSE_WAIT_MS) }
+        false
+    } catch (ignored: IOException) {
+        true
+    }
+
+    private fun ownAddresses(): List<InetAddress> = NetworkInterface.getNetworkInterfaces().toList()
+        .filter { it.isUp && !it.isLoopback }
+        .flatMap { it.inetAddresses.toList() }
+        .filterIsInstance<Inet4Address>()
 
     private fun formOf(request: RecordedRequest): Map<String, String> =
         request.body.clone().readUtf8().split('&').filter(String::isNotEmpty).associate { pair ->
@@ -200,5 +235,7 @@ class BrowserLoginTest {
 
     private companion object {
         const val WAIT_MS = 10_000L
+        const val CLOSE_WAIT_MS = 2_000
+        const val CANCEL_ROUNDS = 30
     }
 }

@@ -12,6 +12,7 @@ import java.io.IOException
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -31,7 +32,7 @@ object FakeAccessPointKeys {
     val serverKey = ServerKey(Bytes.of(server.hex("rsaModulus")), server.int("rsaExponent"))
 }
 
-class FakeAccessPoint {
+class FakeAccessPoint(private val signature: ByteArray = FakeAccessPointKeys.signature) {
     private enum class Stage { HELLO, ANSWER, PACKETS }
 
     private var stage = Stage.HELLO
@@ -58,22 +59,21 @@ class FakeAccessPoint {
 
     fun takeOutgoing(): ByteArray = outgoing.toByteArray().also { outgoing.reset() }
 
-    fun send(command: Int, payload: ByteArray) {
+    fun send(command: Int, payload: ByteArray, brokenMac: Boolean = false) {
         val cipher = checkNotNull(sendCipher) { "no packets before the handshake" }
         val packet =
             byteArrayOf(command.toByte(), (payload.size ushr 8).toByte(), payload.size.toByte()) + payload
         cipher.nonce(sendNonce++)
         cipher.encrypt(packet)
+        val mac = cipher.finish()
+        if (brokenMac) mac[0] = (mac[0].toInt() xor 1).toByte()
         outgoing.write(packet)
-        outgoing.write(cipher.finish())
+        outgoing.write(mac)
     }
 
     fun welcome(username: String, blob: ByteArray) {
-        val message = ProtoWriter().string(
-            10,
-            username,
-        ).varint(20, 1).varint(25, 1).varint(30, 1).bytes(40, blob)
-        send(AP_WELCOME, message.toByteArray())
+        val message = ProtoWriter().string(10, username).varint(20, 1).varint(25, 1).varint(30, 1)
+        send(AP_WELCOME, message.bytes(40, blob).toByteArray())
     }
 
     private fun step(): Boolean = when (stage) {
@@ -92,7 +92,7 @@ class FakeAccessPoint {
         val dh = ProtoWriter()
             .bytes(10, FakeAccessPointKeys.dhPublic)
             .varint(20, 1)
-            .bytes(30, FakeAccessPointKeys.signature)
+            .bytes(30, signature)
         val response = ProtoWriter().message(10, ProtoWriter().message(10, ProtoWriter().message(10, dh)))
         val body = response.toByteArray()
         val reply = be32(4 + body.size) + body
@@ -165,7 +165,7 @@ class FakeAccessPoint {
 
 class FakeAccessPointServer : Closeable {
     private val server = ServerSocket(0, BACKLOG, InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1)))
-    private val sockets = CopyOnWriteArrayList<Socket>()
+    private val open = ConcurrentLinkedQueue<Connection>()
     private val received = CopyOnWriteArrayList<ApPacket>()
     private val lock = ReentrantLock()
     private val changed = lock.newCondition()
@@ -199,6 +199,9 @@ class FakeAccessPointServer : Closeable {
     @Volatile
     var loginGate = CountDownLatch(0)
 
+    @Volatile
+    var breakSignature = false
+
     val connectionCount: Int get() = lock.withLock { accepted }
 
     val closedCount: Int get() = lock.withLock { closed }
@@ -222,8 +225,20 @@ class FakeAccessPointServer : Closeable {
     fun awaitConnections(count: Int) = await { accepted >= count }
 
     fun dropConnections() {
-        for (socket in sockets) closeQuietly(socket)
-        sockets.clear()
+        while (true) closeQuietly(open.poll()?.socket ?: return)
+    }
+
+    fun sendBrokenPacket() {
+        for (connection in open) {
+            synchronized(connection.accessPoint) {
+                connection.accessPoint.send(FakeAccessPoint.PING, ByteArray(4), brokenMac = true)
+                try {
+                    connection.flush()
+                } catch (ignored: IOException) {
+                    // The client has already gone: there is nobody to break.
+                }
+            }
+        }
     }
 
     override fun close() {
@@ -251,41 +266,44 @@ class FakeAccessPointServer : Closeable {
                 } catch (ignored: IOException) {
                     return
                 }
-            sockets += socket
+            val signature = FakeAccessPointKeys.signature.copyOf()
+            if (breakSignature) signature[signature.size - 1] = (signature.last().toInt() xor 1).toByte()
+            val connection = Connection(socket, FakeAccessPoint(signature))
+            open += connection
             lock.withLock {
                 accepted++
                 changed.signalAll()
             }
-            thread(isDaemon = true, name = "fake-access-point-connection") { serve(socket) }
+            thread(isDaemon = true, name = "fake-access-point-connection") { serve(connection) }
         }
     }
 
-    private fun serve(socket: Socket) {
-        val accessPoint = FakeAccessPoint()
+    private fun serve(connection: Connection) {
+        val accessPoint = connection.accessPoint
         var handled = 0
         try {
-            val input = socket.getInputStream()
-            val output = socket.getOutputStream()
+            val input = connection.socket.getInputStream()
             val buffer = ByteArray(4_096)
             while (true) {
                 val count = input.read(buffer)
                 if (count < 0) break
-                accessPoint.receive(buffer.copyOf(count))
-                while (handled < accessPoint.packets.size) {
-                    val packet = accessPoint.packets[handled++]
-                    lock.withLock {
-                        received += packet
-                        changed.signalAll()
+                synchronized(accessPoint) {
+                    accessPoint.receive(buffer.copyOf(count))
+                    while (handled < accessPoint.packets.size) {
+                        val packet = accessPoint.packets[handled++]
+                        lock.withLock {
+                            received += packet
+                            changed.signalAll()
+                        }
+                        respond(accessPoint, packet)
                     }
-                    respond(accessPoint, packet)
+                    connection.flush()
                 }
-                val out = accessPoint.takeOutgoing()
-                if (out.isNotEmpty()) output.write(out)
             }
         } catch (ignored: IOException) {
             // The client or the test closed the connection.
         } finally {
-            closeQuietly(socket)
+            closeQuietly(connection.socket)
             lock.withLock {
                 closed++
                 changed.signalAll()
@@ -324,6 +342,13 @@ class FakeAccessPointServer : Closeable {
                     accessPoint.send(FakeAccessPoint.AES_KEY, sequence + key)
                 }
             }
+        }
+    }
+
+    private class Connection(val socket: Socket, val accessPoint: FakeAccessPoint) {
+        fun flush() {
+            val out = accessPoint.takeOutgoing()
+            if (out.isNotEmpty()) socket.getOutputStream().write(out)
         }
     }
 

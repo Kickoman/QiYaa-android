@@ -83,7 +83,7 @@ class SpotifyAccountTest {
     @Test
     fun `SPOT-04 a network failure keeps the saved credentials and tries again`() = runBlocking {
         saved.credentials = STORED
-        stack.accessPoints = listOf(SpotifyStack.closedAddress())
+        stack.accessPoints = listOf(stack.refusingAddress())
         stack.maxPauses = 1
         account.start()
         stack.awaitPauses(1)

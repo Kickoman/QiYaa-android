@@ -9,6 +9,7 @@ import io.github.kickoman.qiyaa.spotify.protocol.HashcashChallenge
 import io.github.kickoman.qiyaa.spotify.protocol.HashcashSolution
 import io.github.kickoman.qiyaa.spotify.protocol.Login
 import io.github.kickoman.qiyaa.spotify.protocol.Login5Reply
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -54,6 +55,8 @@ class SpotifyWeb(
     private var bearer = ""
     private var bearerUntilMs = 0L
     private var bearerUsername = ""
+    private val finishedFetches = AtomicInteger()
+    private var lastFetchFailure: SpotifyException? = null
 
     private val mutableProblems = MutableSharedFlow<SpotifyProblem>(extraBufferCapacity = PROBLEM_BUFFER)
     val problems: SharedFlow<SpotifyProblem> = mutableProblems.asSharedFlow()
@@ -124,13 +127,29 @@ class SpotifyWeb(
             .build()
     }
 
-    private suspend fun tokensFor(credentials: Credentials): Pair<String, String> = tokens.withLock {
-        val now = clock()
-        if (clientToken.isEmpty() || now >= clientTokenUntilMs) fetchClientToken()
-        if (bearer.isEmpty() || now >= bearerUntilMs || bearerUsername != credentials.username) {
-            fetchBearer(credentials)
+    private suspend fun tokensFor(credentials: Credentials): Pair<String, String> {
+        val seen = finishedFetches.get()
+        return tokens.withLock {
+            val now = clock()
+            val clientTokenDue = clientToken.isEmpty() || now >= clientTokenUntilMs
+            val bearerDue = bearer.isEmpty() || now >= bearerUntilMs || bearerUsername != credentials.username
+            if (clientTokenDue || bearerDue) {
+                val failedMeanwhile = lastFetchFailure.takeIf { finishedFetches.get() != seen }
+                if (failedMeanwhile != null) throw failedMeanwhile
+                val failed =
+                    try {
+                        if (clientTokenDue) fetchClientToken()
+                        if (bearerDue) fetchBearer(credentials)
+                        null
+                    } catch (failed: SpotifyException) {
+                        failed
+                    }
+                lastFetchFailure = failed
+                finishedFetches.incrementAndGet()
+                if (failed != null) throw failed
+            }
+            clientToken to bearer
         }
-        clientToken to bearer
     }
 
     private suspend fun forgetBearer(used: String) {

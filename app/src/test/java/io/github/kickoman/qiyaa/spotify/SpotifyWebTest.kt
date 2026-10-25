@@ -1,5 +1,6 @@
 package io.github.kickoman.qiyaa.spotify
 
+import io.github.kickoman.qiyaa.spotify.protocol.AuthenticationType
 import io.github.kickoman.qiyaa.spotify.protocol.Bytes
 import io.github.kickoman.qiyaa.spotify.protocol.Credentials
 import io.github.kickoman.qiyaa.spotify.protocol.Crypto
@@ -14,9 +15,11 @@ import java.io.IOException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
 import okhttp3.mockwebserver.MockResponse
@@ -228,6 +231,48 @@ class SpotifyWebTest {
     }
 
     @Test
+    fun `a failed token fetch fails every request that waited for it, with one problem`() = runBlocking {
+        val stack = online()
+        stack.route("POST", "/v1/clienttoken") { MockResponse().setResponseCode(503) }
+        stack.route("GET", "/thing") { SpotifyStack.json(EMPTY) }
+        val waiting =
+            List(4) {
+                async(start = CoroutineStart.UNDISPATCHED) {
+                    runCatching { stack.web.spclient(WebRequest("/thing")) }
+                }
+            }
+        val failures = waiting.awaitAll().map { it.exceptionOrNull() }
+        assertTrue("$failures", failures.all { it is SpotifyHttpException && it.status == 503 })
+        assertEquals(1, stack.requests("/v1/clienttoken").size)
+        assertEquals(listOf<SpotifyProblem>(SpotifyProblem.Http(503)), stack.awaitProblems(1))
+        delay(QUIET_MS)
+        assertEquals(1, stack.problems.value.size)
+        expectFailure<SpotifyHttpException> { stack.web.spclient(WebRequest("/thing")) }
+        assertEquals(2, stack.requests("/v1/clienttoken").size)
+    }
+
+    @Test
+    fun `a bearer of one account is never used for another after logout and login`() = runBlocking {
+        val stack = online()
+        stack.route("POST", "/v3/login") { request ->
+            val username = fieldOf(fieldOf(request.bytes(), 100), 1).toString(Charsets.UTF_8)
+            SpotifyStack.protobuf(SpotifyStack.login5("bearer-$username", username = username))
+        }
+        stack.route("GET", "/thing") { SpotifyStack.json(EMPTY) }
+        stack.web.spclient(WebRequest("/thing"))
+        stack.session.logout()
+        expectFailure<NotLoggedInException> { stack.web.spclient(WebRequest("/thing")) }
+        val other = Credentials("other", AuthenticationType.STORED_CREDENTIALS, Bytes.of(byteArrayOf(5)))
+        stack.loginStored(other)
+        stack.web.spclient(WebRequest("/thing"))
+        assertEquals(
+            listOf("Bearer bearer-owner", "Bearer bearer-other"),
+            stack.requests("/thing").map { it.getHeader("Authorization") },
+        )
+        assertEquals(2, stack.requests("/v3/login").size)
+    }
+
+    @Test
     fun `client-token's hashcash is solved and answered with the challenge's state`() = runBlocking {
         val stack = online()
         val prefix = "00112233445566778899aabbccddeeff"
@@ -365,6 +410,7 @@ class SpotifyWebTest {
     }
 
     private companion object {
+        const val QUIET_MS = 200L
         val EMPTY = JsonObject(emptyMap())
     }
 }

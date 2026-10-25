@@ -51,7 +51,8 @@ class SpotifyLiveTest {
                 }
             }
             assertTrue("$state", state is SpotifyState.Online)
-            assertEquals(credentials.username, (state as SpotifyState.Online).username)
+            val sameAccount = (state as SpotifyState.Online).username == credentials.username
+            assertTrue("logged in as another account", sameAccount)
             val track = System.getenv(TRACK)?.takeIf(String::isNotEmpty) ?: DEFAULT_TRACK
             val metadata = web.spclient(
                 WebRequest(
@@ -70,13 +71,15 @@ class SpotifyLiveTest {
         }
     }
 
-    private fun credentialsOf(text: String): Credentials {
+    private fun credentialsOf(text: String): Credentials = try {
         val json = Json.parseToJsonElement(text).jsonObject
-        return Credentials(
+        Credentials(
             json.getValue("username").jsonPrimitive.content,
             AuthenticationType(json.getValue("type").jsonPrimitive.int),
             Bytes.of(Base64.getDecoder().decode(json.getValue("data").jsonPrimitive.content)),
         )
+    } catch (failed: RuntimeException) {
+        throw AssertionError("$CREDENTIALS holds no saved credentials: ${failed.javaClass.simpleName}")
     }
 
     private fun oggFileOf(metadata: ByteArray): Bytes {

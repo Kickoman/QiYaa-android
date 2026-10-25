@@ -74,11 +74,13 @@ class BrowserLogin(
             try {
                 while (true) {
                     val socket = server.accept()
-                    launch {
-                        closingOnCancel(socket) {
-                            answer(socket, state, pages)?.let(redirect::complete)
+                    val handler =
+                        launch {
+                            closingOnCancel(socket) {
+                                answer(socket, state, pages)?.let(redirect::complete)
+                            }
                         }
-                    }
+                    handler.invokeOnCompletion { closeQuietly(socket) }
                 }
             } catch (ignored: IOException) {
                 // The server socket closes when the login ends: nothing more to accept.

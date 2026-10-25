@@ -15,10 +15,14 @@ import io.github.kickoman.qiyaa.support.varintOf
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.After
@@ -139,7 +143,7 @@ class SpotifySessionTest {
     @Test
     fun `an access point that refuses the connection hands over to the next one`() = runBlocking {
         val stack = stack()
-        stack.accessPoints = listOf(SpotifyStack.closedAddress(), stack.accessPoint.address)
+        stack.accessPoints = listOf(stack.refusingAddress(), stack.accessPoint.address)
         stack.loginStored()
         assertEquals(emptyList<Long>(), stack.pauses.value)
     }
@@ -174,7 +178,7 @@ class SpotifySessionTest {
     fun `SPOT-18 failed rounds wait 2, 4, 8, 16, 32 s, then 60 s, and ask apresolve again each time`() =
         runBlocking {
             val stack = stack()
-            stack.accessPoints = listOf(SpotifyStack.closedAddress())
+            stack.accessPoints = listOf(stack.refusingAddress())
             stack.maxPauses = 8
             stack.session.login(SpotifyStack.STORED)
             val pauses = stack.awaitPauses(8)
@@ -361,6 +365,111 @@ class SpotifySessionTest {
         assertEquals(SpotifyState.LoggedOut, stack.session.state.value)
         assertEquals(1, stack.accessPoint.connectionCount)
     }
+
+    @Test
+    fun `a key request cancelled right after it registered leaves no key waiting in the background`() =
+        runBlocking {
+            val stack = stack(inUse = false)
+            val accessPointEntered = CountDownLatch(1)
+            val accessPointHeld = CountDownLatch(1)
+            stack.onLog = { line ->
+                if (line == "logged in at the access point" && accessPointEntered.count > 0) {
+                    accessPointEntered.countDown()
+                    accessPointHeld.await(WAIT_MS, TimeUnit.MILLISECONDS)
+                }
+            }
+            stack.session.login(SpotifyStack.STORED)
+            assertTrue(accessPointEntered.await(WAIT_MS, TimeUnit.MILLISECONDS))
+            val caller = Executors.newSingleThreadExecutor()
+            try {
+                val dispatcher = caller.asCoroutineDispatcher()
+                val request = stack.scope.launch(dispatcher) { stack.session.audioKey(GID, FILE) }
+                val callerBlocked = CountDownLatch(1)
+                val callerHeld = CountDownLatch(1)
+                caller.execute {
+                    callerBlocked.countDown()
+                    callerHeld.await(WAIT_MS, TimeUnit.MILLISECONDS)
+                }
+                assertTrue(callerBlocked.await(WAIT_MS, TimeUnit.MILLISECONDS))
+                accessPointHeld.countDown()
+                withTimeout(WAIT_MS) { stack.session.keysWaiting.first { it == 1 } }
+                request.cancel()
+                callerHeld.countDown()
+                withTimeout(WAIT_MS) { request.join() }
+                withTimeout(WAIT_MS) { stack.session.keysWaiting.first { it == 0 } }
+            } finally {
+                caller.shutdown()
+            }
+            stack.awaitOnline()
+            stack.accessPoint.dropConnections()
+            stack.awaitState(SpotifyState.Offline)
+            delay(QUIET_MS)
+            assertEquals(0, stack.session.keysWaiting.value)
+            assertEquals(1, stack.accessPoint.connectionCount)
+        }
+
+    @Test
+    fun `SPOT-04 SPOT-05 a refused login fails the keys that wait for it at once`() = runBlocking {
+        val refusals =
+            listOf(
+                LoginError.BAD_CREDENTIALS.code to NotLoggedInException::class.java,
+                LoginError.PREMIUM_ACCOUNT_REQUIRED.code to LoginRefusedException::class.java,
+            )
+        for ((code, expected) in refusals) {
+            val stack = stack(SessionTiming(loginWaitMs = 60_000, keyRetryMs = 10))
+            stack.accessPoint.loginGate = CountDownLatch(1)
+            stack.session.login(SpotifyStack.STORED)
+            stack.accessPoint.awaitPackets(FakeAccessPoint.LOGIN)
+            val key = async(Dispatchers.IO) { runCatching { stack.session.audioKey(GID, FILE) } }
+            withTimeout(WAIT_MS) { stack.session.keysWaiting.first { it == 1 } }
+            stack.accessPoint.loginRefusal = code
+            stack.accessPoint.loginGate.countDown()
+            val failed = withTimeout(WAIT_MS) { key.await() }.exceptionOrNull()
+            assertTrue("code $code: $failed", expected.isInstance(failed))
+            assertEquals(0, stack.session.keysWaiting.value)
+        }
+    }
+
+    @Test
+    fun `a protocol failure after the login is an AccessPoint problem and connects again after 2 s`() =
+        runBlocking {
+            val stack = stack()
+            stack.loginStored()
+            stack.accessPoint.sendBrokenPacket()
+            stack.accessPoint.awaitConnections(2)
+            stack.awaitOnline()
+            assertEquals(listOf<SpotifyProblem>(SpotifyProblem.AccessPoint), stack.awaitProblems(1))
+            assertEquals(listOf(2_000L), stack.pauses.value)
+        }
+
+    @Test
+    fun `a protocol failure before the login moves on to the next access point at once`() = runBlocking {
+        val stack = stack()
+        val forged = server().apply { breakSignature = true }
+        stack.accessPoints = listOf(forged.address, stack.accessPoint.address)
+        stack.loginStored()
+        assertEquals(1, forged.connectionCount)
+        assertEquals(emptyList<Long>(), stack.pauses.value)
+        assertEquals(listOf<SpotifyProblem>(SpotifyProblem.AccessPoint), stack.awaitProblems(1))
+    }
+
+    @Test
+    fun `a key not sent yet survives a dropped connection and is answered after reconnecting`() =
+        runBlocking {
+            val stack = stack()
+            stack.loginStored()
+            stack.accessPoint.loginGate = CountDownLatch(1)
+            stack.accessPoint.dropConnections()
+            stack.accessPoint.awaitPackets(FakeAccessPoint.LOGIN, 2)
+            val key = async(Dispatchers.IO) { stack.session.audioKey(GID, FILE) }
+            withTimeout(WAIT_MS) { stack.session.keysWaiting.first { it == 1 } }
+            stack.accessPoint.dropConnections()
+            stack.accessPoint.awaitPackets(FakeAccessPoint.LOGIN, 3)
+            stack.accessPoint.loginGate.countDown()
+            assertEquals(Bytes.of(ByteArray(16) { 0x5a }), withTimeout(WAIT_MS) { key.await() })
+            assertEquals(1, stack.accessPoint.keyPackets().size)
+            assertEquals(3, stack.accessPoint.connectionCount)
+        }
 
     @Test
     fun `no key is asked before any login`() = runBlocking {
