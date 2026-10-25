@@ -110,18 +110,19 @@ class QueueLocalTest {
         }
 
     @Test
-    fun `QUAL-05 a local next track is never asked about or loaded again`() = runTest {
-        val h = QueueHarness(this)
-        h.controller.loadSource("Files") { listOf(local("1"), local("2")) }
-        runCurrent()
-        val asked = ArrayList<String>()
-        h.controller.onFilesChanged {
-            asked += it
-            true
+    fun `QUAL-05 a local next track is asked about with its source, and its false loads nothing again`() =
+        runTest {
+            val h = QueueHarness(this)
+            h.controller.loadSource("Files") { listOf(local("1"), local("2")) }
+            runCurrent()
+            val asked = ArrayList<Track>()
+            h.controller.onFilesChanged {
+                asked += it
+                it.source != TrackSource.LOCAL
+            }
+            assertEquals(listOf(local("2").key), asked.map(Track::key))
+            assertEquals(emptyList<String>(), h.engine.commands.filter { it.startsWith("reload") })
         }
-        assertEquals(emptyList<String>(), asked)
-        assertEquals(emptyList<String>(), h.engine.commands.filter { it.startsWith("reload") })
-    }
 
     @Test
     fun `LOCAL-08 a local track is never liked or disliked, a dislike of Yandex's 42 skips no local 42`() =

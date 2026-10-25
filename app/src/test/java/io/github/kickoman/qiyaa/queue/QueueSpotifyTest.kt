@@ -111,17 +111,17 @@ class QueueSpotifyTest {
         }
 
     @Test
-    fun `QUAL-05 a Spotify next track is never checked against Yandex's links or loaded again`() = runTest {
+    fun `QUAL-05 a Spotify next track is asked about with its source and loaded again`() = runTest {
         val h = QueueHarness(this)
         h.controller.loadSource("Spotify") { listOf(spotify("1"), spotify("2")) }
         runCurrent()
-        val asked = ArrayList<String>()
+        val asked = ArrayList<Track>()
         h.controller.onFilesChanged {
             asked += it
             true
         }
-        assertEquals(emptyList<String>(), asked)
-        assertEquals(emptyList<String>(), h.engine.commands.filter { it.startsWith("reload") })
+        assertEquals(listOf(spotify("2").key), asked.map(Track::key))
+        assertEquals(listOf("reload 1"), h.engine.commands.filter { it.startsWith("reload") })
     }
 
     @Test

@@ -51,7 +51,16 @@ sealed interface Login5Reply {
 
     data class Challenge(val context: Bytes, val hashcash: HashcashChallenge) : Login5Reply
 
-    data class Error(val code: Int) : Login5Reply
+    data class Error(val code: Int) : Login5Reply {
+        val transient: Boolean get() = code in TRANSIENT_CODES
+
+        companion object {
+            const val TIMEOUT = 4
+            const val TOO_MANY_ATTEMPTS = 6
+            const val TRY_AGAIN_LATER = 8
+            val TRANSIENT_CODES = setOf(TIMEOUT, TOO_MANY_ATTEMPTS, TRY_AGAIN_LATER)
+        }
+    }
 
     data class Failure(val reason: String) : Login5Reply
 }

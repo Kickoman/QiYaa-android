@@ -21,7 +21,8 @@ object MediaItems {
     private const val LOCAL_PREFIX = "local:"
     private const val LOCAL_URI = "content://media/external/audio/media/"
     private const val SPOTIFY_PREFIX = "spotify:"
-    private const val SPOTIFY_URI = "spotify:track:"
+    const val SPOTIFY_SCHEME = "spotify"
+    private const val SPOTIFY_TRACK = "track:"
 
     fun uriText(trackId: String, revision: Int = 0): String {
         require(revision >= 0) { "The revision of track $trackId is $revision" }
@@ -29,13 +30,27 @@ object MediaItems {
         return if (revision == 0) plain else "$plain?$PARAM_REVISION=$revision"
     }
 
+    fun spotifyUriText(trackId: String, revision: Int = 0): String {
+        require(revision >= 0) { "The revision of Spotify track $trackId is $revision" }
+        val plain = "$SPOTIFY_SCHEME:$SPOTIFY_TRACK$trackId"
+        return if (revision == 0) plain else "$plain?$PARAM_REVISION=$revision"
+    }
+
+    fun spotifyTrackIdOf(schemeSpecificPart: String): String? =
+        schemeSpecificPart.takeIf { it.startsWith(SPOTIFY_TRACK) }
+            ?.removePrefix(SPOTIFY_TRACK)
+            ?.substringBefore('?')
+            ?.takeIf { it.isNotEmpty() && ':' !in it && '/' !in it }
+
     fun uriTextFor(track: Track): String = when (track.source) {
         TrackSource.YANDEX -> uriText(track.id)
         TrackSource.LOCAL -> LOCAL_URI + track.id
-        TrackSource.SPOTIFY -> SPOTIFY_URI + track.id
+        TrackSource.SPOTIFY -> spotifyUriText(track.id)
     }
 
-    fun mediaIdOf(track: Track): String = prefixOf(track.source) + track.id
+    fun mediaIdOf(track: Track): String = mediaIdOf(track.source, track.id)
+
+    fun mediaIdOf(source: TrackSource, id: String): String = prefixOf(source) + id
 
     fun sourceOf(mediaId: String): TrackSource = TrackSource.entries.firstOrNull {
         prefixOf(it).isNotEmpty() && mediaId.startsWith(prefixOf(it))
@@ -49,8 +64,14 @@ object MediaItems {
         TrackSource.SPOTIFY -> SPOTIFY_PREFIX
     }
 
-    fun revised(item: MediaItem, trackId: String, revision: Int): MediaItem =
-        item.buildUpon().setUri(uriText(trackId, revision)).build()
+    fun revisedUriText(mediaId: String, revision: Int): String? = when (sourceOf(mediaId)) {
+        TrackSource.YANDEX -> uriText(idOf(mediaId), revision)
+        TrackSource.SPOTIFY -> spotifyUriText(idOf(mediaId), revision)
+        TrackSource.LOCAL -> null
+    }
+
+    fun revised(item: MediaItem, revision: Int): MediaItem? =
+        revisedUriText(item.mediaId, revision)?.let { item.buildUpon().setUri(it).build() }
 
     fun trackIdOf(uri: Uri): String? = if (uri.scheme == SCHEME) uri.lastPathSegment else null
 

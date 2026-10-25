@@ -93,14 +93,14 @@ Writing rules for READMEs:
   |---|---|---|
   | `track` | The track model shared by sources, the queue and playback: `Track`, `TrackSource`, `TrackKey` | — (pure JVM) |
   | `yandex` | Yandex Music HTTP API, OAuth, link signing | `track` (pure JVM) |
-  | `spotify` | Spotify client: `protocol/`, the sans-IO core (access point handshake and packets, login messages, hashcash, audio keys, file decryption); the access point connection, tokens and spclient requests, the code and browser logins, the login state, the catalogue | `track` (pure JVM); `protocol/` imports nothing from the app, nor OkHttp, coroutines or `java.net` |
+  | `spotify` | Spotify client: `protocol/`, the sans-IO core (access point handshake and packets, login messages, hashcash, audio keys, file decryption); the access point connection, tokens and spclient requests, the code and browser logins, the login state, the catalogue, a track's file (its metadata, key and CDN links, and the decrypting range stream) | `track` (pure JVM); `protocol/` imports nothing from the app, nor OkHttp, coroutines or `java.net` |
   | `audio` | DSP: equalizer, FFT, spectrum, visualizer ring, PCM | — (pure JVM) |
   | `data` | Persistence: settings, token, the Spotify login | `audio` |
   | `jam` | Jam client: protocol codec, connection, the host's stored session | — (pure JVM) |
   | `lyrics` | The lyrics view's text: LRC parsing, the source and the lyrics service in their order, memory, LRCLIB | `track` (pure JVM) |
   | `local` | The phone's media library: the query, the picks and their order, the restored queue's check, local files' lyrics | `track`, `lyrics` |
   | `queue` | What plays next: sources, waves, continuations not from Yandex, the jam mode, error policy, shuffle rule | `track`, `yandex` (pure JVM) |
-  | `playback` | ExoPlayer, MediaSession, the Media3 adapter for `queue`, audio processors, the jam host and its WebSocket transport | `track`, `queue`, `jam`, `yandex`, `audio`, `data` |
+  | `playback` | ExoPlayer, MediaSession, the Media3 adapter for `queue`, audio processors, the jam host and its WebSocket transport, the Spotify track's data source | `track`, `queue`, `jam`, `yandex`, `spotify`, `audio`, `data` |
   | `ui` | Compose screens, view models, theme | everything above |
   | `telemetry` | Anonymous statistics and crash reports: events, the crash handler, the run's files, sending, the schedule and the switch | — (pure JVM; only root imports it) |
   | root | `AppGraph`, `QiYaaApp` (composition root), `NetworkMonitor`, `ScreenPresence` (platform signals), `AppTelemetry`, `TelemetryCodes` (telemetry wiring), `YandexLyrics`, `SourceLyrics` (lyrics sources: Yandex's, and the choice by the track's source), `SpotifySavedCredentials` (`data`'s Spotify store for `spotify`'s account), `SpotifyErrorKinds` (`spotify`'s failures as an `ErrorKind`), `SpotifyContinuations` (`spotify`'s autoplay and station as a `queue.Continuation`, the Spotify search for the queue) | everything |
