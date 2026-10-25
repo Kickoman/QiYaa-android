@@ -5,6 +5,9 @@ object Ids {
     const val GID_SIZE = 16
     const val FILE_ID_SIZE = 20
     const val TRACK_URI_PREFIX = "spotify:track:"
+    const val ALBUM_URI_PREFIX = "spotify:album:"
+    const val ARTIST_URI_PREFIX = "spotify:artist:"
+    const val PLAYLIST_URI_PREFIX = "spotify:playlist:"
     private const val DIGITS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
     fun gidFromBase62(text: String): Bytes? {

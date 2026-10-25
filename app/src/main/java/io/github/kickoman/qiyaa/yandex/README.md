@@ -48,7 +48,7 @@ YandexException : IOException
 ## `ErrorKind`
 
 ```kotlin
-sealed interface ErrorKind {   // NoNetwork, TokenRejected, ServerError(status), Malformed, SignInRefused, CodeExpired, TrackUnplayable, Unknown
+sealed interface ErrorKind {   // NoNetwork, TokenRejected, ServerError(status), Malformed, SignInRefused, CodeExpired, TrackUnplayable, SpotifyLoggedOut, SpotifyKeyRefused, Unknown
     companion object {
         fun of(failed: Throwable): ErrorKind
         fun isNetworkFailure(failure: Throwable): Boolean
@@ -71,6 +71,8 @@ sealed interface ErrorKind {   // NoNetwork, TokenRejected, ServerError(status),
 | ничего из этого | `Unknown` |
 
 `TrackUnplayable` здесь не выдаётся: его назначает `playback/PlaybackFailures` битому треку. Тексты видов — в `ui/ErrorText.kt`, подробности пишет в лог тот, кто поймал исключение.
+
+`ErrorKind` — общий вид ошибки приложения, а в `yandex/` он по истории: перенос в нейтральный пакет тронул бы все экраны. Поэтому в нём и виды Spotify — `SpotifyLoggedOut` («нет входа в Spotify», ERR-08, SPOT-06) и `SpotifyKeyRefused` («Spotify не даёт играть этому аккаунту», SPOT-17). `of` их не выдаёт: `yandex` не знает исключений `spotify`, их переводит корневой `errorKindOf` (`SpotifyErrorKinds.kt`, корневой `README.md`), а всё остальное отдаёт сюда.
 
 ## `YandexApi`
 
