@@ -267,7 +267,7 @@ class TelemetrySession(enabled: Flow<Boolean>, onScreen: Flow<Boolean>, playing:
 
 ```kotlin
 class AppTelemetry(application: Application, settings: Settings, httpClient: OkHttpClient, endpoint: String,
-    scope: CoroutineScope) {
+    scope: CoroutineScope, onScreen: Flow<Boolean>) {
     fun start()                                     // обработчик падения ставится здесь же, если telemetry/enabled
     fun connect(api: YandexApi, sessionState: StateFlow<SessionState>, queue: QueueController, jamHost: JamHost,
         network: StateFlow<Boolean>)
@@ -288,7 +288,7 @@ object TelemetryCodes {
 | Вход | Откуда |
 |---|---|
 | `enabled` | `Settings.telemetryEnabled` |
-| `onScreen` | `registerActivityLifecycleCallbacks`: запущенных (`onStart` без `onStop`) активностей больше нуля; `onStop` при смене конфигурации (`isChangingConfigurations`) уходом с экрана не считается |
+| `onScreen` | корневой `ScreenPresence.onScreen` из `AppGraph` (его же читает `inUse` сессии Spotify): `registerActivityLifecycleCallbacks`, запущенных (`onStart` без `onStop`) активностей больше нуля; `onStop` при смене конфигурации (`isChangingConfigurations`) уходом с экрана не считается |
 | `playing` | `QueueActivity.PlayingChanged` |
 | `online` | `NetworkMonitor.available` |
 | `store` | `File(noBackupFilesDir, "telemetry")` |

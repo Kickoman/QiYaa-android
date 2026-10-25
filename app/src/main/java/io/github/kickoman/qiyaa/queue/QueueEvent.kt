@@ -29,5 +29,5 @@ sealed interface QueueEvent {
 
     data class Failed(val stage: Stage, val error: ErrorKind) : QueueEvent
 
-    enum class Stage { SOURCE, WAVE, WAVE_MORE, SEARCH, LIKE, PLAYBACK }
+    enum class Stage { SOURCE, WAVE, WAVE_MORE, AUTOPLAY, SEARCH, LIKE, PLAYBACK }
 }

@@ -150,6 +150,7 @@
     <string name="queue_disliked_only">Не нравится</string>
     <string name="queue_wave_error">Ошибка волны: %1$s</string>
     <string name="queue_wave_more_error">Волна: %1$s</string>
+    <string name="queue_autoplay_error">Ошибка автоплея Spotify: %1$s</string>
     <string name="queue_search_error">Ошибка поиска: %1$s</string>
     <string name="queue_playback_error">Ошибка воспроизведения: %1$s</string>
     <string name="player_service_unavailable">Сервис плеера недоступен</string>

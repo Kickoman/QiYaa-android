@@ -28,6 +28,7 @@ class ListLoader<T>(
     private val io: CoroutineContext,
     private val fetch: suspend () -> List<T>,
     private val logFailure: (Throwable) -> Unit,
+    private val errorKindOf: (Throwable) -> ErrorKind = ErrorKind::of,
 ) {
     private val mutableState = MutableStateFlow<ListState<T>>(ListState.Idle)
     val state: StateFlow<ListState<T>> = mutableState.asStateFlow()
@@ -47,7 +48,7 @@ class ListLoader<T>(
                         throw failed
                     } catch (failed: Exception) {
                         logFailure(failed)
-                        ListState.Failed(ErrorKind.of(failed))
+                        ListState.Failed(errorKindOf(failed))
                     }
             }
     }

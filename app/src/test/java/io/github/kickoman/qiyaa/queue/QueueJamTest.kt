@@ -1,6 +1,7 @@
 package io.github.kickoman.qiyaa.queue
 
 import io.github.kickoman.qiyaa.queue.QueueEvent.Stage
+import io.github.kickoman.qiyaa.support.FakeContinuation
 import io.github.kickoman.qiyaa.support.FakeQueueStore
 import io.github.kickoman.qiyaa.support.NetworkLoss
 import io.github.kickoman.qiyaa.support.QueueHarness
@@ -1948,7 +1949,149 @@ class QueueJamTest {
             assertEquals(listOf("a"), h.engine.ids())
         }
 
+    @Test
+    fun `SPOT-22 HOST-11 a state with seeds while the head plays keeps the autoplay tracks, no jam vibe`() =
+        runTest {
+            val h = QueueHarness(this, continueWithVibe = true)
+            val autoplay = FakeContinuation()
+            autoplay.replies(listOf(spotifyTrack("x1"), spotifyTrack("x2")), listOf(spotifyTrack("x3")))
+            h.controller.loadSource("Liked Songs", continuation = autoplay) {
+                listOf(spotifyTrack("s1"), spotifyTrack("s2"))
+            }
+            runCurrent()
+            h.engine.startPlaying()
+            h.startJam()
+            h.state(seeds = listOf("genre:jam"), seedsVersion = 1)
+            runCurrent()
+            assertEquals(listOf("s1", "s2", "x1", "x2"), h.engine.ids())
+            assertEquals(listOf("s2", "x1"), h.playOn(2))
+            runCurrent()
+            h.state(seeds = listOf("genre:jam", "track:7"), seedsVersion = 2)
+            runCurrent()
+            assertEquals(listOf("s1", "s2", "x1", "x2", "x3"), h.engine.ids())
+            assertEquals(listOf(emptyList(), listOf("s1", "s2")), autoplay.asked)
+            assertEquals(emptyList<String>(), h.source.calls)
+        }
+
+    @Test
+    fun `HOST-11 SPOT-22 rows from before the jam - the vibe's go with the seeds, the autoplay's stay`() =
+        runTest {
+            val vibe = QueueHarness.likes(this, "a", "b")
+            vibe.source.onStartWave = { WaveBatch("V1", "B1", tracks("v1", "v2")) }
+            vibe.engine.startPlaying()
+            runCurrent()
+            assertEquals(listOf(null, null), vibe.seedsVersions().drop(2))
+            vibe.source.onStartWave = { CompletableDeferred<WaveBatch>().await() }
+            vibe.startJam()
+            vibe.state(seeds = listOf("genre:jam"), seedsVersion = 1)
+            assertEquals(listOf("a", "b"), vibe.engine.ids())
+
+            val spotify = QueueHarness(this, continueWithVibe = true)
+            val autoplay = FakeContinuation()
+            autoplay.replies(listOf(spotifyTrack("x1"), spotifyTrack("x2")))
+            spotify.controller.loadSource("Liked Songs", continuation = autoplay) {
+                listOf(spotifyTrack("s1"), spotifyTrack("s2"))
+            }
+            spotify.engine.startPlaying()
+            runCurrent()
+            assertEquals(listOf(null, null), spotify.seedsVersions().drop(2))
+            spotify.startJam()
+            spotify.state(seeds = listOf("genre:jam"), seedsVersion = 1)
+            assertEquals(listOf("s1", "s2", "x1", "x2"), spotify.engine.ids())
+        }
+
+    @Test
+    fun `SPOT-21 SPOT-22 new seeds do not ask a failed autoplay again, HOST-13 stops, then Next asks`() =
+        runTest {
+            val h = QueueHarness(this, continueWithVibe = true)
+            val autoplay = FakeContinuation()
+            autoplay.onMore = { throw IOException("offline") }
+            h.controller.loadSource("Liked Songs", continuation = autoplay) {
+                listOf(spotifyTrack("s1"), spotifyTrack("s2"), spotifyTrack("s3"))
+            }
+            runCurrent()
+            h.engine.startPlaying()
+            val jam = h.startJam()
+            h.playOn(1)
+            runCurrent()
+            val failed = h.events.filterIsInstance<QueueEvent.Failed>()
+            assertEquals(listOf(Stage.AUTOPLAY), failed.map { it.stage })
+            h.state(seeds = listOf("genre:one"), seedsVersion = 1)
+            runCurrent()
+            h.state(seeds = listOf("genre:two"), seedsVersion = 2)
+            runCurrent()
+            assertEquals(1, autoplay.asked.size)
+            h.playOn(1)
+            h.engine.finishTrack()
+            runCurrent()
+            assertTrue(h.engine.isEnded)
+            assertEquals(idle, jam.playbacks.last())
+            assertEquals(1, autoplay.asked.size)
+            assertEquals(emptyList<String>(), h.source.calls)
+            autoplay.replies(listOf(spotifyTrack("x1")))
+            h.controller.next()
+            runCurrent()
+            assertEquals(listOf("s1", "s2", "s3"), autoplay.asked[1])
+            assertEquals("x1", h.currentId())
+            assertEquals(JamPlayback.Kind.BASE, jam.playbacks.last().kind)
+        }
+
+    @Test
+    fun `SPOT-22 HOST-13 a Spotify base with the flag off stops idle at its end, seeds start no jam vibe`() =
+        runTest {
+            val h = QueueHarness(this, continueWithVibe = false)
+            h.source.onStartWave = { CompletableDeferred<WaveBatch>().await() }
+            val autoplay = FakeContinuation()
+            h.controller.loadSource("Liked Songs", continuation = autoplay) {
+                listOf(spotifyTrack("s1"), spotifyTrack("s2"))
+            }
+            runCurrent()
+            h.engine.startPlaying()
+            val jam = h.startJam()
+            h.state(seeds = listOf("genre:jam"), seedsVersion = 1)
+            runCurrent()
+            h.playOn(1)
+            h.engine.finishTrack()
+            runCurrent()
+            assertTrue(h.engine.isEnded)
+            assertEquals(idle, jam.playbacks.last())
+            assertEquals(emptyList<List<String>>(), autoplay.asked)
+            assertEquals(emptyList<String>(), h.source.calls)
+        }
+
+    @Test
+    fun `HOST-21 SPOT-22 a Spotify pick becomes the base, and its autoplay follows it, not the jam vibe`() =
+        runTest {
+            val h = QueueHarness.likes(this, "a", "b", continueWithVibe = false)
+            h.source.onStartWave = { CompletableDeferred<WaveBatch>().await() }
+            h.engine.startPlaying()
+            val jam = h.startJam()
+            h.state(item("i1", "X"), seeds = listOf("genre:jam"), seedsVersion = 1)
+            h.continueWithVibe = true
+            val autoplay = FakeContinuation()
+            autoplay.replies(listOf(spotifyTrack("x1")))
+            h.controller.loadSource("Liked Songs", sourceId = "spotify:liked", continuation = autoplay) {
+                listOf(spotifyTrack("s1"), spotifyTrack("s2"), spotifyTrack("s3"))
+            }
+            runCurrent()
+            assertEquals(listOf("a", "X", "s1", "s2", "s3"), h.engine.ids())
+            val parts = listOf(EntryPart.OTHER, EntryPart.ITEM) + List(3) { EntryPart.HEAD }
+            assertEquals(parts, h.controller.state.value.entries.map { it.part })
+            assertTrue(h.controller.state.value.continueWithVibe)
+            assertEquals(base("a", next = "X"), jam.playbacks.last())
+            assertEquals(listOf("X", "s1", "s2"), h.playOn(3))
+            runCurrent()
+            assertEquals(listOf(listOf("X", "s1", "s2")), autoplay.asked)
+            assertEquals(listOf("a", "X", "s1", "s2", "s3", "x1"), h.engine.ids())
+            assertEquals(emptyList<String>(), h.source.calls)
+        }
+
     private fun localTrack(id: String) = Track(id = id, title = "Свой $id", source = TrackSource.LOCAL)
+
+    private fun spotifyTrack(id: String) = Track(id = id, title = "Spotify $id", source = TrackSource.SPOTIFY)
+
+    private fun QueueHarness.seedsVersions(): List<Int?> =
+        controller.state.value.entries.map { it.seedsVersion }
 
     private class Recorder : JamPlaybackListener {
         val started = mutableListOf<String>()

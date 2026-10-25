@@ -331,7 +331,8 @@ key(trackId) { HorizontalSlider(value = fraction, onChange = …, onChangeFinish
 **Списки библиотеки.** Каждый список грузит свой `ListLoader` в своей корутине на `Dispatchers.IO`, поэтому списки приходят параллельно, и упавший или зависший список не держит остальные.
 
 ```kotlin
-class ListLoader<T>(scope: CoroutineScope, io: CoroutineContext, fetch: suspend () -> List<T>, logFailure: (Throwable) -> Unit) {
+class ListLoader<T>(scope: CoroutineScope, io: CoroutineContext, fetch: suspend () -> List<T>, logFailure: (Throwable) -> Unit,
+                    errorKindOf: (Throwable) -> ErrorKind = ErrorKind::of) {   // вид ошибки Failed; списки Spotify (#113 PR 5) передадут корневой errorKindOf
     val state: StateFlow<ListState<T>>
     fun load(force: Boolean = false)   // Loaded и Loading без force не перезапрашиваются; force отменяет запрос в полёте
     fun reset()                        // Idle; ответ отменённого запроса не публикуется

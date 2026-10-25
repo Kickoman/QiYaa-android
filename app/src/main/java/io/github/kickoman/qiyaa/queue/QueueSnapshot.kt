@@ -1,6 +1,7 @@
 package io.github.kickoman.qiyaa.queue
 
 import io.github.kickoman.qiyaa.track.Track
+import io.github.kickoman.qiyaa.track.TrackKey
 import io.github.kickoman.qiyaa.track.TrackSource
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
@@ -24,6 +25,8 @@ data class QueueSnapshot(
     val continueWithVibe: Boolean? = null,
     val history: List<String> = emptyList(),
     val waveFromHistory: Boolean = true,
+    val continuation: ContinuationKey? = null,
+    val started: List<TrackKey> = emptyList(),
 )
 
 object QueueSnapshotCodec {
@@ -49,6 +52,8 @@ object QueueSnapshotCodec {
                 continueWithVibe = snapshot.continueWithVibe,
                 history = snapshot.history,
                 waveFromHistory = snapshot.waveFromHistory.takeIf { !it },
+                continuation = snapshot.continuation?.let { ContinuationEntry(it.kind, it.value) },
+                started = snapshot.started.map { StartedEntry(it.id, sourceKeyOf(it.source)) },
                 tracks =
                     snapshot.tracks.mapIndexed { i, track ->
                         val item = snapshot.items.getOrNull(i)
@@ -62,7 +67,7 @@ object QueueSnapshotCodec {
                             durationMs = track.durationMs,
                             available = track.available,
                             coverUrl = track.coverUrl,
-                            source = track.source.takeIf { it != TrackSource.YANDEX }?.key,
+                            source = sourceKeyOf(track.source),
                             bitrateKbps = track.bitrateKbps.takeIf { it > 0 },
                             batchId = snapshot.batchIds.getOrElse(i) { "" },
                             part = part?.takeIf { it != defaultPart }?.key,
@@ -88,7 +93,7 @@ object QueueSnapshotCodec {
             }
         if (file.version != VERSION) return null
         val tracks = file.tracks.map {
-            val source = TrackSource.fromKey(it.source ?: TrackSource.YANDEX.key) ?: return null
+            val source = sourceOf(it.source) ?: return null
             Track(
                 it.id,
                 it.title,
@@ -109,6 +114,7 @@ object QueueSnapshotCodec {
             ItemMark(entry.itemId, entry.addedBy.orEmpty(), entry.waiting)
         }
         val seedsVersions = file.tracks.map(TrackEntry::seedsVersion)
+        val started = file.started.map { TrackKey(sourceOf(it.source) ?: return null, it.id) }
         return QueueSnapshot(
             tracks = tracks,
             batchIds = file.tracks.map { it.batchId },
@@ -127,8 +133,14 @@ object QueueSnapshotCodec {
             continueWithVibe = file.continueWithVibe,
             history = file.history,
             waveFromHistory = file.waveFromHistory ?: true,
+            continuation = file.continuation?.let { ContinuationKey(it.kind, it.value) },
+            started = started,
         )
     }
+
+    private fun sourceKeyOf(source: TrackSource): String? = source.takeIf { it != TrackSource.YANDEX }?.key
+
+    private fun sourceOf(key: String?): TrackSource? = TrackSource.fromKey(key ?: TrackSource.YANDEX.key)
 
     @Serializable
     private data class SnapshotFile(
@@ -145,8 +157,16 @@ object QueueSnapshotCodec {
         val continueWithVibe: Boolean? = null,
         val history: List<String> = emptyList(),
         val waveFromHistory: Boolean? = null,
+        val continuation: ContinuationEntry? = null,
+        val started: List<StartedEntry> = emptyList(),
         val tracks: List<TrackEntry>,
     )
+
+    @Serializable
+    private data class ContinuationEntry(val kind: String, val value: String)
+
+    @Serializable
+    private data class StartedEntry(val id: String, val source: String? = null)
 
     @Serializable
     private data class TrackEntry(
