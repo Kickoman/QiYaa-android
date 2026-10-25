@@ -2,6 +2,7 @@ package io.github.kickoman.qiyaa.queue
 
 import io.github.kickoman.qiyaa.queue.QueueEvent.Stage
 import io.github.kickoman.qiyaa.track.Track
+import io.github.kickoman.qiyaa.track.TrackKey
 import io.github.kickoman.qiyaa.yandex.ErrorKind
 import io.github.kickoman.qiyaa.yandex.WaveBatch
 import io.github.kickoman.qiyaa.yandex.WaveContext
@@ -55,6 +56,8 @@ class QueueController(
     private val logFailure: (Stage, Throwable) -> Unit = { _, _ -> },
     private val continueWithVibeByDefault: () -> Boolean = { true },
     private val random: Random = Random.Default,
+    private val errorKindOf: (Throwable) -> ErrorKind = ErrorKind::of,
+    private val continuationOf: (ContinuationKey) -> Continuation? = { null },
 ) {
     private val mutableState = MutableStateFlow(QueueState(continueWithVibe = continueWithVibeByDefault()))
     val state: StateFlow<QueueState> = mutableState.asStateFlow()
@@ -104,6 +107,8 @@ class QueueController(
     private var waveSessionStale = false
     private var playing = false
     private var history = StartHistory()
+    private var continuation: Continuation? = null
+    private var started = StartedTracks()
     private var stalled = false
     private var asking = false
     private var stoppedAtEnd = false
@@ -347,6 +352,9 @@ class QueueController(
         openWaveContext = context
         if (context != null) sendFeedback(context, WaveEvent.TRACK_STARTED, track, 0.0)
         if (yandex && entry != null && entry.part != EntryPart.CONTINUATION) history.note(track.id)
+        if (continuation != null && entry != null && entry.part != EntryPart.CONTINUATION) {
+            started.note(entry.track)
+        }
         if (!mutableState.value.isWave) engine?.let(::maybeLoadMore)
     }
 
@@ -628,6 +636,7 @@ class QueueController(
         return when {
             state.isWave -> true
             !state.continueWithVibe || stalled -> false
+            continuation != null -> true
             else -> asking || waveSessionId != null || history.seeds().isNotEmpty() || jamSeeds().isNotEmpty()
         }
     }
@@ -638,6 +647,7 @@ class QueueController(
         autoplay: Boolean = true,
         waveFromHistory: Boolean = true,
         limit: Int = Int.MAX_VALUE,
+        continuation: Continuation? = null,
         loader: suspend () -> List<Track>,
     ) {
         val ticket = newSourceRequest()
@@ -658,7 +668,7 @@ class QueueController(
                     return@launch
                 }
                 val tracks = available.take(limit)
-                setQueue(tracks, title, isWave = false, autoplay, sourceId, waveFromHistory)
+                setQueue(tracks, title, isWave = false, autoplay, sourceId, waveFromHistory, continuation)
                 emit(QueueEvent.SourceLoaded(title, tracks.size, cut = available.size > tracks.size))
             }
     }
@@ -689,6 +699,36 @@ class QueueController(
                 val entries = batch.tracks.map { QueueEntry(it, EntryPart.CONTINUATION, context) }
                 replaceQueue(entries, title, isWave = true, autoplay = true, sourceId = sourceId)
                 emit(QueueEvent.WaveStarted(title))
+            }
+    }
+
+    fun playContinuation(title: String, sourceId: String?, continuation: Continuation) {
+        val ticket = newSourceRequest()
+        loadJob?.cancel()
+        emit(QueueEvent.SourceLoading(title))
+        loadJob =
+            scope.launch {
+                val tracks =
+                    try {
+                        withContext(io) { continuation.more(emptyList()) }
+                    } catch (failed: Exception) {
+                        if (isLatest(ticket)) fail(Stage.WAVE, failed)
+                        return@launch
+                    }
+                if (!isLatest(ticket)) return@launch
+                if (tracks.none { it.available }) {
+                    emit(QueueEvent.SourceEmpty(title))
+                    return@launch
+                }
+                val entries = tracks.map { QueueEntry(it, EntryPart.CONTINUATION) }
+                replaceQueue(
+                    entries,
+                    title,
+                    isWave = true,
+                    autoplay = true,
+                    sourceId = sourceId,
+                    continuation = continuation,
+                )
             }
     }
 
@@ -726,6 +766,36 @@ class QueueController(
             }
     }
 
+    fun search(text: String, title: String, find: suspend (String) -> SearchPick) {
+        val ticket = newSourceRequest()
+        loadJob?.cancel()
+        emit(QueueEvent.SearchStarted(title))
+        loadJob =
+            scope.launch {
+                try {
+                    val pick = withContext(io) { find(text) }
+                    if (!isLatest(ticket)) return@launch
+                    val available = pick.tracks.count { it.available }
+                    if (available == 0) {
+                        emit(QueueEvent.NothingFound)
+                        return@launch
+                    }
+                    val name = pick.name.ifEmpty { title }
+                    setQueue(
+                        pick.tracks,
+                        name,
+                        isWave = false,
+                        autoplay = true,
+                        sourceId = null,
+                        continuation = pick.continuation,
+                    )
+                    emit(QueueEvent.SourceLoaded(name, available))
+                } catch (failed: Exception) {
+                    if (isLatest(ticket)) fail(Stage.SEARCH, failed)
+                }
+            }
+    }
+
     fun setQueue(
         tracks: List<Track>,
         title: String,
@@ -733,9 +803,11 @@ class QueueController(
         autoplay: Boolean,
         sourceId: String?,
         waveFromHistory: Boolean = true,
+        continuation: Continuation? = null,
     ) {
         val part = EntryPart.defaultFor(isWave)
-        replaceQueue(tracks.map { QueueEntry(it, part) }, title, isWave, autoplay, sourceId, waveFromHistory)
+        val entries = tracks.map { QueueEntry(it, part) }
+        replaceQueue(entries, title, isWave, autoplay, sourceId, waveFromHistory, continuation)
     }
 
     private fun replaceQueue(
@@ -745,9 +817,10 @@ class QueueController(
         autoplay: Boolean,
         sourceId: String?,
         waveFromHistory: Boolean = true,
+        continuation: Continuation? = null,
     ) {
         if (jam != null) {
-            replaceBase(entries, title, isWave, sourceId, waveFromHistory)
+            replaceBase(entries, title, isWave, sourceId, waveFromHistory, continuation)
             return
         }
         val current = engine
@@ -755,10 +828,11 @@ class QueueController(
         queueGeneration++
         resetFailures()
         forgetContinuation()
+        this.continuation = continuation
         stoppedAtEnd = false
         holding = false
         val playable = entries.filter { it.track.available }
-        if (!isWave) {
+        if (!isWave || continuation != null) {
             waveSessionId = null
             waveStationId = ""
         }
@@ -791,6 +865,7 @@ class QueueController(
         isWave: Boolean,
         sourceId: String?,
         waveFromHistory: Boolean = true,
+        continuation: Continuation? = null,
     ) {
         val current = engine
         val before = mutableState.value.entries
@@ -820,8 +895,9 @@ class QueueController(
         queueGeneration++
         val waited = continueAtEnd
         forgetContinuation()
+        this.continuation = continuation
         if (waited && !playing) stoppedAtEnd = true
-        if (!isWave) {
+        if (!isWave || continuation != null) {
             waveSessionId = null
             waveStationId = ""
         }
@@ -852,6 +928,8 @@ class QueueController(
     }
 
     private fun forgetContinuation() {
+        continuation = null
+        started.clear()
         continueAtEnd = false
         asking = false
         stalled = false
@@ -1035,7 +1113,7 @@ class QueueController(
 
     private fun fail(stage: Stage, failed: Exception) {
         logFailure(stage, failed)
-        emit(QueueEvent.Failed(stage, ErrorKind.of(failed)))
+        emit(QueueEvent.Failed(stage, errorKindOf(failed)))
     }
 
     private fun newSourceRequest(): Long = ++sourceTicket
@@ -1096,6 +1174,10 @@ class QueueController(
         shuffleRule.onUserChanged(snapshot.shuffle, locked = false)
         repeatRule.onUserChanged(snapshot.repeat, locked = false)
         history = StartHistory(snapshot.history)
+        continuation = snapshot.continuation?.let(continuationOf)
+        if (continuation != null) {
+            started = StartedTracks(snapshot.started.map { key -> trackOf(entries, key) })
+        }
         if (snapshot.waveSessionId.isNotEmpty()) {
             waveSessionId = snapshot.waveSessionId
             waveStationId = snapshot.waveStationId
@@ -1105,6 +1187,9 @@ class QueueController(
         restorePoint = RestorePoint(snapshot.index, snapshot.positionMs, playWhenReady = false)
         publishModes()
     }
+
+    private fun trackOf(entries: List<QueueEntry>, key: TrackKey): Track =
+        entries.firstOrNull { it.track.key == key }?.track ?: Track(key.id, title = "", source = key.source)
 
     private fun inHeadAt(entries: List<QueueEntry>, index: Int): Boolean {
         val base = entries.take(index + 1).lastOrNull {
@@ -1156,12 +1241,19 @@ class QueueController(
                 continueWithVibe = state.continueWithVibe,
                 history = history.ids,
                 waveFromHistory = state.waveFromHistory,
+                continuation = continuation?.key,
+                started = started.tracks.map(Track::key),
             )
         saves.trySend(QueueSnapshotCodec.encode(snapshot))
     }
 
     private fun maybeLoadMore(current: PlayerEngine) {
         if (asking) return
+        val given = continuation
+        if (given != null) {
+            askContinuation(given, current)
+            return
+        }
         val state = mutableState.value
         val own = state.isWave
         val session = waveSessionId
@@ -1196,7 +1288,7 @@ class QueueController(
                 } catch (failed: Exception) {
                     logFailure(stage, failed)
                     val shown = generation == queueGeneration && (own || !outdated(version))
-                    if (shown) emit(QueueEvent.Failed(stage, ErrorKind.of(failed)))
+                    if (shown) emit(QueueEvent.Failed(stage, errorKindOf(failed)))
                     null
                 }
             if (generation != queueGeneration) return@launch
@@ -1217,14 +1309,54 @@ class QueueController(
             if (start != null) startSession(batch, start, historyVibe = !own)
             val sessionId = batch.sessionId.ifEmpty { session.orEmpty() }
             val context = WaveContext(sessionId, waveStationId, batch.batchId)
-            val firstNew = mutableState.value.entries.size
-            appendEntries(available.map { QueueEntry(it, EntryPart.CONTINUATION, context, null, version) })
-            val afterAppend = engine ?: return@launch
-            if (resume) {
-                afterAppend.seekTo(firstNew)
-                afterAppend.prepare()
-                if (playAfterWait) afterAppend.play()
+            val entries = available.map { QueueEntry(it, EntryPart.CONTINUATION, context, null, version) }
+            appendMore(entries, resume)
+        }
+    }
+
+    private fun askContinuation(given: Continuation, current: PlayerEngine) {
+        val state = mutableState.value
+        val own = state.isWave
+        if (!own && (!state.continueWithVibe || stalled)) return
+        if (remaining(current) > LOAD_MORE_WHEN_LEFT) return
+        val first = !own && state.entries.none { it.part == EntryPart.CONTINUATION }
+        val stage = if (own) Stage.WAVE_MORE else Stage.AUTOPLAY
+        val since = started.tracks
+        val generation = queueGeneration
+        asking = true
+        publishLoadingMore()
+        scope.launch {
+            val tracks: List<Track>? =
+                try {
+                    withContext(io) { given.more(since) }
+                } catch (failed: Exception) {
+                    logFailure(stage, failed)
+                    if (generation == queueGeneration) emit(QueueEvent.Failed(stage, errorKindOf(failed)))
+                    null
+                }
+            if (generation != queueGeneration) return@launch
+            asking = false
+            val resume = continueAtEnd
+            continueAtEnd = false
+            publishLoadingMore()
+            val available = tracks?.filter { it.available }.orEmpty()
+            if (available.isEmpty()) {
+                if (first) stalled = true
+                if (resume) stoppedAtEnd = true
+                return@launch
             }
+            appendMore(available.map { QueueEntry(it, EntryPart.CONTINUATION) }, resume)
+        }
+    }
+
+    private fun appendMore(entries: List<QueueEntry>, resume: Boolean) {
+        val firstNew = mutableState.value.entries.size
+        appendEntries(entries)
+        val afterAppend = engine ?: return
+        if (resume) {
+            afterAppend.seekTo(firstNew)
+            afterAppend.prepare()
+            if (playAfterWait) afterAppend.play()
         }
     }
 
@@ -1313,7 +1445,7 @@ class QueueController(
 
     fun onJamQueue(entries: List<JamEntry>, seeds: List<String>, seedsVersion: Int) {
         val run = jam ?: return
-        if (seeds.isNotEmpty() && seedsVersion != run.hint?.version) stalled = false
+        if (seeds.isNotEmpty() && seedsVersion != run.hint?.version && continuation == null) stalled = false
         run.hint = SeedHint(seeds, seedsVersion)
         val idle = !holding && nothingToPlay()
         val nextBefore = nextTrack()
@@ -1430,6 +1562,7 @@ class QueueController(
 
     private fun dropStaleTail() {
         val hint = jam?.hint ?: return
+        if (continuation != null) return
         val entries = mutableState.value.entries
         if (hint.seeds.isEmpty() || mutableState.value.isWave || entries.any { it.isWaiting }) return
         val current = engine

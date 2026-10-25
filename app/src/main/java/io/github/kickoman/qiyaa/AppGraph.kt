@@ -11,6 +11,7 @@ import io.github.kickoman.qiyaa.data.JamFile
 import io.github.kickoman.qiyaa.data.QueueFile
 import io.github.kickoman.qiyaa.data.Settings
 import io.github.kickoman.qiyaa.data.ShuffleChoice
+import io.github.kickoman.qiyaa.data.SpotifyStore
 import io.github.kickoman.qiyaa.data.TokenStore
 import io.github.kickoman.qiyaa.jam.JamGuest
 import io.github.kickoman.qiyaa.jam.JamGuestStore
@@ -29,9 +30,16 @@ import io.github.kickoman.qiyaa.playback.PlaybackCache
 import io.github.kickoman.qiyaa.playback.ReadInterrupts
 import io.github.kickoman.qiyaa.playback.TrackUrlCache
 import io.github.kickoman.qiyaa.queue.LibraryMusicSource
+import io.github.kickoman.qiyaa.queue.QueueActivity
 import io.github.kickoman.qiyaa.queue.QueueController
 import io.github.kickoman.qiyaa.queue.QueueStore
+import io.github.kickoman.qiyaa.queue.SearchPick
 import io.github.kickoman.qiyaa.queue.ShuffleAlgorithm
+import io.github.kickoman.qiyaa.spotify.SpotifyAccount
+import io.github.kickoman.qiyaa.spotify.SpotifyIdentity
+import io.github.kickoman.qiyaa.spotify.SpotifyLibrary
+import io.github.kickoman.qiyaa.spotify.SpotifySession
+import io.github.kickoman.qiyaa.spotify.SpotifyWeb
 import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.yandex.DeviceAuth
 import io.github.kickoman.qiyaa.yandex.Library
@@ -67,6 +75,7 @@ class AppGraph(val context: Context) {
             .build()
 
     val settings = Settings(context, defaultJamServer = BuildConfig.JAM_URL)
+    val screen = ScreenPresence(context.applicationContext as Application)
     val telemetry: AppTelemetry? =
         if (BuildConfig.TELEMETRY && BuildConfig.TELEMETRY_URL.startsWith("https://")) {
             AppTelemetry(
@@ -75,6 +84,7 @@ class AppGraph(val context: Context) {
                 httpClient = httpClient,
                 endpoint = BuildConfig.TELEMETRY_URL,
                 scope = applicationScope,
+                onScreen = screen.onScreen,
             ).also { it.start() }
         } else {
             null
@@ -100,6 +110,32 @@ class AppGraph(val context: Context) {
         }
     private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
+    private val spotifyStore = SpotifyStore(context)
+    private val spotifyIdentity =
+        SpotifyIdentity(
+            appVersion = BuildConfig.VERSION_NAME,
+            deviceId = spotifyStore.deviceId { SpotifyIdentity.newDeviceId() },
+            osRelease = System.getProperty("os.version").orEmpty(),
+            androidVersion = Build.VERSION.RELEASE.orEmpty(),
+            abi = Build.SUPPORTED_ABIS.firstOrNull().orEmpty(),
+        )
+    private val queuePlaying = MutableStateFlow(false)
+    val spotifySession =
+        SpotifySession(
+            client = httpClient,
+            identity = spotifyIdentity,
+            network = networkMonitor.available,
+            inUse = combine(screen.onScreen, queuePlaying) { onScreen, playing -> onScreen || playing },
+            scope = applicationScope,
+            log = ::logSpotify,
+        )
+    val spotifyWeb = SpotifyWeb(httpClient, spotifySession, spotifyIdentity, log = ::logSpotify)
+    val spotifyLibrary = SpotifyLibrary(spotifyWeb, spotifySession)
+    val spotifyAccount =
+        SpotifyAccount(spotifySession, SpotifySavedCredentials(spotifyStore)).also { it.start() }
+    val spotifyContinuations = SpotifyContinuations(spotifyLibrary.asCatalog())
+    val spotifySearch: suspend (String) -> SearchPick = spotifyContinuations::searchPick
+
     val queue =
         QueueController(
             source = LibraryMusicSource(library),
@@ -109,9 +145,16 @@ class AppGraph(val context: Context) {
             store = QueueFile(context).asQueueStore(),
             logFailure = { stage, failed -> Log.w(LOG_TAG, "Queue $stage failed", failed) },
             continueWithVibeByDefault = { settings.continueWithVibe.value },
+            errorKindOf = ::errorKindOf,
+            continuationOf = spotifyContinuations::of,
         ).also { controller ->
             mainScope.launch(start = CoroutineStart.UNDISPATCHED) {
                 settings.shuffleAlgorithm.collect { controller.setShuffleAlgorithm(algorithmOf(it)) }
+            }
+            mainScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                controller.activity.collect { activity ->
+                    if (activity is QueueActivity.PlayingChanged) queuePlaying.value = activity.playing
+                }
             }
         }
 
@@ -257,6 +300,10 @@ class AppGraph(val context: Context) {
                 AudioQuality.STANDARD -> Quality.STANDARD
                 AudioQuality.ECONOMY -> Quality.ECONOMY
             }
+
+        private fun logSpotify(message: String) {
+            Log.i(LOG_TAG, "Spotify: $message")
+        }
 
         private fun algorithmOf(choice: ShuffleChoice): ShuffleAlgorithm = when (choice) {
             ShuffleChoice.WITHOUT_REPEATS -> ShuffleAlgorithm.WITHOUT_REPEATS

@@ -507,8 +507,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun <T> listLoader(what: String, fetch: suspend () -> List<T>) =
-        ListLoader(viewModelScope, Dispatchers.IO, fetch) { failed -> Log.w(LOG_TAG, "$what failed", failed) }
+    private fun <T> listLoader(what: String, fetch: suspend () -> List<T>) = ListLoader(
+        viewModelScope,
+        Dispatchers.IO,
+        fetch,
+        logFailure = { failed -> Log.w(LOG_TAG, "$what failed", failed) },
+    )
 
     private fun kindOf(what: String, failed: Exception): ErrorKind {
         Log.w(LOG_TAG, "$what failed", failed)

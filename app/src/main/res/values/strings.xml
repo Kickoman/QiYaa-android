@@ -163,6 +163,7 @@
     <string name="queue_disliked_only">Disliked</string>
     <string name="queue_wave_error">Vibe error: %1$s</string>
     <string name="queue_wave_more_error">Vibe: %1$s</string>
+    <string name="queue_autoplay_error">Spotify autoplay error: %1$s</string>
     <string name="queue_search_error">Search error: %1$s</string>
     <string name="queue_playback_error">Playback error: %1$s</string>
     <string name="player_service_unavailable">Player service unavailable</string>

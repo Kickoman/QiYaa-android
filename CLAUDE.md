@@ -99,11 +99,11 @@ Writing rules for READMEs:
   | `jam` | Jam client: protocol codec, connection, the host's stored session | — (pure JVM) |
   | `lyrics` | The lyrics view's text: LRC parsing, the source and the lyrics service in their order, memory, LRCLIB | `track` (pure JVM) |
   | `local` | The phone's media library: the query, the picks and their order, the restored queue's check, local files' lyrics | `track`, `lyrics` |
-  | `queue` | What plays next: sources, waves, the jam mode, error policy, shuffle rule | `track`, `yandex` (pure JVM) |
+  | `queue` | What plays next: sources, waves, continuations not from Yandex, the jam mode, error policy, shuffle rule | `track`, `yandex` (pure JVM) |
   | `playback` | ExoPlayer, MediaSession, the Media3 adapter for `queue`, audio processors, the jam host and its WebSocket transport | `track`, `queue`, `jam`, `yandex`, `audio`, `data` |
   | `ui` | Compose screens, view models, theme | everything above |
   | `telemetry` | Anonymous statistics and crash reports: events, the crash handler, the run's files, sending, the schedule and the switch | — (pure JVM; only root imports it) |
-  | root | `AppGraph`, `QiYaaApp` (composition root), `NetworkMonitor` (platform signals), `AppTelemetry`, `TelemetryCodes` (telemetry wiring), `YandexLyrics`, `SourceLyrics` (lyrics sources: Yandex's, and the choice by the track's source), `SpotifySavedCredentials` (`data`'s Spotify store for `spotify`'s account), `SpotifyErrorKinds` (`spotify`'s failures as an `ErrorKind`) | everything |
+  | root | `AppGraph`, `QiYaaApp` (composition root), `NetworkMonitor`, `ScreenPresence` (platform signals), `AppTelemetry`, `TelemetryCodes` (telemetry wiring), `YandexLyrics`, `SourceLyrics` (lyrics sources: Yandex's, and the choice by the track's source), `SpotifySavedCredentials` (`data`'s Spotify store for `spotify`'s account), `SpotifyErrorKinds` (`spotify`'s failures as an `ErrorKind`), `SpotifyContinuations` (`spotify`'s autoplay and station as a `queue.Continuation`, the Spotify search for the queue) | everything |
 
   Dependencies point down the table only. `track`, `yandex`, `spotify` and `audio` are pure JVM
   and must not import `android.*` or `androidx.*`; that keeps them testable on

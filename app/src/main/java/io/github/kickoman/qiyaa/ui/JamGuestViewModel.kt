@@ -200,8 +200,12 @@ class JamGuestViewModel(application: Application) : AndroidViewModel(application
         ListState.Failed(ErrorKind.of(failed))
     }
 
-    private fun <T> listLoader(what: String, fetch: suspend () -> List<T>) =
-        ListLoader(viewModelScope, Dispatchers.IO, fetch) { failed -> Log.w(LOG_TAG, "$what failed", failed) }
+    private fun <T> listLoader(what: String, fetch: suspend () -> List<T>) = ListLoader(
+        viewModelScope,
+        Dispatchers.IO,
+        fetch,
+        logFailure = { failed -> Log.w(LOG_TAG, "$what failed", failed) },
+    )
 
     private fun notice(text: String) {
         mutableNotices.tryEmit(text)

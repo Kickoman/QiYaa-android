@@ -1,6 +1,7 @@
 package io.github.kickoman.qiyaa.queue
 
 import io.github.kickoman.qiyaa.track.Track
+import io.github.kickoman.qiyaa.track.TrackKey
 import io.github.kickoman.qiyaa.track.TrackSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -331,12 +332,67 @@ class QueueSnapshotCodecTest {
     }
 
     @Test
+    fun `SPOT-20 a Spotify queue's continuation and started tracks are written as pinned and read back`() {
+        val text = QueueSnapshotCodec.encode(SPOTIFY_SNAPSHOT)
+        assertEquals(SPOTIFY_QUEUE, text)
+        assertEquals(SPOTIFY_SNAPSHOT, QueueSnapshotCodec.decode(text))
+    }
+
+    @Test
+    fun `a file without a continuation or started tracks reads with neither`() {
+        for (text in listOf(YANDEX_QUEUE, VERSION_1_WAVE, VERSION_1_PLAYLIST, VERSION_1_OLD_JAM)) {
+            val decoded = QueueSnapshotCodec.decode(text)!!
+            assertNull(decoded.continuation)
+            assertEquals(emptyList<TrackKey>(), decoded.started)
+        }
+    }
+
+    @Test
+    fun `a started track of a source this build does not know gives no snapshot`() {
+        val text = SPOTIFY_QUEUE.replace(
+            """[{"id":"s1","source":"spotify"}""",
+            """[{"id":"s1","source":"x"}""",
+        )
+        assertNull(QueueSnapshotCodec.decode(text))
+    }
+
+    @Test
     fun `an index outside the tracks is clamped`() {
         val text = QueueSnapshotCodec.encode(snapshot.copy(index = 7))
         assertEquals(1, QueueSnapshotCodec.decode(text)!!.index)
     }
 
     private companion object {
+        val SPOTIFY_SNAPSHOT =
+            QueueSnapshot(
+                tracks = listOf(
+                    Track("s1", "Песня", listOf("Гурт"), durationMs = 180_000, source = TrackSource.SPOTIFY),
+                    Track("x1", "Іншая", source = TrackSource.SPOTIFY),
+                ),
+                batchIds = listOf("", ""),
+                title = "Road",
+                sourceId = "spotify:playlist:p1",
+                isWave = false,
+                waveSessionId = "",
+                waveStationId = "",
+                index = 1,
+                positionMs = 5_000,
+                shuffle = false,
+                repeat = false,
+                parts = listOf(EntryPart.HEAD, EntryPart.CONTINUATION),
+                continueWithVibe = true,
+                continuation = ContinuationKey("spotify-autoplay", "spotify:playlist:p1"),
+                started = listOf(TrackKey(TrackSource.SPOTIFY, "s1"), TrackKey(TrackSource.YANDEX, "7")),
+            )
+
+        const val SPOTIFY_QUEUE =
+            """{"version":1,"title":"Road","sourceId":"spotify:playlist:p1","isWave":false,"index":1,""" +
+                """"positionMs":5000,"shuffle":false,"repeat":false,"continueWithVibe":true,""" +
+                """"continuation":{"kind":"spotify-autoplay","value":"spotify:playlist:p1"},""" +
+                """"started":[{"id":"s1","source":"spotify"},{"id":"7"}],"tracks":[""" +
+                """{"id":"s1","title":"Песня","artists":["Гурт"],"durationMs":180000,"source":"spotify"},""" +
+                """{"id":"x1","title":"Іншая","source":"spotify","part":"continuation"}]}"""
+
         const val YANDEX_QUEUE =
             """{"version":1,"title":"Моя волна","sourceId":"user:onyourwave","isWave":true,""" +
                 """"waveSessionId":"S1","waveStationId":"user:onyourwave","index":1,"positionMs":42000,""" +
