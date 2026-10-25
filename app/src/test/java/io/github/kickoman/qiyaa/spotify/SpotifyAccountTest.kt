@@ -128,6 +128,21 @@ class SpotifyAccountTest {
         }
 
     @Test
+    fun `SPOT-06 logout forgets the saved login before the state says logged out`() = runBlocking {
+        saved.credentials = STORED
+        account.start()
+        stack.awaitOnline()
+        val statesAtForget = mutableListOf<SpotifyState>()
+        saved.onForget = { statesAtForget += account.state.value }
+
+        account.logout()
+
+        assertTrue(statesAtForget.toString(), statesAtForget.first() is SpotifyState.Online)
+        assertEquals(SpotifyState.LoggedOut, statesAtForget.last())
+        assertNull(saved.credentials)
+    }
+
+    @Test
     fun `saved credentials of another type are no saved login`() = runBlocking {
         saved.credentials = Credentials.fromAccessToken("BQ-token")
         assertFalse(account.hasSavedLogin())
@@ -144,6 +159,9 @@ class SpotifyAccountTest {
         @Volatile
         var forgets = 0
 
+        @Volatile
+        var onForget: () -> Unit = {}
+
         override fun load(): Credentials? = credentials
 
         override fun save(credentials: Credentials) {
@@ -152,6 +170,7 @@ class SpotifyAccountTest {
         }
 
         override fun forget() {
+            onForget()
             forgets++
             credentials = null
         }

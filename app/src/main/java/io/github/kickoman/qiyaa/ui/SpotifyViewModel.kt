@@ -30,11 +30,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -121,8 +118,11 @@ interface SpotifyGateway {
     fun loggedOut()
 }
 
-fun spotifyCanLogOut(access: SpotifyAccess, savedLogin: Boolean): Boolean =
-    access == SpotifyAccess.LOGGED_IN || savedLogin
+fun spotifyCanLogOut(access: SpotifyAccess, savedLogin: Boolean): Boolean = when (access) {
+    SpotifyAccess.LOG_IN, SpotifyAccess.EXPIRED -> false
+    SpotifyAccess.LOGGED_IN -> true
+    SpotifyAccess.CONNECTING, SpotifyAccess.PREMIUM_REQUIRED, SpotifyAccess.REFUSED -> savedLogin
+}
 
 fun spotifyAccessOf(state: SpotifyState, savedLogin: Boolean): SpotifyAccess = when (state) {
     SpotifyState.LoggedOut -> SpotifyAccess.LOG_IN
@@ -152,8 +152,8 @@ class SpotifyViewModel(
     private val mutableLogin = MutableStateFlow(SpotifyLoginUi())
     val login: StateFlow<SpotifyLoginUi> = mutableLogin.asStateFlow()
 
-    private val mutableNotices = MutableSharedFlow<String>(extraBufferCapacity = NOTICE_BUFFER)
-    val notices: SharedFlow<String> = mutableNotices.asSharedFlow()
+    private val mutableNotices = Channel<String>(Channel.BUFFERED)
+    val notices: Flow<String> = mutableNotices.receiveAsFlow()
 
     private val mutableMoves = Channel<Screen>(Channel.BUFFERED)
     val moves: Flow<Screen> = mutableMoves.receiveAsFlow()
@@ -363,7 +363,7 @@ class SpotifyViewModel(
     }
 
     private fun notice(message: String) {
-        mutableNotices.tryEmit(message)
+        mutableNotices.trySend(message)
     }
 
     private fun noticeOnScreen(message: String) {
@@ -392,7 +392,6 @@ class SpotifyViewModel(
     companion object {
         const val LIKED_SONGS = "spotify:liked"
         const val RADIO_PREFIX = "spotify:radio:"
-        private const val NOTICE_BUFFER = 8
 
         val Factory: ViewModelProvider.Factory =
             viewModelFactory {

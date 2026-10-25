@@ -323,7 +323,7 @@ class SpotifyAccount(session: SpotifySession, saved: SavedCredentials) {
 - SPOT-03: на каждый `APWelcome` многоразовые данные сохраняются, если они другие, чем в хранилище; токен нигде не хранится.
 - SPOT-04: `start()` входит сохранёнными данными без диалога. `BadCredentials` удаляет их (`Expired`); сбой сети их не трогает, сессия повторяет, как ERR-02.
 - SPOT-05: `PremiumAccountRequired` ничего не сохраняет. Сохранённый вход, которому отказали так, остаётся (как у ПК): следующий запуск попробует снова.
-- SPOT-06: `logout()` — сначала `session.logout()` (соединение закрывается, ждущие ключи падают `NotLoggedInException`), потом `saved.forget()`.
+- SPOT-06: `logout()` — `saved.forget()`, `session.logout()` (соединение закрывается, состояние — `LoggedOut`, ждущие ключи падают `NotLoggedInException`) и ещё раз `saved.forget()`. Порядок важен. Первое `forget()` — до `LoggedOut`: сборщик `state` на `Dispatchers.Main.immediate` (`ui/SpotifyViewModel`) получает `LoggedOut` прямо внутри `session.logout()`, если выход идёт с главного потока, и должен уже не видеть сохранённого входа (`SpotifyAccountTest`: при первом `forget()` состояние ещё `Online`). Второе — для `APWelcome`, пришедшего между ними: слушатель сохраняет многоразовые данные на каждом `APWelcome`, если в хранилище другие, а после `session.logout()` (новое поколение, `listener = null` под тем же замком) старых вызовов слушателя уже не бывает.
 
 ## Каталог: `SpotifyLibrary`
 

@@ -243,13 +243,35 @@ class SpotifyViewModelTest {
     }
 
     @Test
-    fun `SPOT-05 SPOT-06 log out is offered when logged in or a login is saved, log in otherwise`() {
+    fun `SPOT-05 SPOT-06 log out is offered when logged in, or with a login saved while not logged out`() {
+        val keepsSaved =
+            setOf(SpotifyAccess.CONNECTING, SpotifyAccess.PREMIUM_REQUIRED, SpotifyAccess.REFUSED)
         for (access in SpotifyAccess.entries) {
-            assertTrue(access.name, spotifyCanLogOut(access, savedLogin = true))
+            val withSaved = spotifyCanLogOut(access, savedLogin = true)
             val withoutSaved = spotifyCanLogOut(access, savedLogin = false)
+            assertEquals(access.name, access == SpotifyAccess.LOGGED_IN || access in keepsSaved, withSaved)
             assertEquals(access.name, access == SpotifyAccess.LOGGED_IN, withoutSaved)
         }
     }
+
+    @Test
+    fun `SPOT-06 after log out the header offers log in, even if the state changes before the forget`() =
+        runTest {
+            Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+            spotify.onLogout = {
+                spotify.state.value = SpotifyState.LoggedOut
+                spotify.saved = false
+            }
+            val subject = Subject(this)
+            loggedIn()
+            assertTrue(subject.model.ui.value.canLogOut)
+
+            subject.model.logout()
+            runCurrent()
+
+            assertEquals(SpotifyAccess.LOG_IN, subject.model.ui.value.access)
+            assertFalse(subject.model.ui.value.canLogOut)
+        }
 
     @Test
     fun `SPOT-05 a refused fresh token offers log in, a refused saved login can be logged out`() = runTest {
@@ -553,10 +575,15 @@ class SpotifyViewModelTest {
             calls += "login $accessToken"
         }
 
-        override fun logout() {
-            calls += "logout"
+        var onLogout: () -> Unit = {
             saved = false
             state.value = SpotifyState.LoggedOut
+            saved = false
+        }
+
+        override fun logout() {
+            calls += "logout"
+            onLogout()
         }
 
         override suspend fun requestCode(): PairLogin.Code {
