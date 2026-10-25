@@ -37,7 +37,12 @@ class SpotifyLibrary(
     private val web: SpotifyWeb,
     private val session: SpotifySession,
     private val timeZone: () -> String = { TimeZone.getDefault().id },
+    private val maxPages: Int = MAX_PAGES,
 ) {
+    init {
+        require(maxPages > 0) { "a page limit must be positive, got $maxPages" }
+    }
+
     val username: String get() = session.credentials?.username.orEmpty()
 
     val likedSongsUri: String get() = "spotify:user:$username:collection"
@@ -177,7 +182,7 @@ class SpotifyLibrary(
     private suspend fun collection(set: String): List<String> {
         val uris = ArrayList<String>()
         var token = ""
-        while (true) {
+        repeat(maxPages) {
             val body = CatalogMessages.collectionPageRequest(username, set, token, COLLECTION_PAGE)
             val request =
                 WebRequest(
@@ -195,12 +200,13 @@ class SpotifyLibrary(
             if (page.last) return uris
             token = page.nextPageToken
         }
+        throw web.unreadable("POST", COLLECTION_PATH, "a $set of more than $maxPages pages")
     }
 
     private suspend fun listItems(path: String, label: String): List<ListItem> {
         val items = ArrayList<ListItem>()
         var from = 0
-        while (true) {
+        repeat(maxPages) {
             val request = WebRequest(path = "$path&from=$from&length=$LIST_PAGE", label = label)
             val page =
                 CatalogMessages.parseListPage(web.spclient(request))
@@ -209,6 +215,7 @@ class SpotifyLibrary(
             if (!page.hasMoreAfter(from, LIST_PAGE)) return items
             from += LIST_PAGE
         }
+        throw web.unreadable("GET", label, "a list of more than $maxPages pages")
     }
 
     private suspend fun names(
@@ -266,6 +273,7 @@ class SpotifyLibrary(
 
     companion object {
         const val METADATA_BATCH = 100
+        const val MAX_PAGES = 1000
         const val COLLECTION_PAGE = 300
         const val LIST_PAGE = 1000
         const val SEARCH_LIMIT = 50

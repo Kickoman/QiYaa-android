@@ -8,6 +8,7 @@ import io.github.kickoman.qiyaa.spotify.protocol.ProtoWriter
 import io.github.kickoman.qiyaa.spotify.protocol.bytesOfHex
 import io.github.kickoman.qiyaa.support.SpotifyStack
 import io.github.kickoman.qiyaa.support.bytes
+import io.github.kickoman.qiyaa.support.closeAll
 import io.github.kickoman.qiyaa.support.expectFailure
 import io.github.kickoman.qiyaa.support.fieldOf
 import io.github.kickoman.qiyaa.support.varintOf
@@ -35,7 +36,7 @@ class SpotifyWebTest {
     private val stacks = mutableListOf<SpotifyStack>()
 
     @After
-    fun tearDown() = stacks.forEach(SpotifyStack::close)
+    fun tearDown() = closeAll(stacks)
 
     @Test
     fun `the tokens are asked once and go to spclient with QiYaa's User-Agent`() = runBlocking {
@@ -292,26 +293,31 @@ class SpotifyWebTest {
                 }
             }
             stack.route("GET", "/thing") { SpotifyStack.json(EMPTY) }
-            val first = async(Dispatchers.IO) { runCatching { stack.web.spclient(WebRequest("/thing")) } }
-            withContext(Dispatchers.IO) { asked.await(SpotifyStack.WAIT_MS, TimeUnit.MILLISECONDS) }
-            stack.session.logout()
-            stack.loginStored(
-                Credentials("other", AuthenticationType.STORED_CREDENTIALS, Bytes.of(byteArrayOf(5))),
-            )
-            val second =
-                async(start = CoroutineStart.UNDISPATCHED) {
-                    runCatching { stack.web.spclient(WebRequest("/thing")) }
-                }
-            gate.countDown()
-            val failed = first.await().exceptionOrNull()
-            assertTrue("$failed", failed is SpotifyHttpException && failed.status == 503)
-            assertTrue("${second.await().exceptionOrNull()}", second.await().isSuccess)
-            assertEquals(
-                listOf("Bearer bearer-other"),
-                stack.requests("/thing").map {
-                    it.getHeader("Authorization")
-                },
-            )
+            try {
+                val first =
+                    async(Dispatchers.IO) { runCatching { stack.web.spclient(WebRequest("/thing")) } }
+                withContext(Dispatchers.IO) { asked.await(SpotifyStack.WAIT_MS, TimeUnit.MILLISECONDS) }
+                stack.session.logout()
+                stack.loginStored(
+                    Credentials("other", AuthenticationType.STORED_CREDENTIALS, Bytes.of(byteArrayOf(5))),
+                )
+                val second =
+                    async(start = CoroutineStart.UNDISPATCHED) {
+                        runCatching { stack.web.spclient(WebRequest("/thing")) }
+                    }
+                gate.countDown()
+                val failed = first.await().exceptionOrNull()
+                assertTrue("$failed", failed is SpotifyHttpException && failed.status == 503)
+                assertTrue("${second.await().exceptionOrNull()}", second.await().isSuccess)
+                assertEquals(
+                    listOf("Bearer bearer-other"),
+                    stack.requests("/thing").map {
+                        it.getHeader("Authorization")
+                    },
+                )
+            } finally {
+                gate.countDown()
+            }
         }
 
     @Test
@@ -329,18 +335,23 @@ class SpotifyWebTest {
             stack.accessPoint.loginGate = CountDownLatch(1)
             val token = Bytes.of("BQ-token".toByteArray())
             stack.session.login(Credentials("owner", AuthenticationType.SPOTIFY_TOKEN, token))
-            val first = async(Dispatchers.IO) { runCatching { stack.web.spclient(WebRequest("/thing")) } }
-            withContext(Dispatchers.IO) { asked.await(SpotifyStack.WAIT_MS, TimeUnit.MILLISECONDS) }
-            stack.accessPoint.loginGate.countDown()
-            stack.awaitOnline()
-            val second =
-                async(start = CoroutineStart.UNDISPATCHED) {
-                    runCatching { stack.web.spclient(WebRequest("/thing")) }
-                }
-            gate.countDown()
-            assertTrue("${first.await()}", first.await().exceptionOrNull() is NotLoggedInException)
-            assertTrue("${second.await().exceptionOrNull()}", second.await().isSuccess)
-            assertEquals(1, stack.requests("/v3/login").size)
+            try {
+                val first =
+                    async(Dispatchers.IO) { runCatching { stack.web.spclient(WebRequest("/thing")) } }
+                withContext(Dispatchers.IO) { asked.await(SpotifyStack.WAIT_MS, TimeUnit.MILLISECONDS) }
+                stack.accessPoint.loginGate.countDown()
+                stack.awaitOnline()
+                val second =
+                    async(start = CoroutineStart.UNDISPATCHED) {
+                        runCatching { stack.web.spclient(WebRequest("/thing")) }
+                    }
+                gate.countDown()
+                assertTrue("${first.await()}", first.await().exceptionOrNull() is NotLoggedInException)
+                assertTrue("${second.await().exceptionOrNull()}", second.await().isSuccess)
+                assertEquals(1, stack.requests("/v3/login").size)
+            } finally {
+                gate.countDown()
+            }
         }
 
     @Test

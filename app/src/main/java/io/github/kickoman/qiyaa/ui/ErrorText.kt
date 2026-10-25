@@ -20,6 +20,8 @@ fun ErrorKind.text(): TextRes = when (this) {
     ErrorKind.TrackUnplayable -> TextRes(R.string.error_track_unplayable)
     ErrorKind.SpotifyLoggedOut -> TextRes(R.string.error_spotify_logged_out)
     ErrorKind.SpotifyKeyRefused -> TextRes(R.string.error_spotify_key_refused)
+    ErrorKind.SpotifyLoginRefused -> TextRes(R.string.error_spotify_login_refused)
+    ErrorKind.SpotifyTokenRefused -> TextRes(R.string.error_spotify_token_refused)
     ErrorKind.Unknown -> TextRes(R.string.error_unknown)
 }
 

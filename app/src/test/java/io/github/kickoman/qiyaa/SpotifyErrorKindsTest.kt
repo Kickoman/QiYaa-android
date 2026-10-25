@@ -9,6 +9,8 @@ import io.github.kickoman.qiyaa.spotify.QueryOutdatedException
 import io.github.kickoman.qiyaa.spotify.SpotifyContentException
 import io.github.kickoman.qiyaa.spotify.SpotifyHttpException
 import io.github.kickoman.qiyaa.spotify.SpotifyNetworkException
+import io.github.kickoman.qiyaa.spotify.SpotifySession
+import io.github.kickoman.qiyaa.spotify.SpotifyWeb
 import io.github.kickoman.qiyaa.yandex.ErrorKind
 import io.github.kickoman.qiyaa.yandex.HttpException
 import java.io.IOException
@@ -35,8 +37,14 @@ class SpotifyErrorKindsTest {
             ErrorKind.TrackUnplayable,
             errorKindOf(NoPlayableFileException("01TrY6CZi6JaolPzVQ3HW1")),
         )
-        assertEquals(ErrorKind.SignInRefused, errorKindOf(LoginRefusedException(12, "the access point")))
-        assertEquals(ErrorKind.SignInRefused, errorKindOf(LoginRefusedException(3, "/v3/login")))
+        assertEquals(
+            ErrorKind.SpotifyLoginRefused,
+            errorKindOf(LoginRefusedException(11, SpotifySession.ACCESS_POINT)),
+        )
+        assertEquals(
+            ErrorKind.SpotifyTokenRefused,
+            errorKindOf(LoginRefusedException(3, SpotifyWeb.LOGIN5_PATH)),
+        )
     }
 
     @Test

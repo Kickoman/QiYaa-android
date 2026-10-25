@@ -328,6 +328,8 @@
     <string name="error_track_unplayable">трэк не прайграецца</string>
     <string name="error_spotify_logged_out">няма ўваходу ў Spotify</string>
     <string name="error_spotify_key_refused">Spotify не дазваляе гэтаму акаўнту граць тут</string>
+    <string name="error_spotify_login_refused">Spotify не пусціў</string>
+    <string name="error_spotify_token_refused">Spotify не даў токен доступу</string>
     <string name="error_unknown">нешта пайшло не так</string>
     <string name="library_row_error">ПАМЫЛКА</string>
     <string name="library_retry">НАЦІСНІЦЕ, КАБ ПАЎТАРЫЦЬ</string>

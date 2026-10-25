@@ -9,6 +9,7 @@ import io.github.kickoman.qiyaa.spotify.QueryOutdatedException
 import io.github.kickoman.qiyaa.spotify.SpotifyContentException
 import io.github.kickoman.qiyaa.spotify.SpotifyHttpException
 import io.github.kickoman.qiyaa.spotify.SpotifyNetworkException
+import io.github.kickoman.qiyaa.spotify.SpotifyWeb
 import io.github.kickoman.qiyaa.yandex.ErrorKind
 
 fun errorKindOf(failed: Throwable): ErrorKind =
@@ -21,6 +22,11 @@ private fun spotifyKindOf(failure: Throwable): ErrorKind? = when (failure) {
     is NotLoggedInException -> ErrorKind.SpotifyLoggedOut
     is KeyRefusedException -> ErrorKind.SpotifyKeyRefused
     is KeyFailedException, is NoPlayableFileException -> ErrorKind.TrackUnplayable
-    is LoginRefusedException -> ErrorKind.SignInRefused
+    is LoginRefusedException -> loginRefusalOf(failure)
     else -> null
+}
+
+private fun loginRefusalOf(failure: LoginRefusedException): ErrorKind = when (failure.where) {
+    SpotifyWeb.LOGIN5_PATH -> ErrorKind.SpotifyTokenRefused
+    else -> ErrorKind.SpotifyLoginRefused
 }

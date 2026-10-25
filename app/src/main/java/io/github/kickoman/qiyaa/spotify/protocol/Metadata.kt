@@ -88,6 +88,7 @@ data class StorageUrls(val result: StorageResult, val urls: List<String>) {
 
 object Metadata {
     const val WORLDWIDE = "ZZ"
+    const val MAX_ALTERNATIVE_DEPTH = 4
 
     fun request(uris: List<String>, kind: ExtensionKind): ByteArray {
         val query = ProtoWriter().varint(ExtensionQueryFields.EXTENSION_KIND, kind.code.toLong())
@@ -116,7 +117,7 @@ object Metadata {
         return entities.takeUnless { response.failed }
     }
 
-    fun parseTrack(payload: Bytes): SpotifyTrack? = trackOf(ProtoReader(payload.toByteArray()))
+    fun parseTrack(payload: Bytes): SpotifyTrack? = trackOf(ProtoReader(payload.toByteArray()), depth = 0)
 
     fun parseAlbum(payload: Bytes): SpotifyAlbum? {
         var gid = ZERO_GID
@@ -158,12 +159,8 @@ object Metadata {
         return emptyList()
     }
 
-    fun pickOggVorbis(track: SpotifyTrack, preferredKbps: Int): PlayableFile? {
-        val own = track.files.filter { it.format.oggVorbisKbps > 0 }
-            .minByOrNull { abs(it.format.oggVorbisKbps - preferredKbps) }
-        if (own != null) return PlayableFile(track.gid, own)
-        return track.alternatives.firstNotNullOfOrNull { pickOggVorbis(it, preferredKbps) }
-    }
+    fun pickOggVorbis(track: SpotifyTrack, preferredKbps: Int): PlayableFile? =
+        pickOggVorbis(track, preferredKbps, depth = 0)
 
     fun parseStorageResolve(body: ByteArray): StorageUrls? {
         var result = StorageResult.CDN
@@ -208,7 +205,15 @@ object Metadata {
         return payload
     }
 
-    private fun trackOf(reader: ProtoReader): SpotifyTrack? {
+    private fun pickOggVorbis(track: SpotifyTrack, preferredKbps: Int, depth: Int): PlayableFile? {
+        val own = track.files.filter { it.format.oggVorbisKbps > 0 }
+            .minByOrNull { abs(it.format.oggVorbisKbps - preferredKbps) }
+        if (own != null) return PlayableFile(track.gid, own)
+        if (depth >= MAX_ALTERNATIVE_DEPTH) return null
+        return track.alternatives.firstNotNullOfOrNull { pickOggVorbis(it, preferredKbps, depth + 1) }
+    }
+
+    private fun trackOf(reader: ProtoReader, depth: Int): SpotifyTrack? {
         var gid = ZERO_GID
         var name = ""
         var album = AlbumRef()
@@ -219,12 +224,22 @@ object Metadata {
         while (reader.next()) {
             when (reader.field) {
                 TrackFields.GID -> gid = gidOr(reader, gid)
+
                 TrackFields.NAME -> name = reader.string()
+
                 TrackFields.ALBUM -> album = albumRefOf(reader.message())
+
                 TrackFields.ARTIST -> artists += artistRefOf(reader.message())
+
                 TrackFields.DURATION -> durationMs = reader.zigzag
+
                 TrackFields.FILE -> audioFileOf(reader.message())?.let(files::add)
-                TrackFields.ALTERNATIVE -> trackOf(reader.message())?.let(alternatives::add)
+
+                TrackFields.ALTERNATIVE -> {
+                    if (depth < MAX_ALTERNATIVE_DEPTH) {
+                        trackOf(reader.message(), depth + 1)?.let(alternatives::add)
+                    }
+                }
             }
         }
         if (reader.failed) return null

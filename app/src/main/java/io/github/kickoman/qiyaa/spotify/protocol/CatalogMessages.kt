@@ -15,7 +15,8 @@ data class ListPage(
     val truncated: Boolean = false,
     val items: List<ListItem> = emptyList(),
 ) {
-    fun hasMoreAfter(requestedFrom: Int, pageLength: Int): Boolean = requestedFrom + pageLength < length
+    fun hasMoreAfter(requestedFrom: Int, pageLength: Int): Boolean =
+        requestedFrom.toLong() + pageLength < length
 }
 
 object CatalogMessages {

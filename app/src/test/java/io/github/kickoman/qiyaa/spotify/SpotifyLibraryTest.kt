@@ -13,12 +13,15 @@ import io.github.kickoman.qiyaa.spotify.protocol.ProtoWriter
 import io.github.kickoman.qiyaa.support.SpotifyFixtures
 import io.github.kickoman.qiyaa.support.SpotifyStack
 import io.github.kickoman.qiyaa.support.bytes
+import io.github.kickoman.qiyaa.support.closeAll
 import io.github.kickoman.qiyaa.support.expectFailure
 import io.github.kickoman.qiyaa.support.fieldOf
 import io.github.kickoman.qiyaa.support.varintOf
 import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.track.TrackSource
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CopyOnWriteArraySet
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -37,9 +40,10 @@ import org.junit.Test
 class SpotifyLibraryTest {
     private val stacks = mutableListOf<SpotifyStack>()
     private val asked = CopyOnWriteArrayList<Pair<ExtensionKind, List<String>>>()
+    private val broken = CopyOnWriteArraySet<String>()
 
     @After
-    fun tearDown() = stacks.forEach(SpotifyStack::close)
+    fun tearDown() = closeAll(stacks)
 
     @Test
     fun `SPOT-07 Liked Songs are the collection's tracks, every page, in Spotify's order`() = runBlocking {
@@ -432,6 +436,43 @@ class SpotifyLibraryTest {
         }
 
     @Test
+    fun `a track, an album or a saved album whose metadata does not parse is left out, no failure`() =
+        runBlocking {
+            val (stack, library) = online()
+            broken += listOf(MIDDLE, DOUBLE)
+            val tracks = library.tracks(listOf(PLAYS, MIDDLE, RELINKED))
+            assertEquals(listOf("Plays", "Relinked"), tracks.map(Track::title))
+            assertEquals(listOf<Track>(), library.albumTracks(DOUBLE))
+            serveCollection(stack, "collection" to "" to collectionPage(listOf(DOUBLE, OUT_OF_ORDER)))
+            assertEquals(listOf(SpotifyItem(OUT_OF_ORDER, "Discs out of order")), library.savedAlbums())
+            delay(QUIET_MS)
+            assertEquals(listOf<SpotifyProblem>(), stack.problems.value)
+        }
+
+    @Test
+    fun `a collection or a list that never ends fails after the page limit as an unreadable reply`() =
+        runBlocking {
+            val (stack, library) = online(maxPages = 3)
+            stack.route("POST", SpotifyLibrary.COLLECTION_PATH) {
+                val token = ProtoWriter().string(2, TOKEN).toByteArray()
+                SpotifyStack.protobuf(collectionPage(listOf(PLAYS)) + token)
+            }
+            val collection = expectFailure<SpotifyContentException> { library.likedTracks() }
+            assertEquals("POST /collection/v2/paging: a collection of more than 3 pages", collection.message)
+            assertEquals(3, stack.requests(SpotifyLibrary.COLLECTION_PATH).size)
+            stack.route("GET", ROOTLIST_PATH) {
+                SpotifyStack.protobuf(ProtoWriter().varint(2, Int.MAX_VALUE.toLong()).toByteArray())
+            }
+            val list = expectFailure<SpotifyContentException> { library.playlists() }
+            assertEquals("GET ${SpotifyLibrary.ROOTLIST_LABEL}: a list of more than 3 pages", list.message)
+            assertEquals(
+                listOf("0", "1000", "2000"),
+                stack.requests(ROOTLIST_PATH).map { it.requestUrl!!.queryParameter("from") },
+            )
+            assertEquals(List(2) { SpotifyProblem.Content }, stack.awaitProblems(2))
+        }
+
+    @Test
     fun `a reply that cannot be read as a whole fails the call and is reported as content`() = runBlocking {
         val (stack, library) = online()
         stack.route("POST", SpotifyLibrary.AUTOPLAY_PATH) {
@@ -459,12 +500,13 @@ class SpotifyLibraryTest {
     private suspend fun online(
         credentials: Credentials = SpotifyStack.STORED,
         country: String = "BY",
+        maxPages: Int = SpotifyLibrary.MAX_PAGES,
     ): Pair<SpotifyStack, SpotifyLibrary> {
         val stack = SpotifyStack().also { stacks += it }
         stack.accessPoint.country = country
         serveMetadata(stack)
         stack.loginStored(credentials)
-        return stack to SpotifyLibrary(stack.web, stack.session, timeZone = { "Europe/Minsk" })
+        return stack to SpotifyLibrary(stack.web, stack.session, { "Europe/Minsk" }, maxPages)
     }
 
     private fun serveMetadata(stack: SpotifyStack) {
@@ -480,7 +522,8 @@ class SpotifyLibraryTest {
             val array = ProtoWriter()
             for (uri in uris.reversed()) {
                 val entity =
-                    known.getValue(kind)[uri]
+                    MetadataEntity(uri, 200, Bytes.of(BROKEN)).takeIf { uri in broken }
+                        ?: known.getValue(kind)[uri]
                         ?: if (kind == TRACK_V4) {
                             MetadataEntity(uri, 200, Bytes.of(syntheticPayload(uri)))
                         } else {
@@ -566,6 +609,7 @@ class SpotifyLibraryTest {
         val ALBUM_V4 = ExtensionKind.ALBUM_V4
         val ARTIST_V4 = ExtensionKind.ARTIST_V4
         const val TOKEN = "synthetic-page-2"
+        const val QUIET_MS = 200L
         const val PLAYS = "spotify:track:01TrY6CZi6JaolPzVQ3HW1"
         const val RELINKED = "spotify:track:03MTWdfYAdskMHF9RG7pS2"
         const val GONE = "spotify:track:05GlUjSXSkbvb3uJNwb7O3"

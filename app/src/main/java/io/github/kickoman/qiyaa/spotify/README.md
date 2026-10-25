@@ -78,10 +78,20 @@ fun errorKindOf(failed: Throwable): ErrorKind   // первое звено це�
 | `NotLoggedInException` | `SpotifyLoggedOut` (ERR-08, SPOT-06) |
 | `KeyRefusedException` | `SpotifyKeyRefused` (SPOT-17) |
 | `KeyFailedException` (SPOT-16), `NoPlayableFileException` (SPOT-15) | `TrackUnplayable` |
-| `LoginRefusedException` (отказ AP или login5) | `SignInRefused` |
+| `LoginRefusedException` с `where` = `/v3/login` (ошибка login5) | `SpotifyTokenRefused` |
+| `LoginRefusedException` от AP (кроме `BadCredentials`: например, `PremiumAccountRequired` у ключа) | `SpotifyLoginRefused` |
 | остальное (`AuthorizationException`, исключения `yandex`, сеть Java) | как `ErrorKind.of` |
 
-Звать его будут `QueueController` и `ui/ListLoader` (классификатор в конструкторе, PR 3c) и `ui/SpotifyViewModel` (PR 5); вид отказа воспроизведения (`FailureKind`: `TRACK`, `SESSION`) у трека решает `playback/PlaybackFailures` (PR 4), а `ErrorKind` его статуса — по той же таблице плана. Тексты двух новых видов — `error_spotify_logged_out`, `error_spotify_key_refused` в `ui/ErrorText.kt`, по переводам ПК (`not logged in to Spotify`, `Spotify does not let this account play here`). Тест — `SpotifyErrorKindsTest`.
+Звать его будут `QueueController` и `ui/ListLoader` (классификатор в конструкторе, PR 3c) и `ui/SpotifyViewModel` (PR 5); вид отказа воспроизведения (`FailureKind`: `TRACK`, `SESSION`) у трека решает `playback/PlaybackFailures` (PR 4), а `ErrorKind` его статуса — по той же таблице плана. Тексты четырёх видов Spotify — в `ui/ErrorText.kt`, по переводам ПК (`qiyaa_ru.ts`, `qiyaa_be.ts`):
+
+| Вид | Строка | Текст ПК |
+|---|---|---|
+| `SpotifyLoggedOut` | `error_spotify_logged_out` | «not logged in to Spotify» (`source.cpp`) |
+| `SpotifyKeyRefused` | `error_spotify_key_refused` | «Spotify does not let this account play here» (`file_download.cpp`) |
+| `SpotifyLoginRefused` | `error_spotify_login_refused` | «Spotify refused the login» (`spotify_account.cpp:110`, без `: %1`) |
+| `SpotifyTokenRefused` | `error_spotify_token_refused` | «Spotify did not give an access token» (`web.cpp:187–191`) |
+
+`SignInRefused` Яндекса («Яндекс отклонил вход») для Spotify не годится. Тест — `SpotifyErrorKindsTest`.
 
 ## `SpotifyIdentity`
 
@@ -308,6 +318,7 @@ class SpotifyLibrary(
     web: SpotifyWeb,
     session: SpotifySession,
     timeZone: () -> String = { TimeZone.getDefault().id },   // для «Для вас»; тесты подают свой
+    maxPages: Int = MAX_PAGES,                               // 1000 страниц коллекции или списка; тесты ставят меньше
 ) {
     val username: String                                     // имя из session.credentials; "" без входа
     val likedSongsUri: String                                // spotify:user:<username>:collection — контекст автоплея Liked Songs
@@ -373,7 +384,7 @@ data class ContextPage(val tracks: List<Track>, val next: String)               
 **Traps:**
 - Страна аккаунта приходит с AP чуть после входа (`SpotifySession.country`); топ исполнителя до неё — по `""`, затем мировой (ловушка ПК).
 - `searchPick` для лучшего исполнителя или альбома не смотрит найденные треки: у пустого топа исполнителя (страна, где топа нет и мирового тоже) выбор пуст, хотя треки нашлись. Так же у ПК.
-- Длинная коллекция и плейлист читаются страница за страницей, пока сервер говорит «ещё»: `length` и токен — с сервера, предела у числа страниц нет, как у ПК.
+- Коллекция и список читаются страница за страницей, пока сервер говорит «ещё», но не больше `maxPages` (1000) страниц: дальше — `SpotifyContentException` («a collection of more than 1000 pages», «a list of more than 1000 pages») и `Content`. Это сверх ПК, где предела нет и сервер, который всегда отвечает токеном или огромным `length`, держит цикл вечно. 1000 страниц — 300 000 сохранённых треков или 1 000 000 записей списка.
 
 ## `SpotifyTracks`
 
@@ -444,7 +455,8 @@ data class ContextUris(val trackUris: List<String>, val next: String)
 Каталог (#113 PR 3b):
 - `support/SpotifyFixtures.kt` — фикстуры `spec/fixtures/spotify`: обёртка protobuf (`base64` отдаётся как есть с её `contentType`, а `fields`, записанные `ProtoWriter`, обязаны дать те же байты), JSON — как есть; статус — из имени случая, `requestedFrom` — из `page-<n>`. `forEachCase(endpoint)` проходит каждый случай папки и сравнивает весь объект с `expected`.
 - `CatalogFixturesTest` — все 11 папок фикстур, каждый случай: protobuf и контексты — разбором напрямую, apresolve — `SpotifySession.resolvedOf`, Pathfinder — через `SpotifyLibrary` на mock-сервере (устаревший ответ — каждый хеш по очереди и `QueryOutdated`, нечитаемый — `Content`). Папка без теста роняет `every endpoint … has a test here`. Сравнивается весь объект: модель ядра хранит все поля спеки, а `Track` — id, имя, длительность, доступность и обложку 400 px.
-- `SpotifyLibraryTest` — выборы на `MockWebServer` через `SpotifyWeb` и фальшивую AP: SPOT-07…12, 15, 20, Pathfinder (следующий хеш, все устарели, сеть, 500 и отказ токена — без следующего), пачки по 100 и повторы, `label` без имени, нечитаемые ответы. Метаданные отвечает фальшивый сервер: сущности фикстур `extended-metadata` по URI, остальные треки — синтетические (имя — base62 id, Ogg 320), в обратном порядке.
+- `SpotifyLibraryTest` — выборы на `MockWebServer` через `SpotifyWeb` и фальшивую AP: SPOT-07…12, 15, 20, Pathfinder (следующий хеш, все устарели, сеть, 500 и отказ токена — без следующего), пачки по 100 и повторы, `label` без имени, нечитаемые ответы; тело трека, альбома или сохранённого альбома, которое не разбирается, выпадает без ошибки и без `Content` (фикстуры такого нет, «Two kinds of unreadable» спеки); предел страниц. Метаданные отвечает фальшивый сервер: сущности фикстур `extended-metadata` по URI, остальные треки — синтетические (имя — base62 id, Ogg 320), в обратном порядке.
+- `protocol/MetadataTest` — первый из равных файлов, предел глубины замен (на 4 читается, на 5 — нет, 100 000 вложенных — без `StackOverflowError`); `protocol/CatalogMessagesTest` — граница `hasMoreAfter` и счёт без переполнения.
 - `SpotifyTracksTest` — обложка SPOT-19 и `Track` трека Spotify; `SpotifyWebTest` — неудача выдачи токена не уходит другому аккаунту, а местная `NotLoggedInException` — никому; `SpotifyErrorKindsTest` (корень) — виды ошибок.
 
 Живой тест `SpotifyLiveTest` выполняется, только когда задана `QIYAA_SPOTIFY_CREDENTIALS`: JSON сохранённого входа ПК (`{"username": …, "type": 1, "data": "<base64>"}`) или путь к файлу с ним; иначе он пропускается (`Assume`). Он входит в настоящую AP с device id из 40 `d`, как живой тест ПК, проверяет, что `Online` — тот же аккаунт (имя не печатается ни в сообщениях проверок, ни в отчёте; ошибка разбора `QIYAA_SPOTIFY_CREDENTIALS` называет только класс исключения), берёт `TRACK_V4` трека (`QIYAA_SPOTIFY_TRACK`, по умолчанию `6PCoZdjSPbRMehHviTrpB3`) через spclient (а с ним client-token и login5), выбирает Ogg Vorbis и получает ключ файла. В CI не выполняется; запуск с настоящим аккаунтом — только с разрешения владельца (вопрос плана), и работает ли вход ПК при другом device id, не проверено. Часть с файлом — первые килобайты с CDN, расшифровка и `OggS` после 167 байт — добавит PR 4 вместе с `SpotifyFiles` и `SpotifyStream`.
@@ -623,6 +635,7 @@ AES-128-CTR с постоянным IV Spotify с любого байта фай
 ```kotlin
 object Metadata {
     const val WORLDWIDE = "ZZ"
+    const val MAX_ALTERNATIVE_DEPTH = 4                                  // замены глубже не читаются
     fun request(uris: List<String>, kind: ExtensionKind): ByteArray        // TRACK_V4 10, ALBUM_V4 9, ARTIST_V4 8
     fun parseReply(body: ByteArray): List<MetadataEntity>?               // в порядке сервера; null — конверт не читается
     fun parseTrack(payload: Bytes): SpotifyTrack?
@@ -655,8 +668,9 @@ object CatalogMessages {
 - Id не той длины остаётся нулевым (у gid — 16 нулей, base62 `0000000000000000000000`); файл и обложка без id в 20 байт выпадают. Упавший читатель альбома, исполнителя или даты внутри трека — берётся прочитанное; упавший файл, обложка или замена — выпадает; упавший трек — `null`; упавший диск или запись топа — весь альбом или исполнитель `null`.
 - Обложка: `pixels` — ширина (поле 3, zigzag), если она больше 0, иначе по классу размера (поле 2): 1 — 64, 2 — 640, 3 — 1280, другое — 300.
 - `pickOggVorbis`: ближайший битрейт Ogg Vorbis, первый среди равных; без своих — замены по порядку, каждая так же и в глубину. MP3, AAC, FLAC не берутся никогда (SPOT-13).
+- **Глубина замен — не больше `MAX_ALTERNATIVE_DEPTH` (4), сверх ПК.** Замена глубже четвёртого уровня не разбирается, и `pickOggVorbis` глубже не смотрит: трек, чей единственный Ogg Vorbis лежит глубже, — без файла (`available = false`). У ПК разбор и выбор рекурсивны без предела, и ответ в сотни КБ с тысячами вложенных замен дал бы `StackOverflowError` — это не `IOException`, его не ловит никто, и приложение падает. В фикстурах спеки и тестах ПК замена — один уровень (на настоящем Spotify не проверено).
 - Zigzag: длительность, ширина, год, статус элемента списка.
-- Страница списка: если мета-элементов столько же, сколько элементов, элемент берёт имя своего мета-элемента и выпадает при статусе не 0 и не 200; иначе остаются все, без имён. Есть ли следующая — `hasMoreAfter(from, 1000)`: `from + 1000 < length` по смещению, которое спросили; `from` и `truncated` ответа читаются, но не решают.
+- Страница списка: если мета-элементов столько же, сколько элементов, элемент берёт имя своего мета-элемента и выпадает при статусе не 0 и не 200; иначе остаются все, без имён. Есть ли следующая — `hasMoreAfter(from, 1000)`: `from + 1000 < length` по смещению, которое спросили; `from` и `truncated` ответа читаются, но не решают. Сумма считается в `Long`, сверх ПК: в `Int` при `from` около 2^31 она стала бы отрицательной, и «ещё» не кончилось бы.
 - Коллекция: удалённые элементы, элементы без URI и упавшие выпадают; `last` — пустой токен или страница без элементов.
 - `storage-resolve`: `usable` — только CDN с хотя бы одной ссылкой; файлом займётся PR 4.
 

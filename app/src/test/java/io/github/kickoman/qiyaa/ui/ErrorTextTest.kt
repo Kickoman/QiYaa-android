@@ -19,6 +19,8 @@ class ErrorTextTest {
                 ErrorKind.TrackUnplayable,
                 ErrorKind.SpotifyLoggedOut,
                 ErrorKind.SpotifyKeyRefused,
+                ErrorKind.SpotifyLoginRefused,
+                ErrorKind.SpotifyTokenRefused,
                 ErrorKind.Unknown,
             )
         assertEquals(kinds.size, kinds.map { it.text().id }.toSet().size)
