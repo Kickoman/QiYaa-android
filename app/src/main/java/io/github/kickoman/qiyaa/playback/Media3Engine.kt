@@ -184,12 +184,12 @@ class Media3Engine(
         val count = player.mediaItemCount
         if (index !in 0 until count || index == player.currentMediaItemIndex) return
         val item = player.getMediaItemAt(index)
-        val trackId = item.localConfiguration?.uri?.let(MediaItems::trackIdOf) ?: return
+        val revised = MediaItems.revised(item, revision + 1) ?: return
         order = HeadShuffleOrder.fitted(order, count)
         player.setShuffleOrder(HeadShuffleOrder.replacing(order, count, index, random))
         revision++
-        Log.d(LOG_TAG, "Reloading track $trackId at $index as revision $revision")
-        player.replaceMediaItem(index, MediaItems.revised(item, trackId, revision))
+        Log.d(LOG_TAG, "Reloading track ${item.mediaId} at $index as revision $revision")
+        player.replaceMediaItem(index, revised)
     }
 
     override fun clear() {

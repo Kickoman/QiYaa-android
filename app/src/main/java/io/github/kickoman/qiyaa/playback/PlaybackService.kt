@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
+import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -29,6 +30,8 @@ import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.appGraph
 import io.github.kickoman.qiyaa.audio.AudioBus
 import io.github.kickoman.qiyaa.queue.QueueController
+import io.github.kickoman.qiyaa.spotify.SpotifyFiles
+import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.track.TrackSource
 import io.github.kickoman.qiyaa.yandex.Library
 import kotlinx.coroutines.CoroutineStart
@@ -86,9 +89,11 @@ class PlaybackService : MediaSessionService() {
                 this,
                 graph.httpClient,
                 links,
+                graph.spotifyFiles,
                 bitrate,
                 graph.playbackCache,
                 graph.readInterrupts,
+                log = { message -> Log.i(LOG_TAG, "Spotify: $message") },
             )
         val audioAttributes =
             AudioAttributes.Builder().setUsage(
@@ -97,7 +102,11 @@ class PlaybackService : MediaSessionService() {
         val player =
             ExoPlayer.Builder(this, renderers)
                 .setMediaSourceFactory(
-                    LocalMediaSources(DefaultMediaSourceFactory(this).setDataSourceFactory(dataSource)),
+                    LocalMediaSources(
+                        DefaultMediaSourceFactory(this)
+                            .setDataSourceFactory(dataSource)
+                            .setLoadErrorHandlingPolicy(LoadRetries()),
+                    ),
                 )
                 .setLoadControl(PlayerBuffer.loadControl())
                 .setAudioAttributes(audioAttributes, true)
@@ -112,7 +121,9 @@ class PlaybackService : MediaSessionService() {
                 .also { it.attach() }
         graph.jamHost.onServiceStarted()
         serviceScope.launch(start = CoroutineStart.UNDISPATCHED) {
-            graph.qualityInEffect.drop(1).collect { graph.queue.onFilesChanged(links::askedInOtherQuality) }
+            graph.qualityInEffect.drop(1).collect {
+                graph.queue.onFilesChanged { track -> askedInOtherQuality(track, links, graph.spotifyFiles) }
+            }
         }
 
         val builder =
@@ -169,6 +180,13 @@ class PlaybackService : MediaSessionService() {
         val playing = player != null && player.playWhenReady && player.mediaItemCount > 0
         if (!playing) pauseAllPlayersAndStopSelf()
     }
+
+    private fun askedInOtherQuality(track: Track, links: TrackUrlCache, spotify: SpotifyFiles): Boolean =
+        when (track.source) {
+            TrackSource.YANDEX -> links.askedInOtherQuality(track.id)
+            TrackSource.SPOTIFY -> spotify.askedInOtherQuality(track.id)
+            TrackSource.LOCAL -> false
+        }
 
     private fun localBitrate(bitrate: CurrentBitrate, item: MediaItem) {
         val track = MediaItems.toTrack(item)

@@ -60,6 +60,26 @@ class MediaItemsTest {
         assertEquals(sameId.size, sameId.map(MediaItems::mediaIdOf).toSet().size)
     }
 
+    @Test
+    fun `QUAL-05 a Spotify track's revision is a query after its id, and the id reads back without it`() {
+        assertEquals("spotify:track:$SPOTIFY_ID", MediaItems.spotifyUriText(SPOTIFY_ID))
+        assertEquals("spotify:track:$SPOTIFY_ID?r=3", MediaItems.spotifyUriText(SPOTIFY_ID, revision = 3))
+        assertEquals(SPOTIFY_ID, MediaItems.spotifyTrackIdOf("track:$SPOTIFY_ID"))
+        assertEquals(SPOTIFY_ID, MediaItems.spotifyTrackIdOf("track:$SPOTIFY_ID?r=3"))
+        for (other in listOf("album:$SPOTIFY_ID", "track:", "track:?r=1", "//track/$SPOTIFY_ID", "")) {
+            assertEquals(other, null, MediaItems.spotifyTrackIdOf(other))
+        }
+        val failed = assertThrows(IllegalArgumentException::class.java) { MediaItems.spotifyUriText("x", -1) }
+        assertEquals("The revision of Spotify track x is -1", failed.message)
+    }
+
+    @Test
+    fun `QUAL-05 a reloaded item's URI goes by the source in its media id, and a local file has none`() {
+        assertEquals("qiyaa://track/42?r=2", MediaItems.revisedUriText("42", 2))
+        assertEquals("spotify:track:$SPOTIFY_ID?r=2", MediaItems.revisedUriText("spotify:$SPOTIFY_ID", 2))
+        assertEquals(null, MediaItems.revisedUriText("local:42", 2))
+    }
+
     private companion object {
         const val SPOTIFY_ID = "6PCoZdjSPbRMehHviTrpB3"
     }

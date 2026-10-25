@@ -61,6 +61,8 @@ class SpotifyWeb(
     private val mutableProblems = MutableSharedFlow<SpotifyProblem>(extraBufferCapacity = PROBLEM_BUFFER)
     val problems: SharedFlow<SpotifyProblem> = mutableProblems.asSharedFlow()
 
+    val userAgent: String get() = identity.userAgent
+
     suspend fun spclient(request: WebRequest): ByteArray {
         val host = session.spclients.firstOrNull() ?: Endpoints.FALLBACK_SPCLIENT
         return send(request, "${endpoints.spclientScheme}://$host")

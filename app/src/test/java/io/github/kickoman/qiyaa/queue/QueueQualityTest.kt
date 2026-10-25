@@ -4,6 +4,8 @@ import io.github.kickoman.qiyaa.support.QueueHarness
 import io.github.kickoman.qiyaa.support.QueueHarness.Companion.track
 import io.github.kickoman.qiyaa.support.QueueHarness.Companion.tracks
 import io.github.kickoman.qiyaa.support.QueueHarness.Companion.wave
+import io.github.kickoman.qiyaa.track.Track
+import io.github.kickoman.qiyaa.track.TrackSource
 import io.github.kickoman.qiyaa.yandex.WaveBatch
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -171,6 +173,44 @@ class QueueQualityTest {
         }
 
     @Test
+    fun `QUAL-05 SPOT-13 a Spotify next track is asked about with its source and reloaded like any other`() =
+        runTest {
+            val h = QueueHarness(this)
+            h.controller.setQueue(
+                listOf(track("a"), spotify("s1"), track("b")),
+                "Mix",
+                isWave = false,
+                autoplay = true,
+                sourceId = null,
+            )
+            h.engine.startPlaying()
+            runCurrent()
+            h.engine.commands.clear()
+            val sources = ArrayList<TrackSource>()
+            h.controller.onFilesChanged {
+                sources += it.source
+                outdated(it)
+            }
+            assertEquals(listOf("s1"), asked)
+            assertEquals(listOf(TrackSource.SPOTIFY), sources)
+            assertEquals(listOf("reload 1"), h.engine.commands)
+            assertEquals(0, h.engine.currentIndex)
+        }
+
+    @Test
+    fun `QUAL-05 a Spotify next track asked in the bitrates in effect is not reloaded`() = runTest {
+        val h = QueueHarness(this)
+        val tracks = listOf(spotify("s1"), spotify("s2"))
+        h.controller.setQueue(tracks, "Mix", isWave = false, autoplay = true, sourceId = null)
+        h.engine.startPlaying()
+        runCurrent()
+        h.engine.commands.clear()
+        h.controller.onFilesChanged(::inEffect)
+        assertEquals(listOf("s2"), asked)
+        assertEquals(emptyList<String>(), h.engine.commands)
+    }
+
+    @Test
     fun `QUAL-05 without an engine, or with an empty or ended queue, nothing happens`() = runTest {
         val detached = QueueHarness(this, attached = false)
         detached.controller.setQueue(tracks("a", "b"), "Likes", isWave = false, autoplay = true, null)
@@ -191,15 +231,17 @@ class QueueQualityTest {
         assertEquals(emptyList<String>(), asked)
     }
 
-    private fun outdated(trackId: String): Boolean {
-        asked += trackId
+    private fun outdated(track: Track): Boolean {
+        asked += track.id
         return true
     }
 
-    private fun inEffect(trackId: String): Boolean {
-        asked += trackId
+    private fun inEffect(track: Track): Boolean {
+        asked += track.id
         return false
     }
+
+    private fun spotify(id: String) = Track(id = id, title = "S$id", source = TrackSource.SPOTIFY)
 
     private fun playing(scope: TestScope, vararg ids: String): QueueHarness {
         val harness = QueueHarness(scope)

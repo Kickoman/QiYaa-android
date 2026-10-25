@@ -31,5 +31,5 @@ class NotLoggedInException : SpotifyException("No saved Spotify login")
 class QueryOutdatedException(val operation: String) :
     SpotifyException("Spotify refused every known hash of the Pathfinder query $operation")
 
-class NoPlayableFileException(val trackId: String) :
-    SpotifyException("Spotify track $trackId has no Ogg Vorbis file to play")
+class NoPlayableFileException(val trackId: String, detail: String = "no Ogg Vorbis file to play") :
+    SpotifyException("Spotify track $trackId has $detail")
