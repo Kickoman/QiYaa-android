@@ -1,10 +1,13 @@
 package io.github.kickoman.qiyaa.ui
 
+import io.github.kickoman.qiyaa.queue.AddPlacement
 import io.github.kickoman.qiyaa.spotify.SpotifyFound
 import io.github.kickoman.qiyaa.spotify.SpotifyFoundAlbum
 import io.github.kickoman.qiyaa.spotify.SpotifyItem
 import io.github.kickoman.qiyaa.spotify.SpotifyTracks
 import io.github.kickoman.qiyaa.track.Track
+import io.github.kickoman.qiyaa.track.TrackKey
+import io.github.kickoman.qiyaa.yandex.ErrorKind
 import io.github.kickoman.qiyaa.yandex.FoundAlbum
 import io.github.kickoman.qiyaa.yandex.SearchResult
 
@@ -85,6 +88,14 @@ data class Found(
             ).shown()
         }
 
+        fun metadataUris(found: SpotifyFound): List<String> {
+            val best = found.best?.uri?.takeIf {
+                found.kind == SpotifyFound.Kind.TRACK &&
+                    it !in found.trackUris
+            }
+            return listOfNotNull(best) + found.trackUris
+        }
+
         private fun albumPick(album: FoundAlbum): FoundPick =
             FoundPick(FoundPick.Kind.ALBUM, album.id, album.title, album.artists, album.year, album.single)
 
@@ -98,3 +109,41 @@ data class Found(
         private const val BEST_ALBUM = "album"
     }
 }
+
+enum class SearchSource { YANDEX, SPOTIFY }
+
+enum class SearchPart(val first: Int) { BEST(1), TRACKS(6), ARTISTS(3), ALBUMS(3) }
+
+sealed interface SearchPhase {
+    data object Idle : SearchPhase
+
+    data object Searching : SearchPhase
+
+    data class Failed(val error: ErrorKind) : SearchPhase
+
+    data object NothingFound : SearchPhase
+
+    data class Results(val found: Found) : SearchPhase
+}
+
+data class SearchOpened(val pick: FoundPick, val tracks: ListState<Track> = ListState.Loading)
+
+sealed interface SearchTarget {
+    data class OfTrack(val track: Track) : SearchTarget
+
+    data class OfAlbum(val album: FoundPick) : SearchTarget
+}
+
+data class SearchUi(
+    val source: SearchSource = SearchSource.YANDEX,
+    val text: String = "",
+    val query: String = "",
+    val phase: SearchPhase = SearchPhase.Idle,
+    val expanded: Set<SearchPart> = emptySet(),
+    val opened: SearchOpened? = null,
+    val added: Map<TrackKey, AddPlacement> = emptyMap(),
+    val adding: SearchTarget? = null,
+)
+
+fun <T> shownPart(part: SearchPart, items: List<T>, expanded: Set<SearchPart>): List<T> =
+    if (part in expanded) items else items.take(part.first)

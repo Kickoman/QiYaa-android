@@ -37,8 +37,6 @@ data class SpotifyFoundAlbum(
     val single: Boolean = false,
 )
 
-data class SpotifyPick(val best: SpotifyItem?, val contextUri: String, val tracks: List<Track>)
-
 data class ContextPage(val tracks: List<Track>, val next: String)
 
 class SpotifyLibrary(
@@ -131,23 +129,6 @@ class SpotifyLibrary(
             }
         val data = pathfinder(SEARCH_OPERATION, SEARCH_HASHES, variables)
         return CatalogJson.found(data) ?: throw pathfinderUnreadable("$SEARCH_OPERATION without searchV2")
-    }
-
-    suspend fun searchPick(text: String): SpotifyPick {
-        val found = search(text)
-        val best = found.best
-        return when {
-            found.kind == SpotifyFound.Kind.ARTIST && best != null ->
-                SpotifyPick(best, best.uri, artistTopTracks(best.uri))
-
-            found.kind == SpotifyFound.Kind.ALBUM && best != null ->
-                SpotifyPick(best, best.uri, albumTracks(best.uri))
-
-            else -> {
-                val contextUri = found.trackUris.firstOrNull().orEmpty()
-                SpotifyPick(best = null, contextUri = contextUri, tracks = tracks(found.trackUris))
-            }
-        }
     }
 
     suspend fun station(trackUri: String): ContextPage = context(

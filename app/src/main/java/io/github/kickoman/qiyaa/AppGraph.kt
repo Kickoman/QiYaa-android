@@ -34,7 +34,6 @@ import io.github.kickoman.qiyaa.queue.LibraryMusicSource
 import io.github.kickoman.qiyaa.queue.QueueActivity
 import io.github.kickoman.qiyaa.queue.QueueController
 import io.github.kickoman.qiyaa.queue.QueueStore
-import io.github.kickoman.qiyaa.queue.SearchPick
 import io.github.kickoman.qiyaa.queue.ShuffleAlgorithm
 import io.github.kickoman.qiyaa.spotify.BrowserLogin
 import io.github.kickoman.qiyaa.spotify.PairLogin
@@ -141,7 +140,6 @@ class AppGraph(val context: Context) {
     val spotifyPairLogin = PairLogin(httpClient)
     val spotifyBrowserLogin = BrowserLogin(httpClient)
     val spotifyContinuations = SpotifyContinuations(spotifyLibrary.asCatalog())
-    val spotifySearch: suspend (String) -> SearchPick = spotifyContinuations::searchPick
 
     val queue =
         QueueController(

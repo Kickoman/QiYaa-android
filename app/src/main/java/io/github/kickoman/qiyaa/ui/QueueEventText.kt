@@ -9,8 +9,6 @@ import io.github.kickoman.qiyaa.queue.QueueEvent.Stage
 fun QueueEvent.render(context: Context): String = when (this) {
     is QueueEvent.SourceLoading -> context.getString(R.string.queue_loading, title)
 
-    is QueueEvent.SearchStarted -> context.getString(R.string.queue_searching, title)
-
     is QueueEvent.SourceLoaded ->
         if (cut) {
             context.resources.getQuantityString(R.plurals.queue_loaded_first, trackCount, title, trackCount)
@@ -29,8 +27,6 @@ fun QueueEvent.render(context: Context): String = when (this) {
         },
         subject,
     )
-
-    QueueEvent.NothingFound -> context.getString(R.string.queue_nothing_found)
 
     QueueEvent.LoadingMore -> context.getString(R.string.playlist_loading_more_toast)
 
@@ -55,6 +51,5 @@ private fun Stage.stringId(): Int = when (this) {
     Stage.WAVE -> R.string.queue_wave_error
     Stage.WAVE_MORE -> R.string.queue_wave_more_error
     Stage.AUTOPLAY -> R.string.queue_autoplay_error
-    Stage.SEARCH -> R.string.queue_search_error
     Stage.PLAYBACK -> R.string.queue_playback_error
 }

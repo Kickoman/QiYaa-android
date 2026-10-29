@@ -29,6 +29,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,6 +60,7 @@ import io.github.kickoman.qiyaa.ui.LibrarySection
 import io.github.kickoman.qiyaa.ui.ListState
 import io.github.kickoman.qiyaa.ui.LocalAccess
 import io.github.kickoman.qiyaa.ui.PlayerViewModel
+import io.github.kickoman.qiyaa.ui.SearchSource
 import io.github.kickoman.qiyaa.ui.SpotifyViewModel
 import io.github.kickoman.qiyaa.ui.components.IconPaths
 import io.github.kickoman.qiyaa.ui.components.IconWideButton
@@ -86,6 +88,7 @@ fun LibraryScreen(
     jam: JamHostState,
     guestOf: String?,
     onJam: () -> Unit,
+    onSearch: (String, SearchSource) -> Unit,
 ) {
     val colors = Qi.colors
     val account by viewModel.account.collectAsStateWithLifecycle()
@@ -156,7 +159,7 @@ fun LibraryScreen(
         }
 
         if (signedIn) {
-            YandexSources(viewModel, player, track, liked)
+            YandexSources(viewModel, player, track, liked) { onSearch(it, SearchSource.YANDEX) }
         } else {
             Column(
                 Modifier
@@ -177,7 +180,7 @@ fun LibraryScreen(
             )
         }
 
-        SpotifySources(spotify, onOpenSection = viewModel::openSection)
+        SpotifySources(spotify, onOpenSection = viewModel::openSection) { onSearch(it, SearchSource.SPOTIFY) }
 
         LocalFiles(viewModel)
 
@@ -298,6 +301,7 @@ private fun YandexSources(
     player: PlayerViewModel,
     track: Track?,
     liked: Set<String>,
+    onSearch: (String) -> Unit,
 ) {
     val colors = Qi.colors
     val context = LocalContext.current
@@ -306,12 +310,7 @@ private fun YandexSources(
     val playlists by viewModel.playlists.state.collectAsStateWithLifecycle()
     val artists by viewModel.artists.state.collectAsStateWithLifecycle()
     val albums by viewModel.albums.state.collectAsStateWithLifecycle()
-    SearchField(
-        libraryUi.searchText,
-        stringResource(R.string.library_search_hint),
-        onChange = viewModel::setSearchText,
-        onSearch = viewModel::submitSearch,
-    )
+    LibrarySearchField(stringResource(R.string.library_search_hint), onSearch)
 
     Row(
         Modifier
@@ -419,6 +418,18 @@ private fun YandexSources(
             },
         ) {
             PathIcon(IconPaths.OPEN_OUTSIDE, 22.dp, colors.muted, strokeWidth = IconPaths.OUTLINE)
+        }
+    }
+}
+
+@Composable
+internal fun LibrarySearchField(hint: String, onSearch: (String) -> Unit) {
+    var text by rememberSaveable { mutableStateOf("") }
+    SearchField(text, hint, onChange = { text = it }) {
+        val query = text.trim()
+        if (query.isNotEmpty()) {
+            text = ""
+            onSearch(query)
         }
     }
 }

@@ -10,7 +10,6 @@ import io.github.kickoman.qiyaa.support.QueueHarness.Companion.tracks
 import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.track.TrackSource
 import io.github.kickoman.qiyaa.yandex.ErrorKind
-import io.github.kickoman.qiyaa.yandex.SearchResult
 import io.github.kickoman.qiyaa.yandex.WaveBatch
 import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
@@ -299,11 +298,10 @@ class QueueJamTest {
         }
 
     @Test
-    fun `HOST-21 HOST-36 sources, a search and queue edits act while the jam lasts`() = runTest {
+    fun `HOST-21 HOST-36 sources, a found track and queue edits act while the jam lasts`() = runTest {
         val h = QueueHarness(this)
         h.source.onStartWave = { WaveBatch("S1", "B1", tracks("w1")) }
         h.source.onMoreWave = { _, _ -> CompletableDeferred<WaveBatch>().await() }
-        h.source.onSearch = { SearchResult(tracks = tracks("s1")) }
         h.startJam()
         h.state(item("i1", "A"), item("i2", "B"))
         h.controller.loadSource("Likes") { tracks("x") }
@@ -312,7 +310,7 @@ class QueueJamTest {
         h.controller.playWave(listOf("user:onyourwave"), "My Wave")
         runCurrent()
         assertEquals(listOf("A", "B", "w1"), h.engine.ids())
-        h.controller.search("x", "x")
+        h.controller.playTracks("x", tracks("s1"), start = 0)
         runCurrent()
         assertEquals(listOf("A", "B", "s1"), h.engine.ids())
         h.controller.removeIndices(setOf(0))
@@ -325,12 +323,11 @@ class QueueJamTest {
                 QueueEvent.SourceLoaded("Likes", 1),
                 QueueEvent.SourceLoading("My Wave"),
                 QueueEvent.WaveStarted("My Wave"),
-                QueueEvent.SearchStarted("x"),
                 QueueEvent.SourceLoaded("x", 1),
             ),
             h.events,
         )
-        assertEquals(listOf("startWave [user:onyourwave]", "search x"), h.source.calls)
+        assertEquals(listOf("startWave [user:onyourwave]"), h.source.calls)
     }
 
     @Test
@@ -1202,7 +1199,7 @@ class QueueJamTest {
     }
 
     @Test
-    fun `HOST-21 D5 a pick in flight at the jam start and a search during the jam become the base`() =
+    fun `HOST-21 D5 a pick in flight at the jam start and found tracks during the jam become the base`() =
         runTest {
             val h = QueueHarness.likes(this, "a", "b", continueWithVibe = false)
             h.engine.startPlaying()
@@ -1215,14 +1212,12 @@ class QueueJamTest {
             runCurrent()
             assertEquals(listOf("a", "X", "m1"), h.engine.ids())
             assertEquals("Mix", h.controller.state.value.title)
-            h.source.onSearch = { SearchResult(tracks = tracks("s1", "s2")) }
-            h.controller.search("кино", "Search: кино")
+            h.controller.playTracks("Search: кино", tracks("s1", "s2"), start = 0)
             runCurrent()
             assertEquals(listOf("a", "X", "s1", "s2"), h.engine.ids())
             assertEquals(
                 listOf(
                     QueueEvent.SourceLoaded("Mix", 1),
-                    QueueEvent.SearchStarted("Search: кино"),
                     QueueEvent.SourceLoaded("Search: кино", 2),
                 ),
                 h.events,

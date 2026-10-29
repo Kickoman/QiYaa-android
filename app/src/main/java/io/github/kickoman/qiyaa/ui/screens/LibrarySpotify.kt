@@ -30,7 +30,11 @@ import io.github.kickoman.qiyaa.ui.theme.Qi
 import io.github.kickoman.qiyaa.ui.theme.mono
 
 @Composable
-internal fun SpotifySources(spotify: SpotifyViewModel, onOpenSection: (LibrarySection) -> Unit) {
+internal fun SpotifySources(
+    spotify: SpotifyViewModel,
+    onOpenSection: (LibrarySection) -> Unit,
+    onSearch: (String) -> Unit,
+) {
     val colors = Qi.colors
     val ui by spotify.ui.collectAsStateWithLifecycle()
     val access = ui.access
@@ -72,55 +76,64 @@ internal fun SpotifySources(spotify: SpotifyViewModel, onOpenSection: (LibrarySe
             QiText(
                 stringResource(R.string.spotify_log_in),
                 action,
-                Modifier.tap(onClick = spotify::openLogin),
+                Modifier.tap { spotify.openLogin() },
                 color = colors.accent,
                 maxLines = 1,
             )
         }
     }
 
+    if (access == SpotifyAccess.LOGGED_IN) {
+        SpotifyPicks(spotify, onOpenSection, onSearch)
+    } else {
+        SpotifyAccessRows(access) { spotify.openLogin() }
+    }
+}
+
+@Composable
+internal fun SpotifyAccessRows(access: SpotifyAccess, onLogin: () -> Unit) {
+    val colors = Qi.colors
     when (access) {
-        SpotifyAccess.LOGGED_IN -> SpotifyPicks(spotify, onOpenSection)
+        SpotifyAccess.LOGGED_IN -> Unit
 
         SpotifyAccess.CONNECTING -> SpotifyNote(stringResource(R.string.spotify_connecting), colors.muted)
 
         SpotifyAccess.LOG_IN -> {
-            LoginRow(stringResource(R.string.spotify_log_in_row), spotify::openLogin)
+            LoginRow(stringResource(R.string.spotify_log_in_row), onLogin)
             SpotifyNote(stringResource(R.string.spotify_premium_note), colors.muted)
         }
 
         SpotifyAccess.EXPIRED -> {
-            LoginRow(stringResource(R.string.spotify_log_in_again), spotify::openLogin)
+            LoginRow(stringResource(R.string.spotify_log_in_again), onLogin)
             SpotifyNote(stringResource(R.string.spotify_expired), colors.error)
         }
 
         SpotifyAccess.PREMIUM_REQUIRED -> {
-            LoginRow(stringResource(R.string.spotify_log_in_row), spotify::openLogin)
+            LoginRow(stringResource(R.string.spotify_log_in_row), onLogin)
             SpotifyNote(stringResource(R.string.spotify_premium_required), colors.error)
             SpotifyNote(stringResource(R.string.spotify_premium_note), colors.muted)
         }
 
         SpotifyAccess.REFUSED -> {
-            LoginRow(stringResource(R.string.spotify_log_in_again), spotify::openLogin)
+            LoginRow(stringResource(R.string.spotify_log_in_again), onLogin)
             SpotifyNote(stringResource(R.string.error_spotify_login_refused), colors.error)
         }
     }
 }
 
 @Composable
-private fun SpotifyPicks(spotify: SpotifyViewModel, onOpenSection: (LibrarySection) -> Unit) {
+private fun SpotifyPicks(
+    spotify: SpotifyViewModel,
+    onOpenSection: (LibrarySection) -> Unit,
+    onSearch: (String) -> Unit,
+) {
     val colors = Qi.colors
     val ui by spotify.ui.collectAsStateWithLifecycle()
     val forYou by spotify.forYou.state.collectAsStateWithLifecycle()
     val playlists by spotify.playlists.state.collectAsStateWithLifecycle()
     val albums by spotify.albums.state.collectAsStateWithLifecycle()
     val artists by spotify.artists.state.collectAsStateWithLifecycle()
-    SearchField(
-        ui.searchText,
-        stringResource(R.string.spotify_search_hint),
-        onChange = spotify::setSearchText,
-        onSearch = spotify::submitSearch,
-    )
+    LibrarySearchField(stringResource(R.string.spotify_search_hint), onSearch)
     Column(
         Modifier
             .padding(start = 16.dp, end = 16.dp, top = 10.dp)

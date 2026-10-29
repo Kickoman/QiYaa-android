@@ -2,10 +2,8 @@ package io.github.kickoman.qiyaa
 
 import io.github.kickoman.qiyaa.queue.Continuation
 import io.github.kickoman.qiyaa.queue.ContinuationKey
-import io.github.kickoman.qiyaa.queue.SearchPick
 import io.github.kickoman.qiyaa.spotify.ContextPage
 import io.github.kickoman.qiyaa.spotify.SpotifyLibrary
-import io.github.kickoman.qiyaa.spotify.SpotifyPick
 import io.github.kickoman.qiyaa.spotify.SpotifyTracks
 import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.track.TrackSource
@@ -16,8 +14,6 @@ interface SpotifyCatalog {
     suspend fun station(trackUri: String): ContextPage
 
     suspend fun nextPage(pageUrl: String): ContextPage
-
-    suspend fun searchPick(text: String): SpotifyPick
 }
 
 class SpotifyContinuations(private val catalog: SpotifyCatalog) {
@@ -38,12 +34,6 @@ class SpotifyContinuations(private val catalog: SpotifyCatalog) {
             STATION -> station(key.value)
             else -> null
         }
-    }
-
-    suspend fun searchPick(text: String): SearchPick {
-        val pick = catalog.searchPick(text)
-        val context = pick.contextUri.takeIf { it.isNotEmpty() }?.let(::autoplay)
-        return SearchPick(pick.tracks, pick.best?.name.orEmpty(), context)
     }
 
     private inner class Pages(
@@ -78,6 +68,4 @@ fun SpotifyLibrary.asCatalog(): SpotifyCatalog = object : SpotifyCatalog {
     override suspend fun station(trackUri: String): ContextPage = this@asCatalog.station(trackUri)
 
     override suspend fun nextPage(pageUrl: String): ContextPage = this@asCatalog.nextPage(pageUrl)
-
-    override suspend fun searchPick(text: String): SpotifyPick = this@asCatalog.searchPick(text)
 }

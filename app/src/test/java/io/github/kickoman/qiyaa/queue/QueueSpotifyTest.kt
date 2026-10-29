@@ -586,74 +586,20 @@ class QueueSpotifyTest {
         }
 
     @Test
-    fun `SPOT-11 a search says it started, then plays the best result under its name with its autoplay`() =
+    fun `SPOT-11 SRC-18 SPOT-20 found tracks play from the chosen one, the autoplay follows them`() =
         runTest {
             val h = QueueHarness(this, continueWithVibe = true)
             val autoplay = FakeContinuation()
             autoplay.replies(listOf(spotify("x1")))
-            val asked = ArrayList<String>()
-            val reply = CompletableDeferred<SearchPick>()
-            h.controller.search("кино", "Search: кино") { text ->
-                asked += text
-                reply.await()
-            }
-            runCurrent()
-            assertEquals(listOf(QueueEvent.SearchStarted("Search: кино")), h.events)
             val found = listOf(spotify("a1"), spotify("u", available = false), spotify("a2"))
-            reply.complete(SearchPick(found, "Кино", autoplay))
+            h.controller.playTracks("Search: кино", found, start = 2, continuation = autoplay)
             runCurrent()
-            assertEquals(listOf("кино"), asked)
-            assertEquals(QueueEvent.SourceLoaded("Кино", 2), h.events.last())
-            assertEquals("Кино", h.controller.state.value.title)
+            assertEquals(QueueEvent.SourceLoaded("Search: кино", 2), h.events.last())
+            assertEquals("Search: кино", h.controller.state.value.title)
             assertNull(h.controller.state.value.activeSourceId)
-            assertEquals("set [a1, a2] play=true", h.engine.commands.last { it.startsWith("set") })
+            assertEquals("set [a1, a2] play=true at 1:0", h.engine.commands.last { it.startsWith("set") })
             assertEquals(listOf("a1", "a2", "x1"), h.engine.ids())
             assertEquals(emptyList<String>(), h.source.calls)
-        }
-
-    @Test
-    fun `SPOT-11 found tracks play under the search's title`() = runTest {
-        val h = QueueHarness(this)
-        h.controller.search("кино", "Search: кино") { SearchPick(listOf(spotify("a1"))) }
-        runCurrent()
-        assertEquals(QueueEvent.SourceLoaded("Search: кино", 1), h.events.last())
-        assertEquals("Search: кино", h.controller.state.value.title)
-    }
-
-    @Test
-    fun `SPOT-11 SRC-12 a search with no available track says Nothing found, and the queue stays`() =
-        runTest {
-            val h = QueueHarness(this)
-            h.controller.loadSource("Liked") { listOf(yandex("a")) }
-            runCurrent()
-            h.events.clear()
-            h.controller.search("кино", "Search: кино") {
-                SearchPick(listOf(spotify("u", available = false)), "Кино", FakeContinuation())
-            }
-            runCurrent()
-            assertEquals(listOf(QueueEvent.SearchStarted("Search: кино"), QueueEvent.NothingFound), h.events)
-            assertEquals(listOf("a"), h.engine.ids())
-        }
-
-    @Test
-    fun `SPOT-11 SRC-01 a failed search shows the classifier's search error, an older one says nothing`() =
-        runTest {
-            val h = QueueHarness(this, errorKindOf = { ErrorKind.Malformed })
-            val older = CompletableDeferred<SearchPick>()
-            h.controller.search("old", "Search: old") { older.await() }
-            h.controller.search("кино", "Search: кино") { throw IOException("unreadable") }
-            runCurrent()
-            older.completeExceptionally(IOException("late"))
-            runCurrent()
-            assertEquals(
-                listOf(
-                    QueueEvent.SearchStarted("Search: old"),
-                    QueueEvent.SearchStarted("Search: кино"),
-                    QueueEvent.Failed(Stage.SEARCH, ErrorKind.Malformed),
-                ),
-                h.events,
-            )
-            assertEquals(listOf("SEARCH unreadable"), h.logged)
         }
 
     @Test
