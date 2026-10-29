@@ -2250,6 +2250,22 @@ class QueueJamTest {
             assertEquals(listOf("a", "X", "n"), h.engine.ids())
         }
 
+    @Test
+    fun `HOST-36 ADD-02 after the playing item is removed, the base row it lands on counts as played`() =
+        runTest {
+            val h = QueueHarness.likes(this, "a", "b", "c", continueWithVibe = false)
+            h.engine.startPlaying()
+            h.startJam()
+            h.state(item("i1", "X"))
+            assertEquals(listOf("X"), h.playOn(1))
+            h.controller.removeIndices(setOf(h.engine.currentIndex))
+            assertEquals("b", h.currentId())
+            h.engine.play()
+            h.engine.startPlaying()
+            h.state(item("i2", "Z"))
+            assertEquals(listOf("Z", "c"), h.playOn(2))
+        }
+
     private fun found() = tracks("k0", "k1", "k2", "k3")
 
     private fun localTrack(id: String) = Track(id = id, title = "Свой $id", source = TrackSource.LOCAL)

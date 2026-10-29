@@ -432,10 +432,7 @@ class QueueController(
             stoppedAtEnd = false
             stopWaiting()
             noteCursor(current.currentIndex)
-            if (!movingCursor) {
-                settleStart(current.currentIndex)
-                noteBase(current.currentIndex)
-            }
+            if (!movingCursor) settleCursor(current.currentIndex)
             gatherWaiting(current)
             dropStaleTail()
             drawOnHeadTrack(current)
@@ -500,8 +497,7 @@ class QueueController(
     private fun releaseHeld(current: PlayerEngine) {
         if (!holding || movingCursor) return
         holding = false
-        settleStart(current.currentIndex)
-        noteBase(current.currentIndex)
+        settleCursor(current.currentIndex)
         markStarted(current.currentIndex)?.let { itemId -> jam?.listener?.onItemStarted(itemId) }
         save()
     }
@@ -583,6 +579,11 @@ class QueueController(
         val row = headStart?.let { headOf(entries).getOrNull(it) } ?: return null
         if (row == index || (entries.getOrNull(index)?.part == EntryPart.HEAD && !holding)) return null
         return row
+    }
+
+    private fun settleCursor(index: Int) {
+        settleStart(index)
+        if (!holding) noteBase(index)
     }
 
     private fun settleStart(index: Int) {
@@ -1130,7 +1131,7 @@ class QueueController(
                     RestorePoint(cursorAt, point?.positionMs ?: 0, point?.playWhenReady ?: false)
                 }
         }
-        settleStart(cursorIndex(current))
+        settleCursor(cursorIndex(current))
         applyModes()
         publishLoadingMore()
         save()
@@ -1250,7 +1251,7 @@ class QueueController(
         }
         movingCursor = false
         holding = stops && currentEntry()?.isWaiting == true
-        settleStart(current.currentIndex)
+        settleCursor(current.currentIndex)
         if (stops || current.itemCount == 0) return
         markStarted(current.currentIndex)
         if (playing) playTracker.onPlayingChanged(true)?.let(::onStarted)
@@ -1741,7 +1742,7 @@ class QueueController(
         if (ahead && edit.insert.isNotEmpty() && current != null) holdFirstItem(current, edit.insertAt)
         val dropsHeld = holding && currentItemId != null && wanted.none { it.itemId == currentItemId }
         if (!dropsHeld) {
-            settleStart(cursorIndex(current))
+            settleCursor(cursorIndex(current))
             return
         }
         if (current != null) {
@@ -1751,7 +1752,7 @@ class QueueController(
         removeEntry(null, index)
         restorePoint = restorePoint?.copy(positionMs = 0)
         holding = mutableState.value.entries.getOrNull(index)?.isWaiting == true
-        settleStart(index)
+        settleCursor(index)
     }
 
     private fun holdFirstItem(current: PlayerEngine, index: Int) {

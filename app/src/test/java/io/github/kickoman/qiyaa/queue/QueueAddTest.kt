@@ -439,6 +439,18 @@ class QueueAddTest {
         }
 
     @Test
+    fun `ADD-02 D8 a head track that plays on after a removed Play next track counts as played`() = runTest {
+        val h = playing(this, "h1", "h2", "h3", "h4")
+        assertEquals(listOf("h2"), h.playOn(1))
+        h.controller.add(tracks("x"), "Search", AddPlacement.NEXT)
+        assertEquals(listOf("x"), h.playOn(1))
+        h.controller.removeIndices(setOf(h.engine.currentIndex))
+        assertEquals("h3", h.currentId())
+        h.controller.add(tracks("y"), "Search", AddPlacement.NEXT)
+        assertEquals(listOf("y", "h4"), h.playOn(2))
+    }
+
+    @Test
     fun `ADD-07 D8 removing the current track with a head track behind it still plays on`() = runTest {
         val h = playing(this, "a", "b", "c")
         h.controller.add(tracks("y"), "Search", AddPlacement.END)
