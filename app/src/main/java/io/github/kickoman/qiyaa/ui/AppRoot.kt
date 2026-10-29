@@ -84,6 +84,7 @@ fun AppRoot(
     LaunchedEffect(Unit) { jam.notices.collect(app::say) }
     LaunchedEffect(Unit) { guest.notices.collect(app::say) }
     LaunchedEffect(Unit) { spotify.notices.collect(app::say) }
+    LaunchedEffect(Unit) { search.notices.collect(app::say) }
     LaunchedEffect(Unit) { spotify.moves.collect(app::go) }
     QiYaaTheme(theme) {
         val colors = Qi.colors
@@ -134,7 +135,9 @@ fun AppRoot(
                         Screen.PLAYLIST -> PlaylistScreen(
                             player,
                             jam,
-                            onAdd = { app.go(if (jamOn) Screen.JAM else Screen.LIBRARY) },
+                            onAdd = {
+                                if (jamOn) app.openSearch(Screen.PLAYLIST) else app.go(Screen.LIBRARY)
+                            },
                         )
 
                         Screen.EQ -> EqScreen(player)
@@ -166,6 +169,7 @@ fun AppRoot(
                             onSettings = { app.go(Screen.JAM_SETTINGS) },
                             onJoinLink = openLink,
                             onSignIn = { app.openLogin(returnTo = Screen.JAM) },
+                            onAddTracks = { app.openSearch(Screen.JAM) },
                         )
 
                         Screen.JAM_SETTINGS -> JamSettingsScreen(jam, onDone = { app.go(Screen.JAM) })
@@ -217,7 +221,7 @@ fun AppRoot(
             if (screen == Screen.SEARCH) {
                 searchUi.adding?.let { target ->
                     BackHandler(onBack = search::closeAdd)
-                    SearchAddSheet(target, onAdd = search::add, onClose = search::closeAdd)
+                    SearchAddSheet(target, searchUi.jam, onAdd = search::add, onClose = search::closeAdd)
                 }
             }
 

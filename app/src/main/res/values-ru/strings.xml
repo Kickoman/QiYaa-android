@@ -180,14 +180,11 @@
     <string name="jam_copied">Ссылка скопирована</string>
     <string name="jam_share_text">Заходи в мой джем: %1$s</string>
     <string name="jam_add_tracks">Добавить треки</string>
-    <string name="jam_search_hint">Поиск треков для джема</string>
-    <string name="jam_add">В джем</string>
-    <string name="jam_next">Следом</string>
+    <string name="jam_add_tracks_open">Добавить треки…</string>
     <string name="jam_added">Отправлено в джем</string>
     <string name="jam_added_next">Отправлено в джем, сыграет следующим</string>
     <string name="jam_nothing_found">Ничего не нашлось</string>
     <string name="jam_searching">Ищу…</string>
-    <string name="jam_search_failed">Поиск не удался: %1$s</string>
     <string name="jam_guests">Гости · %1$d</string>
     <string name="jam_kind_host">хозяин</string>
     <string name="jam_kind_web">браузер</string>
@@ -435,4 +432,9 @@
     <string name="search_plays_next">сыграет следом</string>
     <string name="search_at_end">в конце очереди</string>
     <string name="search_back">Назад</string>
+    <string name="search_jam_add">В джем</string>
+    <string name="search_jam_next">Следом в джеме</string>
+    <string name="search_in_jam">в джеме · %1$s</string>
+    <string name="search_in_jam_anon">в джеме</string>
+    <string name="search_sending">отправляю…</string>
 </resources>

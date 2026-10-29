@@ -100,6 +100,8 @@ sealed interface JamHostEvent {
     /** The server refused a request of the host; `reason` as in the protocol, unknown ones included. */
     data class Refused(val reason: String) : JamHostEvent
 
+    data class AddRefused(val trackId: String, val reason: String) : JamHostEvent
+
     data class Ended(val why: Why) : JamHostEvent {
         enum class Why { BY_HOST, BY_SERVER, EXPIRED, GONE }
     }
@@ -146,6 +148,7 @@ class JamHost(
     private var lastVersion = -1L
     private var pendingPin: String? = null
     private var pendingPinAdd: String? = null
+    private val addRequests = LinkedHashMap<String, String>()
     private var serverUrl = ""
     private var retry: Job? = null
     private val writes = Channel<JamSession?>(Channel.CONFLATED)
@@ -229,7 +232,10 @@ class JamHost(
     /** HOST-20: the track reaches the queue with the next state, never directly. */
     fun add(track: Track): Boolean {
         val jamTrack = JamTracks.toJam(track) ?: return false
-        return request { Add(it, track = jamTrack) }
+        val id = newId()
+        if (!connected || !client.send(Add(id, track = jamTrack))) return false
+        addRequests[id] = jamTrack.id
+        return true
     }
 
     /** "Play next": `pin` for a track already waiting, otherwise `add`, then `pin` once it is there. */
@@ -241,6 +247,7 @@ class JamHost(
         if (!connected || !client.send(Add(id, track = jamTrack))) return false
         pendingPin = track.id
         pendingPinAdd = id
+        addRequests[id] = jamTrack.id
         return true
     }
 
@@ -418,6 +425,9 @@ class JamHost(
 
     private fun rejected(message: Rejected) {
         val id = message.id
+        id?.let(addRequests::remove)?.let {
+            mutableEvents.tryEmit(JamHostEvent.AddRefused(it, message.reason))
+        }
         when {
             id != null && id == pendingPinAdd -> {
                 pendingPin = null
@@ -455,6 +465,7 @@ class JamHost(
         if (lastVersion >= 0 && message.version <= lastVersion) return
         lastVersion = message.version
         val room = message.room
+        addRequests.values.removeAll { trackId -> room.queue.any { it.track.id == trackId } }
         mutableState.value = mutableState.value.copy(room = room)
         queue.onJamQueue(
             room.queue.map { JamEntry(it.itemId, JamTracks.fromJam(it.track), it.addedBy) },
@@ -534,6 +545,7 @@ class JamHost(
         session = null
         pendingPin = null
         pendingPinAdd = null
+        addRequests.clear()
         requestId = null
         disconnect()
         client.clearOutbox()

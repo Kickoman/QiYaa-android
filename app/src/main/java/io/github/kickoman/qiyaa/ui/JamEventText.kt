@@ -12,6 +12,8 @@ import io.github.kickoman.qiyaa.playback.JamHostEvent
 fun JamHostEvent.render(context: Context): String = when (this) {
     is JamHostEvent.Refused -> context.getString(refusedText(reason))
 
+    is JamHostEvent.AddRefused -> context.getString(refusedText(reason))
+
     is JamHostEvent.Ended -> context.getString(
         when (why) {
             JamHostEvent.Ended.Why.BY_HOST -> R.string.jam_ended_by_host

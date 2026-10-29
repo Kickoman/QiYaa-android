@@ -500,6 +500,30 @@ class JamHostTest {
     }
 
     @Test
+    fun `HOST-38 a refused add names its track before the refusal, an add the state listed does not`() =
+        runTest {
+            val h = Harness(this)
+            h.created()
+            val listed = Track(id = "44", title = "D")
+            val refused = Track(id = "55", title = "E")
+            assertTrue(h.host.add(listed))
+            assertEquals(Add("r2", track = JamTracks.toJam(listed)), h.sent().last())
+            assertTrue(h.host.playNext(refused))
+            assertEquals(Add("r3", track = JamTracks.toJam(refused)), h.sent().last())
+            h.state(1, item("i1", "44", HOST_ID))
+            h.receive(Rejected("r2", "rate-limited"))
+            h.receive(Rejected("r3", "queue-full"))
+            assertEquals(
+                listOf(
+                    JamHostEvent.Refused("rate-limited"),
+                    JamHostEvent.AddRefused("55", "queue-full"),
+                    JamHostEvent.Refused("queue-full"),
+                ),
+                h.events,
+            )
+        }
+
+    @Test
     fun `HOST-20 ROOM-66 a local track is not added or played next, even with a guest's item of its id`() =
         runTest {
             val h = Harness(this)

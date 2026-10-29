@@ -11,6 +11,10 @@ import io.github.kickoman.qiyaa.AppGraph
 import io.github.kickoman.qiyaa.R
 import io.github.kickoman.qiyaa.appGraph
 import io.github.kickoman.qiyaa.errorKindOf
+import io.github.kickoman.qiyaa.playback.JamHostEvent
+import io.github.kickoman.qiyaa.playback.JamHostPhase
+import io.github.kickoman.qiyaa.playback.JamHostState
+import io.github.kickoman.qiyaa.playback.JamTracks
 import io.github.kickoman.qiyaa.queue.AddPlacement
 import io.github.kickoman.qiyaa.queue.Continuation
 import io.github.kickoman.qiyaa.queue.QueueController
@@ -21,9 +25,12 @@ import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -36,6 +43,16 @@ interface SearchGateway {
     suspend fun tracksOf(source: SearchSource, pick: FoundPick): List<Track>
 
     fun autoplay(contextUri: String): Continuation
+
+    val jam: StateFlow<JamHostState>
+
+    val jamEvents: Flow<JamHostEvent>
+
+    fun jamAdd(track: Track): Boolean
+
+    fun jamPlayNext(track: Track): Boolean
+
+    fun jamCanAdd(track: Track): Boolean
 }
 
 class SearchViewModel(
@@ -48,10 +65,48 @@ class SearchViewModel(
     private val mutableUi = MutableStateFlow(SearchUi())
     val ui: StateFlow<SearchUi> = mutableUi.asStateFlow()
 
+    private val mutableNotices = Channel<String>(Channel.BUFFERED)
+    val notices: Flow<String> = mutableNotices.receiveAsFlow()
+
     private var searchJob: Job? = null
     private var openJob: Job? = null
     private var searches = 0
     private var opens = 0
+
+    init {
+        viewModelScope.launch { gateway.jam.collect(::onJam) }
+        viewModelScope.launch {
+            gateway.jamEvents.collect { event ->
+                if (event !is JamHostEvent.AddRefused) return@collect
+                mutableUi.update {
+                    it.copy(
+                        sending = it.sending - event.trackId,
+                        refused =
+                            it.refused + (event.trackId to event.reason),
+                    )
+                }
+            }
+        }
+    }
+
+    private fun onJam(state: JamHostState) {
+        val room = state.room
+        if (state.phase != JamHostPhase.ACTIVE) {
+            mutableUi.update { it.copy(jam = null, sending = emptySet(), refused = emptyMap()) }
+            return
+        }
+        val names = room?.participants.orEmpty().associate { it.publicId to it.name }
+        val waiting = LinkedHashMap<String, String>()
+        for (item in room?.queue.orEmpty()) waiting.putIfAbsent(item.track.id, names[item.addedBy].orEmpty())
+        mutableUi.update {
+            it.copy(
+                jam = SearchJam(state.connected, waiting),
+                sending = if (state.connected) it.sending - waiting.keys else emptySet(),
+            )
+        }
+    }
+
+    fun jamAddable(track: Track): Boolean = gateway.jamCanAdd(track)
 
     fun canSearch(source: SearchSource): Boolean = gateway.canSearch(source)
 
@@ -89,6 +144,8 @@ class SearchViewModel(
                 expanded = emptySet(),
                 added = emptyMap(),
                 adding = null,
+                sending = emptySet(),
+                refused = emptyMap(),
             )
         }
         if (!searching) return
@@ -198,6 +255,11 @@ class SearchViewModel(
         val ui = mutableUi.value
         val target = ui.adding ?: return
         mutableUi.update { it.copy(adding = null) }
+        val jam = ui.jam
+        if (jam != null) {
+            if (target is SearchTarget.OfTrack) addToJam(target.track, placement, jam)
+            return
+        }
         when (target) {
             is SearchTarget.OfTrack -> {
                 queue.add(listOf(target.track), ui.opened?.pick?.name ?: searchTitle(ui), placement)
@@ -206,6 +268,40 @@ class SearchViewModel(
 
             is SearchTarget.OfAlbum -> addAlbum(ui, target.album, placement)
         }
+    }
+
+    private fun addToJam(track: Track, placement: AddPlacement, jam: SearchJam) {
+        val waiting = track.isYandex && track.id in jam.waiting
+        val sent = if (placement == AddPlacement.NEXT) gateway.jamPlayNext(track) else gateway.jamAdd(track)
+        if (!sent) {
+            notice(strings(R.string.jam_no_connection, emptyList()))
+            return
+        }
+        if (!waiting) {
+            mutableUi.update {
+                it.copy(
+                    sending = it.sending + track.id,
+                    refused =
+                        it.refused - track.id,
+                )
+            }
+        }
+        notice(
+            strings(
+                if (placement ==
+                    AddPlacement.NEXT
+                ) {
+                    R.string.jam_added_next
+                } else {
+                    R.string.jam_added
+                },
+                emptyList(),
+            ),
+        )
+    }
+
+    private fun notice(text: String) {
+        mutableNotices.trySend(text)
     }
 
     private fun addAlbum(ui: SearchUi, album: FoundPick, placement: AddPlacement) {
@@ -280,4 +376,14 @@ private class GraphSearch(private val graph: AppGraph) : SearchGateway {
     }
 
     override fun autoplay(contextUri: String): Continuation = graph.spotifyContinuations.autoplay(contextUri)
+
+    override val jam: StateFlow<JamHostState> get() = graph.jamHost.state
+
+    override val jamEvents: Flow<JamHostEvent> get() = graph.jamHost.events
+
+    override fun jamAdd(track: Track): Boolean = graph.jamHost.add(track)
+
+    override fun jamPlayNext(track: Track): Boolean = graph.jamHost.playNext(track)
+
+    override fun jamCanAdd(track: Track): Boolean = JamTracks.toJam(track) != null
 }

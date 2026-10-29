@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
@@ -44,6 +45,7 @@ import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.ui.Found
 import io.github.kickoman.qiyaa.ui.FoundPick
 import io.github.kickoman.qiyaa.ui.ListState
+import io.github.kickoman.qiyaa.ui.SearchJam
 import io.github.kickoman.qiyaa.ui.SearchOpened
 import io.github.kickoman.qiyaa.ui.SearchPart
 import io.github.kickoman.qiyaa.ui.SearchPhase
@@ -53,11 +55,14 @@ import io.github.kickoman.qiyaa.ui.SearchUi
 import io.github.kickoman.qiyaa.ui.SearchViewModel
 import io.github.kickoman.qiyaa.ui.SpotifyAccess
 import io.github.kickoman.qiyaa.ui.components.Chip
+import io.github.kickoman.qiyaa.ui.components.DISABLED_ALPHA
 import io.github.kickoman.qiyaa.ui.components.IconPaths
+import io.github.kickoman.qiyaa.ui.components.LedDot
 import io.github.kickoman.qiyaa.ui.components.PathIcon
 import io.github.kickoman.qiyaa.ui.components.QiText
 import io.github.kickoman.qiyaa.ui.components.tap
 import io.github.kickoman.qiyaa.ui.formatTime
+import io.github.kickoman.qiyaa.ui.refusedText
 import io.github.kickoman.qiyaa.ui.render
 import io.github.kickoman.qiyaa.ui.shownPart
 import io.github.kickoman.qiyaa.ui.theme.ButtonStyle
@@ -113,6 +118,16 @@ fun SearchScreen(
             }
             Chip(stringResource(R.string.library_spotify), ui.source == SearchSource.SPOTIFY) {
                 search.setSource(SearchSource.SPOTIFY)
+            }
+            ui.jam?.let { jam ->
+                Row(
+                    Modifier.height(40.dp).padding(start = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    LedDot(if (jam.connected) colors.accent else colors.error)
+                    QiText(stringResource(R.string.jam_title).uppercase(), LabelStyle, color = colors.muted)
+                }
             }
         }
         SearchField(
@@ -195,16 +210,18 @@ private fun LazyListScope.results(found: Found, ui: SearchUi, search: SearchView
     if (best != null || found.bestArtist != null || found.bestAlbum != null) {
         item(key = "best") {
             PartTitle(stringResource(R.string.search_best), total = 1, part = SearchPart.BEST, ui, search)
-            best?.let { TrackRow(null, it, it.key == current?.key, ui.added[it.key], search) }
-            found.bestArtist?.let { ArtistRow(it, search) }
-            found.bestAlbum?.let { AlbumRow(it, search) }
+            best?.let { TrackRow(null, it, it.key == current?.key, ui, search) }
+            found.bestArtist?.let { ArtistRow(it, ui.jam != null, search) }
+            found.bestAlbum?.let { AlbumRow(it, ui.jam != null, search) }
         }
     }
     part(SearchPart.TRACKS, found.tracks, ui, search) { index, track ->
-        TrackRow(index + 1, track, track.key == current?.key, ui.added[track.key], search)
+        TrackRow(index + 1, track, track.key == current?.key, ui, search)
     }
-    part(SearchPart.ARTISTS, found.artists, ui, search) { _, artist -> ArtistRow(artist, search) }
-    part(SearchPart.ALBUMS, found.albums, ui, search) { _, album -> AlbumRow(album, search) }
+    part(SearchPart.ARTISTS, found.artists, ui, search) { _, artist ->
+        ArtistRow(artist, ui.jam != null, search)
+    }
+    part(SearchPart.ALBUMS, found.albums, ui, search) { _, album -> AlbumRow(album, ui.jam != null, search) }
 }
 
 private fun <T> LazyListScope.part(
@@ -286,7 +303,7 @@ private fun OpenedPick(opened: SearchOpened, search: SearchViewModel, current: T
                 SquareButton(stringResource(R.string.search_play_all), icon = {
                     PathIcon(IconPaths.PLAY, 18.dp, colors.accent)
                 }, onClick = search::playAll)
-                if (pick.kind == FoundPick.Kind.ALBUM) {
+                if (pick.kind == FoundPick.Kind.ALBUM && ui.jam == null) {
                     SquareButton(stringResource(R.string.search_add)) {
                         search.chooseAdd(SearchTarget.OfAlbum(pick))
                     }
@@ -321,7 +338,7 @@ private fun OpenedPick(opened: SearchOpened, search: SearchViewModel, current: T
                         itemsIndexed(tracks.items, key = { index, track ->
                             "$index:${track.id}"
                         }) { index, track ->
-                            TrackRow(index + 1, track, track.key == current?.key, ui.added[track.key], search)
+                            TrackRow(index + 1, track, track.key == current?.key, ui, search)
                         }
                     }
                 }
@@ -330,14 +347,41 @@ private fun OpenedPick(opened: SearchOpened, search: SearchViewModel, current: T
 }
 
 @Composable
-private fun TrackRow(
-    number: Int?,
-    track: Track,
-    current: Boolean,
-    added: AddPlacement?,
-    search: SearchViewModel,
-) {
+private fun TrackRow(number: Int?, track: Track, current: Boolean, ui: SearchUi, search: SearchViewModel) {
     val colors = Qi.colors
+    val jam = ui.jam
+    val jamId = track.id.takeIf { track.isYandex }
+    val refused = jamId?.let(ui.refused::get)
+    val waitingFrom = jamId?.let { jam?.waiting?.get(it) }
+    val (note, noteColor) =
+        when {
+            jam == null -> ui.added[track.key]?.let {
+                stringResource(
+                    if (it ==
+                        AddPlacement.NEXT
+                    ) {
+                        R.string.search_plays_next
+                    } else {
+                        R.string.search_at_end
+                    },
+                )
+            } to colors.accent
+
+            jamId != null && jamId in ui.sending -> stringResource(R.string.search_sending) to colors.dim
+
+            refused != null -> stringResource(refusedText(refused)) to colors.error
+
+            waitingFrom != null -> (
+                if (waitingFrom.isEmpty()) {
+                    stringResource(R.string.search_in_jam_anon)
+                } else {
+                    stringResource(R.string.search_in_jam, waitingFrom)
+                }
+                ) to colors.accent
+
+            else -> null to colors.dim
+        }
+    val addable = jam == null || (jam.connected && search.jamAddable(track) && jamId !in ui.sending)
     Row(
         Modifier.fillMaxWidth().heightIn(min = 56.dp).tap { search.play(track) },
         verticalAlignment = Alignment.CenterVertically,
@@ -362,28 +406,22 @@ private fun TrackRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            added?.let {
-                val note = if (it == AddPlacement.NEXT) R.string.search_plays_next else R.string.search_at_end
-                QiText(
-                    stringResource(note),
-                    mono(11.sp, 400),
-                    Modifier.padding(top = 3.dp),
-                    color = colors.accent,
-                )
-            }
+            note?.let { QiText(it, mono(11.sp, 400), Modifier.padding(top = 3.dp), color = noteColor) }
         }
-        SquareButton(stringResource(R.string.search_add)) { search.chooseAdd(SearchTarget.OfTrack(track)) }
+        SquareButton(stringResource(R.string.search_add), enabled = addable) {
+            search.chooseAdd(SearchTarget.OfTrack(track))
+        }
     }
 }
 
 @Composable
-private fun ArtistRow(artist: FoundPick, search: SearchViewModel) {
-    PickRow(artist, stringResource(R.string.search_artist), search)
+private fun ArtistRow(artist: FoundPick, inJam: Boolean, search: SearchViewModel) {
+    PickRow(artist, stringResource(R.string.search_artist), inJam, search)
 }
 
 @Composable
-private fun AlbumRow(album: FoundPick, search: SearchViewModel) {
-    PickRow(album, albumLine(album), search)
+private fun AlbumRow(album: FoundPick, inJam: Boolean, search: SearchViewModel) {
+    PickRow(album, albumLine(album), inJam, search)
 }
 
 @Composable
@@ -397,7 +435,7 @@ private fun albumLine(album: FoundPick): String {
 }
 
 @Composable
-private fun PickRow(pick: FoundPick, line: String, search: SearchViewModel) {
+private fun PickRow(pick: FoundPick, line: String, inJam: Boolean, search: SearchViewModel) {
     val colors = Qi.colors
     Row(
         Modifier.fillMaxWidth().heightIn(min = 56.dp).tap { search.openPick(pick) },
@@ -424,7 +462,7 @@ private fun PickRow(pick: FoundPick, line: String, search: SearchViewModel) {
         SquareButton(stringResource(R.string.search_play), icon = {
             PathIcon(IconPaths.PLAY, 18.dp, colors.accent)
         }, onClick = { search.playPick(pick) })
-        if (pick.kind == FoundPick.Kind.ALBUM) {
+        if (pick.kind == FoundPick.Kind.ALBUM && !inJam) {
             SquareButton(stringResource(R.string.search_add)) { search.chooseAdd(SearchTarget.OfAlbum(pick)) }
         }
     }
@@ -434,14 +472,16 @@ private fun PickRow(pick: FoundPick, line: String, search: SearchViewModel) {
 private fun SquareButton(
     description: String,
     icon: @Composable () -> Unit = { QiText("+", mono(20.sp, 400), color = Qi.colors.accent) },
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     Box(
         Modifier
             .size(40.dp)
             .clip(RoundedCornerShape(8.dp))
+            .alpha(if (enabled) 1f else DISABLED_ALPHA)
             .background(Qi.colors.surface)
-            .tap(onClick = onClick)
+            .tap(enabled = enabled, onClick = onClick)
             .semantics {
                 contentDescription = description
                 role = Role.Button
@@ -456,7 +496,12 @@ private fun Hint(text: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun SearchAddSheet(target: SearchTarget, onAdd: (AddPlacement) -> Unit, onClose: () -> Unit) {
+fun SearchAddSheet(
+    target: SearchTarget,
+    jam: SearchJam?,
+    onAdd: (AddPlacement) -> Unit,
+    onClose: () -> Unit,
+) {
     val colors = Qi.colors
     val (title, line) =
         when (target) {
@@ -502,8 +547,15 @@ fun SearchAddSheet(target: SearchTarget, onAdd: (AddPlacement) -> Unit, onClose:
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            SheetRow(stringResource(R.string.search_add_next)) { onAdd(AddPlacement.NEXT) }
-            SheetRow(stringResource(R.string.search_add_end)) { onAdd(AddPlacement.END) }
+            if (jam == null) {
+                SheetRow(stringResource(R.string.search_add_next)) { onAdd(AddPlacement.NEXT) }
+                SheetRow(stringResource(R.string.search_add_end)) { onAdd(AddPlacement.END) }
+            } else {
+                val track = (target as? SearchTarget.OfTrack)?.track
+                val waiting = track != null && track.isYandex && track.id in jam.waiting
+                if (!waiting) SheetRow(stringResource(R.string.search_jam_add)) { onAdd(AddPlacement.END) }
+                SheetRow(stringResource(R.string.search_jam_next)) { onAdd(AddPlacement.NEXT) }
+            }
         }
     }
 }
