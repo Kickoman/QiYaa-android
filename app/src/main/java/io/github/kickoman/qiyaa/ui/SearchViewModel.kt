@@ -14,8 +14,6 @@ import io.github.kickoman.qiyaa.errorKindOf
 import io.github.kickoman.qiyaa.queue.AddPlacement
 import io.github.kickoman.qiyaa.queue.Continuation
 import io.github.kickoman.qiyaa.queue.QueueController
-import io.github.kickoman.qiyaa.queue.QueueState
-import io.github.kickoman.qiyaa.spotify.SpotifyFound
 import io.github.kickoman.qiyaa.spotify.SpotifyTracks
 import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.yandex.signedIn
@@ -49,8 +47,6 @@ class SearchViewModel(
 ) : ViewModel() {
     private val mutableUi = MutableStateFlow(SearchUi())
     val ui: StateFlow<SearchUi> = mutableUi.asStateFlow()
-
-    val queueState: StateFlow<QueueState> = queue.state
 
     private var searchJob: Job? = null
     private var openJob: Job? = null
@@ -267,11 +263,7 @@ private class GraphSearch(private val graph: AppGraph) : SearchGateway {
 
         SearchSource.SPOTIFY -> {
             val found = graph.spotifyLibrary.search(text)
-            val lostBest = found.best?.uri?.takeIf {
-                found.kind == SpotifyFound.Kind.TRACK &&
-                    it !in found.trackUris
-            }
-            Found.of(found, graph.spotifyLibrary.tracks(listOfNotNull(lostBest) + found.trackUris))
+            Found.of(found, graph.spotifyLibrary.tracks(Found.metadataUris(found)))
         }
     }
 

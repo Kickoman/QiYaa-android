@@ -190,6 +190,31 @@ class SearchViewModelTest {
         }
 
     @Test
+    fun `SRC-16 an open's reply after Back or after a new search is dropped`() = runTest {
+        val subject = Subject(this)
+        val slow = CompletableDeferred<List<Track>>()
+        gateway.found = { found }
+        gateway.tracks = { slow.await() }
+        subject.model.open("кино", SearchSource.YANDEX)
+        runCurrent()
+        subject.model.openPick(artist)
+        runCurrent()
+        assertTrue(subject.model.back())
+        slow.complete(listOf(track("late")))
+        runCurrent()
+        assertNull(subject.model.ui.value.opened)
+        val slower = CompletableDeferred<List<Track>>()
+        gateway.tracks = { slower.await() }
+        subject.model.openPick(album)
+        runCurrent()
+        subject.model.search()
+        slower.complete(listOf(track("late")))
+        runCurrent()
+        assertNull(subject.model.ui.value.opened)
+        assertEquals(SearchPhase.Results(found), subject.model.ui.value.phase)
+    }
+
+    @Test
     fun `SRC-16 a track of an opened album plays the album from it under its title`() = runTest {
         val subject = Subject(this)
         gateway.found = { found }

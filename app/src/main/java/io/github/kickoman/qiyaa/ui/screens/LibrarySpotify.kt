@@ -76,36 +76,46 @@ internal fun SpotifySources(
             QiText(
                 stringResource(R.string.spotify_log_in),
                 action,
-                Modifier.tap(onClick = spotify::openLogin),
+                Modifier.tap { spotify.openLogin() },
                 color = colors.accent,
                 maxLines = 1,
             )
         }
     }
 
+    if (access == SpotifyAccess.LOGGED_IN) {
+        SpotifyPicks(spotify, onOpenSection, onSearch)
+    } else {
+        SpotifyAccessRows(access) { spotify.openLogin() }
+    }
+}
+
+@Composable
+internal fun SpotifyAccessRows(access: SpotifyAccess, onLogin: () -> Unit) {
+    val colors = Qi.colors
     when (access) {
-        SpotifyAccess.LOGGED_IN -> SpotifyPicks(spotify, onOpenSection, onSearch)
+        SpotifyAccess.LOGGED_IN -> Unit
 
         SpotifyAccess.CONNECTING -> SpotifyNote(stringResource(R.string.spotify_connecting), colors.muted)
 
         SpotifyAccess.LOG_IN -> {
-            LoginRow(stringResource(R.string.spotify_log_in_row), spotify::openLogin)
+            LoginRow(stringResource(R.string.spotify_log_in_row), onLogin)
             SpotifyNote(stringResource(R.string.spotify_premium_note), colors.muted)
         }
 
         SpotifyAccess.EXPIRED -> {
-            LoginRow(stringResource(R.string.spotify_log_in_again), spotify::openLogin)
+            LoginRow(stringResource(R.string.spotify_log_in_again), onLogin)
             SpotifyNote(stringResource(R.string.spotify_expired), colors.error)
         }
 
         SpotifyAccess.PREMIUM_REQUIRED -> {
-            LoginRow(stringResource(R.string.spotify_log_in_row), spotify::openLogin)
+            LoginRow(stringResource(R.string.spotify_log_in_row), onLogin)
             SpotifyNote(stringResource(R.string.spotify_premium_required), colors.error)
             SpotifyNote(stringResource(R.string.spotify_premium_note), colors.muted)
         }
 
         SpotifyAccess.REFUSED -> {
-            LoginRow(stringResource(R.string.spotify_log_in_again), spotify::openLogin)
+            LoginRow(stringResource(R.string.spotify_log_in_again), onLogin)
             SpotifyNote(stringResource(R.string.error_spotify_login_refused), colors.error)
         }
     }

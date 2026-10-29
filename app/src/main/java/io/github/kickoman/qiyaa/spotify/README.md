@@ -87,7 +87,7 @@ fun errorKindOf(failed: Throwable): ErrorKind   // первое звено це�
 | `LoginRefusedException` от AP (кроме `BadCredentials`: например, `PremiumAccountRequired` у ключа) | `SpotifyLoginRefused` |
 | остальное (`AuthorizationException`, исключения `yandex`, сеть Java) | как `ErrorKind.of` |
 
-Его получает конструктор `QueueController` из `AppGraph` (статусы источников, автоплея, радио и поиска); `ui/ListLoader` принимает классификатор параметром (по умолчанию `ErrorKind.of`), его передают списки Spotify в `ui/SpotifyViewModel`; вид отказа воспроизведения (`FailureKind`: `TRACK`, `SESSION`, `NETWORK`) у трека и `ErrorKind` его статуса решает `playback/PlaybackFailures` (`playback/README.md`, «Классификация ошибок»), а какие отказы загрузчик не повторяет — `playback/LoadRetries`. Тексты четырёх видов Spotify — в `ui/ErrorText.kt`, по переводам ПК (`qiyaa_ru.ts`, `qiyaa_be.ts`):
+Его получает конструктор `QueueController` из `AppGraph` (статусы источников, автоплея и радио), его же — `ui/SearchViewModel` для сбоя поиска; `ui/ListLoader` принимает классификатор параметром (по умолчанию `ErrorKind.of`), его передают списки Spotify в `ui/SpotifyViewModel`; вид отказа воспроизведения (`FailureKind`: `TRACK`, `SESSION`, `NETWORK`) у трека и `ErrorKind` его статуса решает `playback/PlaybackFailures` (`playback/README.md`, «Классификация ошибок»), а какие отказы загрузчик не повторяет — `playback/LoadRetries`. Тексты четырёх видов Spotify — в `ui/ErrorText.kt`, по переводам ПК (`qiyaa_ru.ts`, `qiyaa_be.ts`):
 
 | Вид | Строка | Текст ПК |
 |---|---|---|
@@ -781,7 +781,7 @@ object CatalogMessages {
 
 ## Not here
 
-- Продолжение очереди — автоплей и станция как `queue.Continuation`, поиск для очереди — корневой `SpotifyContinuations`; их правила — `queue/README.md`, «Своё продолжение». Заголовки выборов и вызовы `loadSource`, `playContinuation`, `search` — `ui/SpotifyViewModel`, статусы — очередь.
+- Продолжение очереди — автоплей и станция как `queue.Continuation` — корневой `SpotifyContinuations`; их правила — `queue/README.md`, «Своё продолжение». Заголовки выборов и вызовы `loadSource`, `playContinuation` — `ui/SpotifyViewModel`; поиск Spotify и игра найденного — экран поиска (`ui/SearchViewModel`); статусы — очередь.
 - Файл трека в Media3 (маршрут под диском, память игры, `getUri`, битрейт, политика повторов, вид ошибки) — `playback/SpotifyDataSource`, `SchemeRoute`, `LoadRetries`, `PlaybackFailures` (`playback/README.md`).
 - Экран входа, открытие браузера, тексты страницы `BrowserLogin.Pages` — `ui/SpotifyViewModel` и `ui/screens/SpotifyLoginScreen` (`ui/README.md`, «Spotify»); коды TEL-18 — корневой `TelemetryCodes` (`telemetry/README.md`).
 - Ключи хранения входа — `data/README.md` (`SpotifyStore`).

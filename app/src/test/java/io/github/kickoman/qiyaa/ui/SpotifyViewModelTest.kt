@@ -83,6 +83,27 @@ class SpotifyViewModelTest {
         }
 
     @Test
+    fun `SPOT-01 a login opened from the search screen goes back there, leaving or logged in`() = runTest {
+        val subject = Subject(this)
+        val token = CompletableDeferred<String>()
+        spotify.onToken = { token.await() }
+        subject.model.openLogin(Screen.SEARCH)
+        runCurrent()
+        subject.model.leaveLogin()
+        subject.model.openLogin(Screen.SEARCH)
+        runCurrent()
+        token.complete("token-1")
+        runCurrent()
+        assertEquals(
+            listOf(Screen.SPOTIFY_LOGIN, Screen.SEARCH, Screen.SPOTIFY_LOGIN, Screen.SEARCH).map { it.name },
+            subject.moves,
+        )
+        subject.model.openLogin()
+        subject.model.leaveLogin()
+        assertEquals(Screen.LIBRARY.name, subject.moves.last())
+    }
+
+    @Test
     fun `SPOT-02 TEL-18 the browser login opens its page with the app's texts and stops the code login`() =
         runTest {
             val subject = Subject(this)

@@ -17,11 +17,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,6 +59,7 @@ import io.github.kickoman.qiyaa.ui.components.QiText
 import io.github.kickoman.qiyaa.ui.components.tap
 import io.github.kickoman.qiyaa.ui.formatTime
 import io.github.kickoman.qiyaa.ui.render
+import io.github.kickoman.qiyaa.ui.shownPart
 import io.github.kickoman.qiyaa.ui.theme.ButtonStyle
 import io.github.kickoman.qiyaa.ui.theme.CaptionStyle
 import io.github.kickoman.qiyaa.ui.theme.HintStyle
@@ -77,6 +80,8 @@ fun SearchScreen(
 ) {
     val colors = Qi.colors
     val ui by search.ui.collectAsStateWithLifecycle()
+    val results = (ui.phase as? SearchPhase.Results)?.found
+    val resultsScroll = remember(results) { LazyListState() }
     val leave = { if (!search.back()) onLeave() }
     BackHandler(onBack = leave)
     val canSearch =
@@ -120,7 +125,7 @@ fun SearchScreen(
         when {
             !canSearch -> LoginNote(ui.source, spotifyAccess, onYandexLogin, onSpotifyLogin)
             opened != null -> OpenedPick(opened, search, current, ui)
-            else -> SearchBody(ui, search, current)
+            else -> SearchBody(ui, search, current, resultsScroll)
         }
     }
 }
@@ -132,42 +137,28 @@ private fun LoginNote(
     onYandexLogin: () -> Unit,
     onSpotifyLogin: () -> Unit,
 ) {
-    val colors = Qi.colors
-    if (source == SearchSource.SPOTIFY && spotifyAccess == SpotifyAccess.CONNECTING) {
-        Hint(stringResource(R.string.spotify_connecting), Modifier.padding(16.dp))
+    if (source == SearchSource.SPOTIFY) {
+        SpotifyAccessRows(spotifyAccess, onSpotifyLogin)
         return
     }
-    val name =
-        stringResource(
-            if (source ==
-                SearchSource.YANDEX
-            ) {
-                R.string.search_yandex
-            } else {
-                R.string.library_spotify
-            },
-        )
+    val colors = Qi.colors
     Column(Modifier.padding(16.dp)) {
-        QiText(stringResource(R.string.search_log_in, name), HintStyle, color = colors.dim)
+        QiText(
+            stringResource(R.string.search_log_in, stringResource(R.string.search_yandex)),
+            HintStyle,
+            color = colors.dim,
+        )
         QiText(
             stringResource(R.string.search_log_in_action).uppercase(),
             ButtonStyle,
-            Modifier.padding(top = 10.dp).tap(
-                onClick = if (source ==
-                    SearchSource.YANDEX
-                ) {
-                    onYandexLogin
-                } else {
-                    onSpotifyLogin
-                },
-            ),
+            Modifier.padding(top = 10.dp).tap(onClick = onYandexLogin),
             color = colors.accent,
         )
     }
 }
 
 @Composable
-private fun SearchBody(ui: SearchUi, search: SearchViewModel, current: Track?) {
+private fun SearchBody(ui: SearchUi, search: SearchViewModel, current: Track?, scroll: LazyListState) {
     val colors = Qi.colors
     when (val phase = ui.phase) {
         SearchPhase.Idle -> Hint(stringResource(R.string.search_intro), Modifier.padding(16.dp))
@@ -190,7 +181,10 @@ private fun SearchBody(ui: SearchUi, search: SearchViewModel, current: Track?) {
             )
         }
 
-        is SearchPhase.Results -> LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+        is SearchPhase.Results -> LazyColumn(
+            Modifier.fillMaxSize().padding(horizontal = 16.dp),
+            state = scroll,
+        ) {
             results(phase.found, ui, search, current)
         }
     }
@@ -231,7 +225,7 @@ private fun <T> LazyListScope.part(
             }
         PartTitle(stringResource(title, items.size), items.size, part, ui, search)
     }
-    val shown = if (part in ui.expanded) items else items.take(part.first)
+    val shown = shownPart(part, items, ui.expanded)
     itemsIndexed(shown, key = { index, _ -> "${part.name}:$index" }) { index, item -> row(index, item) }
 }
 

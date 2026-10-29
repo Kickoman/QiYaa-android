@@ -88,6 +88,14 @@ data class Found(
             ).shown()
         }
 
+        fun metadataUris(found: SpotifyFound): List<String> {
+            val best = found.best?.uri?.takeIf {
+                found.kind == SpotifyFound.Kind.TRACK &&
+                    it !in found.trackUris
+            }
+            return listOfNotNull(best) + found.trackUris
+        }
+
         private fun albumPick(album: FoundAlbum): FoundPick =
             FoundPick(FoundPick.Kind.ALBUM, album.id, album.title, album.artists, album.year, album.single)
 

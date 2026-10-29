@@ -169,6 +169,7 @@ class SpotifyViewModel(
     private var browserJob: Job? = null
     private var pendingWay: SpotifyLoginWay? = null
     private var heldNotice: Job? = null
+    private var loginReturn = Screen.LIBRARY
 
     init {
         viewModelScope.launch {
@@ -195,8 +196,9 @@ class SpotifyViewModel(
         if (mutableUi.value.access == SpotifyAccess.LOGGED_IN) for (list in lists) list.load()
     }
 
-    fun openLogin() {
+    fun openLogin(returnTo: Screen = Screen.LIBRARY) {
         cancelLogin()
+        loginReturn = returnTo
         mutableLogin.value = SpotifyLoginUi()
         startCodeLogin()
         move(Screen.SPOTIFY_LOGIN)
@@ -204,7 +206,7 @@ class SpotifyViewModel(
 
     fun leaveLogin() {
         cancelLogin()
-        move(Screen.LIBRARY)
+        move(loginReturn)
     }
 
     fun cancelLogin() {
@@ -313,7 +315,7 @@ class SpotifyViewModel(
         notice(string(R.string.spotify_connecting))
         cancelLogin()
         mutableLogin.value = SpotifyLoginUi()
-        move(Screen.LIBRARY)
+        move(loginReturn)
     }
 
     private fun onState(state: SpotifyState, announce: Boolean) {

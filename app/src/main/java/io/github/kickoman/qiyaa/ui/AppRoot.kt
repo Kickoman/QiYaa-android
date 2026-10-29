@@ -184,7 +184,7 @@ fun AppRoot(
                             yandexSignedIn = sessionState.signedIn,
                             spotifyAccess = spotifyUi.access,
                             onYandexLogin = { app.openLogin(returnTo = Screen.SEARCH) },
-                            onSpotifyLogin = spotify::openLogin,
+                            onSpotifyLogin = { spotify.openLogin(Screen.SEARCH) },
                             onLeave = app::leaveSearch,
                         )
                     }
