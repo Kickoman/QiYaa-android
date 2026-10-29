@@ -7,14 +7,12 @@ import io.github.kickoman.qiyaa.support.QueueHarness.Companion.tracks
 import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.yandex.ErrorKind
 import io.github.kickoman.qiyaa.yandex.NetworkException
-import io.github.kickoman.qiyaa.yandex.SearchResult
 import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -46,22 +44,17 @@ class QueueSourcesTest {
     }
 
     @Test
-    fun `SRC-03 a search waiting for its second request is replaced as one source`() = runTest {
+    fun `SRC-03 an artist waiting for its tracks is replaced by a newer source, as one request`() = runTest {
         val harness = QueueHarness(this)
         val artistTracks = CompletableDeferred<List<Track>>()
-        harness.source.onSearch = { SearchResult(bestType = "artist", bestId = "9", bestName = "Кино") }
-        harness.source.onArtistTopTracks = { artistTracks.await() }
-        harness.controller.search("кино", "Search: кино")
+        harness.controller.loadSource("Кино", sourceId = "artist:9") { artistTracks.await() }
         runCurrent()
         harness.controller.loadSource("Liked") { tracks("l1") }
         runCurrent()
         artistTracks.complete(tracks("k1", "k2"))
         runCurrent()
         assertEquals(listOf("l1"), harness.engine.ids())
-        assertEquals(
-            listOf(QueueEvent.SearchStarted("Search: кино"), QueueEvent.SourceLoaded("Liked", 1)),
-            harness.events,
-        )
+        assertEquals(listOf(QueueEvent.SourceLoaded("Liked", 1)), harness.events)
     }
 
     @Test
@@ -126,87 +119,22 @@ class QueueSourcesTest {
     }
 
     @Test
-    fun `SRC-08 SRC-12 a search whose tracks are all unavailable finds nothing`() = runTest {
+    fun `SRC-09 an artist queues its top tracks under the artist's name`() = runTest {
         val harness = QueueHarness(this)
-        harness.controller.loadSource("Old") { tracks("o1") }
+        harness.controller.loadSource("Кино", sourceId = "artist:9") { tracks("k1", "k2") }
         runCurrent()
-        harness.source.onSearch = {
-            SearchResult(tracks = listOf(track("x", available = false)))
-        }
-        harness.controller.search("кино", "Search: кино")
-        runCurrent()
-        assertEquals(listOf("o1"), harness.engine.ids())
-        assertEquals(QueueEvent.NothingFound, harness.events.last())
-    }
-
-    @Test
-    fun `SRC-09 a best artist queues its top tracks under the artist's name`() = runTest {
-        val harness = QueueHarness(this)
-        harness.source.onSearch =
-            { SearchResult(bestType = "artist", bestId = "9", bestName = "Кино", tracks = tracks("s1")) }
-        harness.source.onArtistTopTracks = { tracks("k1", "k2") }
-        harness.controller.search("кино", "Search: кино")
-        runCurrent()
-        assertEquals(listOf("search кино", "artistTopTracks 9"), harness.source.calls)
         assertEquals(listOf("k1", "k2"), harness.engine.ids())
         assertEquals("Кино", harness.controller.state.value.title)
+        assertEquals("artist:9", harness.controller.state.value.activeSourceId)
     }
 
     @Test
-    fun `SRC-10 a best album queues its tracks under the album's title`() = runTest {
+    fun `SRC-10 an album queues its tracks under the album's title`() = runTest {
         val harness = QueueHarness(this)
-        harness.source.onSearch =
-            { SearchResult(bestType = "album", bestId = "4053", bestName = "Звезда") }
-        harness.source.onAlbumTracks = { tracks("z1", "z2") }
-        harness.controller.search("звезда", "Search: звезда")
+        harness.controller.loadSource("Звезда", sourceId = "album:4053") { tracks("z1", "z2") }
         runCurrent()
         assertEquals(listOf("z1", "z2"), harness.engine.ids())
         assertEquals("Звезда", harness.controller.state.value.title)
-    }
-
-    @Test
-    fun `SRC-11 any other best result queues the found tracks under the search title`() = runTest {
-        val harness = QueueHarness(this)
-        for (type in listOf("track", "playlist", "other", "")) {
-            harness.source.onSearch =
-                {
-                    SearchResult(
-                        bestType = type,
-                        bestId = "1",
-                        bestName = "X",
-                        tracks = tracks("s1", "s2"),
-                    )
-                }
-            harness.controller.search("кино", "Search: кино")
-            runCurrent()
-            assertEquals(type, listOf("s1", "s2"), harness.engine.ids())
-            assertEquals(type, "Search: кино", harness.controller.state.value.title)
-        }
-        harness.source.onSearch =
-            { SearchResult(bestType = "artist", bestId = "", tracks = tracks("s3")) }
-        harness.controller.search("кино", "Search: кино")
-        runCurrent()
-        assertEquals(listOf("s3"), harness.engine.ids())
-    }
-
-    @Test
-    fun `SRC-12 an empty result keeps the queue and says nothing was found`() = runTest {
-        val harness = QueueHarness(this)
-        harness.controller.loadSource("Old") { tracks("o1") }
-        runCurrent()
-        harness.source.onSearch =
-            { SearchResult(bestType = "artist", bestId = "9", tracks = tracks("s1")) }
-        harness.source.onArtistTopTracks = { emptyList() }
-        harness.controller.search("кино", "Search: кино")
-        runCurrent()
-        assertEquals(listOf("o1"), harness.engine.ids())
-        assertEquals(QueueEvent.NothingFound, harness.events.last())
-        assertTrue(
-            "no fallback to tracks.results",
-            harness.source.calls.none {
-                it.startsWith("albumTracks")
-            },
-        )
     }
 
     private fun networkFailure() = NetworkException("GET", "/x", IOException("offline"))

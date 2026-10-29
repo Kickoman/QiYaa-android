@@ -10,8 +10,6 @@ interface Continuation {
 
 data class ContinuationKey(val kind: String, val value: String)
 
-data class SearchPick(val tracks: List<Track>, val name: String = "", val continuation: Continuation? = null)
-
 class StartedTracks(tracks: List<Track> = emptyList()) {
     private val oldestFirst = ArrayDeque<Track>()
 

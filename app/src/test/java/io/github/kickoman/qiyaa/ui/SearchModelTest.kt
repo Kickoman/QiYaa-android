@@ -159,6 +159,25 @@ class SearchModelTest {
         assertEquals(listOf(spotify("a")), lost.tracks)
     }
 
+    @Test
+    fun `SPOT-11 the metadata asked is the found tracks, with a best track missing from them first`() {
+        val uris = listOf("spotify:track:a", "spotify:track:b")
+        val lost = SpotifyFound(SpotifyFound.Kind.TRACK, SpotifyItem("spotify:track:x", "X"), uris)
+        assertEquals(listOf("spotify:track:x") + uris, Found.metadataUris(lost))
+        val among = SpotifyFound(SpotifyFound.Kind.TRACK, SpotifyItem("spotify:track:b", "B"), uris)
+        assertEquals(uris, Found.metadataUris(among))
+        val artist = SpotifyFound(SpotifyFound.Kind.ARTIST, SpotifyItem("spotify:artist:z", "Z"), uris)
+        assertEquals(uris, Found.metadataUris(artist))
+    }
+
+    @Test
+    fun `SRC-13 a part shows its first few until it is expanded`() {
+        val items = (1..8).toList()
+        assertEquals(listOf(1, 2, 3, 4, 5, 6), shownPart(SearchPart.TRACKS, items, emptySet()))
+        assertEquals(listOf(1, 2, 3), shownPart(SearchPart.ALBUMS, items, setOf(SearchPart.TRACKS)))
+        assertEquals(items, shownPart(SearchPart.ALBUMS, items, setOf(SearchPart.ALBUMS)))
+    }
+
     private fun yandex(id: String, available: Boolean = true) = Track(id, "Track $id", available = available)
 
     private fun spotify(id: String) = Track(id, "Track $id", source = TrackSource.SPOTIFY)

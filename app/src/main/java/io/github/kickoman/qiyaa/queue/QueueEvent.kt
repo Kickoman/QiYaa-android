@@ -5,8 +5,6 @@ import io.github.kickoman.qiyaa.yandex.ErrorKind
 sealed interface QueueEvent {
     data class SourceLoading(val title: String) : QueueEvent
 
-    data class SearchStarted(val title: String) : QueueEvent
-
     data class SourceLoaded(val title: String, val trackCount: Int, val cut: Boolean = false) : QueueEvent
 
     data class SourceEmpty(val title: String) : QueueEvent
@@ -14,8 +12,6 @@ sealed interface QueueEvent {
     data class WaveStarted(val title: String) : QueueEvent
 
     data class Added(val subject: String, val trackCount: Int, val placement: AddPlacement) : QueueEvent
-
-    data object NothingFound : QueueEvent
 
     data object LoadingMore : QueueEvent
 
@@ -31,5 +27,5 @@ sealed interface QueueEvent {
 
     data class Failed(val stage: Stage, val error: ErrorKind) : QueueEvent
 
-    enum class Stage { SOURCE, WAVE, WAVE_MORE, AUTOPLAY, SEARCH, LIKE, PLAYBACK }
+    enum class Stage { SOURCE, WAVE, WAVE_MORE, AUTOPLAY, LIKE, PLAYBACK }
 }

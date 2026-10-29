@@ -269,31 +269,27 @@ class SpotifyLibraryTest {
         }
 
     @Test
-    fun `SPOT-11 search sends the trimmed text and picks the best artist, album or the found tracks`() =
-        runBlocking {
-            val (stack, library) = online(country = "PL")
-            var case = "best-artist"
-            stack.route("POST", SpotifyWeb.PATHFINDER_PATH) {
-                SpotifyFixtures.fixture("pathfinder-searchDesktop", case).response()
-            }
-            val artist = library.searchPick("  band \n")
-            assertEquals(SpotifyItem(BAND, "Band"), artist.best)
-            assertEquals(BAND, artist.contextUri)
-            assertEquals(listOf("Restricted elsewhere"), artist.tracks.map(Track::title))
-            val query = queryOf(stack.requests(SpotifyWeb.PATHFINDER_PATH).last())
-            assertEquals("searchDesktop", query.text("operationName"))
-            assertEquals("band", query.getValue("variables").jsonObject.text("searchTerm"))
-            assertEquals(50, query.getValue("variables").jsonObject.getValue("limit").jsonPrimitive.int)
-            case = "best-album"
-            val album = library.searchPick("double")
-            assertEquals(SpotifyItem(DOUBLE, "Double"), album.best)
-            assertEquals(listOf("Gone", "Lossless only", "Middle"), album.tracks.map(Track::title))
-            case = "tracks-only"
-            val found = library.searchPick("found")
-            assertNull(found.best)
-            assertEquals(RELINKED, found.contextUri)
-            assertEquals(listOf("Relinked", "Middle"), found.tracks.map(Track::title))
+    fun `SPOT-11 search sends the trimmed text and reads the best artist, album or track`() = runBlocking {
+        val (stack, library) = online(country = "PL")
+        var case = "best-artist"
+        stack.route("POST", SpotifyWeb.PATHFINDER_PATH) {
+            SpotifyFixtures.fixture("pathfinder-searchDesktop", case).response()
         }
+        val artist = library.search("  band \n")
+        assertEquals(SpotifyFound.Kind.ARTIST, artist.kind)
+        assertEquals(SpotifyItem(BAND, "Band"), artist.best)
+        val query = queryOf(stack.requests(SpotifyWeb.PATHFINDER_PATH).last())
+        assertEquals("searchDesktop", query.text("operationName"))
+        assertEquals("band", query.getValue("variables").jsonObject.text("searchTerm"))
+        assertEquals(50, query.getValue("variables").jsonObject.getValue("limit").jsonPrimitive.int)
+        case = "best-album"
+        assertEquals(SpotifyItem(DOUBLE, "Double"), library.search("double").best)
+        case = "tracks-only"
+        val found = library.search("found")
+        assertEquals(SpotifyFound.Kind.TRACK, found.kind)
+        assertEquals(found.trackUris.first(), found.best?.uri)
+        assertEquals(0, stack.requests(SpotifyLibrary.METADATA_PATH).size)
+    }
 
     @Test
     fun `SPOT-11 artists and albums are read through item when there is one, a year 0 is no year`() =
@@ -342,10 +338,7 @@ class SpotifyLibraryTest {
         stack.route("POST", SpotifyWeb.PATHFINDER_PATH) {
             SpotifyFixtures.fixture("pathfinder-searchDesktop", "nothing-found").response()
         }
-        assertEquals(
-            SpotifyPick(best = null, contextUri = "", tracks = emptyList()),
-            library.searchPick("zzz"),
-        )
+        assertEquals(SpotifyFound(), library.search("zzz"))
         assertEquals(SpotifyFound(), library.search(" \t "))
         assertEquals(1, stack.requests(SpotifyWeb.PATHFINDER_PATH).size)
         assertEquals(0, stack.requests(SpotifyLibrary.METADATA_PATH).size)

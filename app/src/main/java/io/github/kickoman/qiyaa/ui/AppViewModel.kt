@@ -96,7 +96,7 @@ data class LoginUi(
     val jamPageUrl: String? = null,
 )
 
-data class LibraryUi(val wheelMatchesCurrent: Boolean = false, val searchText: String = "")
+data class LibraryUi(val wheelMatchesCurrent: Boolean = false)
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val graph = application.appGraph
@@ -111,6 +111,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val jamGuest = graph.jamGuest
     private var pendingLink: JamLink? = null
     private var loginReturn = Screen.LIBRARY
+    private var searchReturn = Screen.LIBRARY
 
     private val mutableScreen =
         MutableStateFlow(
@@ -428,15 +429,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         is LocalPick.Folder -> "local:folder:${pick.folder.volume}/${pick.folder.path.joinToString("/")}"
     }
 
-    fun setSearchText(text: String) = mutableLibraryUi.update { it.copy(searchText = text) }
-
-    fun submitSearch() {
-        val query = mutableLibraryUi.value.searchText.trim()
-        if (query.isEmpty()) return
-        mutableLibraryUi.update { it.copy(searchText = "") }
-        queue.search(query, string(R.string.queue_search_title, query))
-        go(Screen.PLAYER)
+    fun openSearch(returnTo: Screen = Screen.LIBRARY) {
+        if (mutableScreen.value != Screen.SEARCH) searchReturn = returnTo
+        go(Screen.SEARCH)
     }
+
+    fun leaveSearch() = go(searchReturn)
 
     fun playMyWave() {
         queue.playWave(listOf(QueueController.MY_WAVE_SEED), string(R.string.library_my_wave))

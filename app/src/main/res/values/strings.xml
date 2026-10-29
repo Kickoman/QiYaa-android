@@ -144,7 +144,6 @@
     <string name="library_error">ERROR: %1$s</string>
     <!-- Queue events (playback module emits them typed; the UI renders them here) -->
     <string name="queue_search_title">Search: %1$s</string>
-    <string name="queue_searching">%1$s…</string>
     <string name="queue_loading">%1$s: loading…</string>
     <plurals name="queue_loaded">
         <item quantity="one">%1$s: %2$d track</item>
@@ -158,7 +157,6 @@
     <string name="queue_wave_started">%1$s: vibe started</string>
     <string name="queue_added_next">Plays next: %1$s</string>
     <string name="queue_added_to_end">Added to the end: %1$s</string>
-    <string name="queue_nothing_found">Nothing found</string>
     <string name="queue_liked">Added to Liked</string>
     <string name="queue_unliked">Removed from Liked</string>
     <string name="queue_disliked">Disliked · skipping</string>
@@ -166,7 +164,6 @@
     <string name="queue_wave_error">Vibe error: %1$s</string>
     <string name="queue_wave_more_error">Vibe: %1$s</string>
     <string name="queue_autoplay_error">Spotify autoplay error: %1$s</string>
-    <string name="queue_search_error">Search error: %1$s</string>
     <string name="queue_playback_error">Playback error: %1$s</string>
     <string name="player_service_unavailable">Player service unavailable</string>
     <string name="error_generic">Error: %1$s</string>
@@ -423,4 +420,32 @@
     <string name="queue_autoplay_on">Spotify autoplay will follow this queue</string>
     <string name="player_shuffle_radio">Shuffle does not apply to a radio · Spotify sets the order</string>
     <string name="player_repeat_radio">Repeat does not apply to a radio · the radio keeps going</string>
+    <string name="search_title">Search</string>
+    <string name="search_yandex">Yandex Music</string>
+    <string name="search_hint">Artist, album or track</string>
+    <string name="search_intro">Find a track, an album or an artist. Tap it to play, + to play it next or at the end of the queue.</string>
+    <string name="search_log_in">Log in to %1$s to search it.</string>
+    <string name="search_log_in_action">Log in…</string>
+    <string name="search_searching">Searching…</string>
+    <string name="search_failed">The search failed: %1$s</string>
+    <string name="search_retry">Try again</string>
+    <string name="search_nothing">Nothing found</string>
+    <string name="search_no_tracks">No tracks</string>
+    <string name="search_best">Best</string>
+    <string name="search_tracks">Tracks · %1$d</string>
+    <string name="search_artists">Artists · %1$d</string>
+    <string name="search_albums">Albums · %1$d</string>
+    <string name="search_all">All</string>
+    <string name="search_fewer">Fewer</string>
+    <string name="search_artist">artist</string>
+    <string name="search_single">single</string>
+    <string name="search_popular">popular tracks</string>
+    <string name="search_play_all">Play all</string>
+    <string name="search_play">Play</string>
+    <string name="search_add">Add</string>
+    <string name="search_add_next">Play next</string>
+    <string name="search_add_end">Add to the end</string>
+    <string name="search_plays_next">plays next</string>
+    <string name="search_at_end">at the end of the queue</string>
+    <string name="search_back">Back</string>
 </resources>

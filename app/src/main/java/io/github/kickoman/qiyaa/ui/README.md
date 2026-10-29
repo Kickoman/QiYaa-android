@@ -27,7 +27,8 @@ ui/
 | `QueueNotices.kt` | `QueueState.fromSpotify`, `continueNotice`, `lockedShuffleNotice`, `lockedRepeatNotice` — тосты «продолжать волной», shuffle и повтора: у очереди Spotify свои (`QueueNoticesTest`) |
 | `LinkRouting.kt` | `HostSide`, `GuestSide`, `LinkRefusal`, `LinkAction`, `route(…)`, `GuestPhase.isSession` — решение, что делать со ссылкой на джем (GUEST-01, GUEST-20, GUEST-21) |
 | `LocalAccess.kt` | `LocalAccess` (`GRANTED`, `ASK`, `ASK_AGAIN`, `SETTINGS`), `LocalAccessRule` — что предлагает раздел «Свои файлы» до и после ответа на запрос разрешения (LOCAL-10, чистые функции, `LocalAccessTest`) |
-| `SearchModel.kt` | `FoundPick`, `Found` (`of(yandex.SearchResult)`, `of(SpotifyFound, треки)`, `shown()`, `playable()`, `isEmpty`) — что показывает поиск (ниже, «Поиск»; `SearchModelTest`) |
+| `SearchModel.kt` | `FoundPick`, `Found` (`of(yandex.SearchResult)`, `of(SpotifyFound, треки)`, `shown()`, `playable()`, `isEmpty`) — что показывает поиск; `SearchSource`, `SearchPart`, `SearchPhase`, `SearchOpened`, `SearchTarget`, `SearchUi`, `shownPart` — состояние экрана поиска (ниже, «Поиск»; `SearchModelTest`) |
+| `SearchViewModel.kt` | `SearchGateway`, `SearchViewModel` — экран поиска: запросы, открытый исполнитель или альбом, игра и добавление (ниже, «Поиск»; `SearchViewModelTest`) |
 | `ListLoader.kt` | `ListState` (`Idle`, `Loading`, `Loaded(items)`, `Failed(error)`), `ListLoader` — загрузка одного списка библиотеки со своей ошибкой и повтором |
 | `PlayerViewModel.kt` | `PlayerUi`, `TrackActions`, `PlayerViewModel`, `AccentTheme.labelId` |
 | `JamViewModel.kt` | `JamUi`, `JamViewModel` — хозяин джема для экранов: `playback/JamHost`, поиск треков для джема, настройки `jam/*` |
@@ -45,13 +46,14 @@ ui/
 | `components/Sections.kt` | `SectionLabel`, `Note`, `Panel`, `Divider`, `SettingRow`, `InsetField` — секции экранов джема (хозяина и гостя), простые значения на входе |
 | `screens/LoginScreen.kt` | `LoginScreen`, `openInBrowser` (адрес только браузеру; его же зовёт вход Spotify) |
 | `screens/SpotifyLoginScreen.kt` | `SpotifyLoginScreen` — вход в Spotify: в браузере, кодом, QR (SPOT-01, SPOT-02) |
+| `screens/SearchScreen.kt` | `SearchScreen`, `SearchAddSheet` — экран поиска и лист «Играть следом / В конец очереди» (ниже, «Поиск») |
 | `screens/SpotifySectionScreen.kt` | `SpotifySectionScreen` — «Для вас», плейлисты, альбомы или исполнители Spotify ленивым списком |
 | `screens/LibrarySpotify.kt` | `SpotifySources` — раздел «Spotify» в Library |
 | `screens/PlayerScreen.kt` | `PlayerScreen`, `marqueeText`, `queueTitle` |
 | `screens/LyricsPanel.kt` | `LyricsPanel` — текст песни на месте обложки, `LyricsPlace`, `currentLine`, `LrclibConsentDialog` — согласие перед LRCLIB |
 | `screens/PlaylistScreen.kt` | `PlaylistScreen`, `TrackActionsSheet` — лист действий с треком строки |
 | `screens/EqScreen.kt` | `EqScreen`, `PresetsSheet` |
-| `screens/LibraryScreen.kt` | `LibraryScreen`; `SourceRow`, `SearchField`, `listMeta` — общие с `LibrarySpotify.kt` |
+| `screens/LibraryScreen.kt` | `LibraryScreen`; `SourceRow`, `SearchField`, `LibrarySearchField` (поле Library: свой текст, Enter открывает экран поиска), `listMeta` — общие с `LibrarySpotify.kt` и `SearchScreen.kt` |
 | `screens/JamScreen.kt` | `JamScreen`, `JamSettingsScreen`, `JamContinueDialog` |
 | `screens/JamGuestScreen.kt` | `JamGuestScreen` (комната гостя по фазам), `JamGuestAddScreen` (добавить треки: поиск · лайки · плейлисты), `JoinJamSection` (вставить ссылку; стоит и на `JamScreen`) |
 | `screens/LibrarySectionScreen.kt` | `LibrarySectionScreen` — «для вас» / станции / плейлисты / исполнители / альбомы чипами |
@@ -63,7 +65,7 @@ ui/
 
 ## View models
 
-`AppViewModel` — навигация (`screen`, `section`), вход (`login`), есть ли телеметрия (`telemetryAvailable`), списки библиотеки (`forYou`, `playlists`, `artists`, `albums`, `stations`, `wheel` — по `ListLoader` на каждый; `libraryUi` хранит только текст поиска и `wheelMatchesCurrent`), тост (`toast`, 1.8 с). Вход в Яндекс — не порог (Kickoman/QiYaa-android#115): без него приложение работает, а Яндекс — раздел Library. «Вошёл» — `yandex/SessionState.signedIn` (всё, кроме `LoggedOut` и `Expired`; `Session.start()` с токеном сразу `Connecting`), одно определение на всё приложение: стартовый экран, `routeLink`, экраны и `JamViewModel`. Старт — `startScreen(signedIn, spotifyLoggedIn, restoreGuest)`: без входа в Яндекс `jamGuest.restore()` не зовётся вовсе (он соединяется с комнатой, GUEST-19 — «signed in»), и старт — `Screen.PLAYER` при сохранённом входе Spotify (`SpotifyAccount.hasSavedLogin()`, ещё до подключения), иначе `Screen.LIBRARY`; со входом в Яндекс — `Screen.JAM_GUEST`, если `restore()` поднял сессию гостя, иначе `Screen.PLAYER`. Подключением управляет `yandex/Session` (`AppGraph.session`), view model только слушает `sessionState`: `Online` → `loadLibraryLists()`, `Expired` → `leaveSession(expired = true)`.
+`AppViewModel` — навигация (`screen`, `section`), вход (`login`), есть ли телеметрия (`telemetryAvailable`), списки библиотеки (`forYou`, `playlists`, `artists`, `albums`, `stations`, `wheel` — по `ListLoader` на каждый; `libraryUi` хранит только `wheelMatchesCurrent`); экран поиска — `openSearch(returnTo)` и `leaveSearch()` (ниже, «Поиск»), тост (`toast`, 1.8 с). Вход в Яндекс — не порог (Kickoman/QiYaa-android#115): без него приложение работает, а Яндекс — раздел Library. «Вошёл» — `yandex/SessionState.signedIn` (всё, кроме `LoggedOut` и `Expired`; `Session.start()` с токеном сразу `Connecting`), одно определение на всё приложение: стартовый экран, `routeLink`, экраны и `JamViewModel`. Старт — `startScreen(signedIn, spotifyLoggedIn, restoreGuest)`: без входа в Яндекс `jamGuest.restore()` не зовётся вовсе (он соединяется с комнатой, GUEST-19 — «signed in»), и старт — `Screen.PLAYER` при сохранённом входе Spotify (`SpotifyAccount.hasSavedLogin()`, ещё до подключения), иначе `Screen.LIBRARY`; со входом в Яндекс — `Screen.JAM_GUEST`, если `restore()` поднял сессию гостя, иначе `Screen.PLAYER`. Подключением управляет `yandex/Session` (`AppGraph.session`), view model только слушает `sessionState`: `Online` → `loadLibraryLists()`, `Expired` → `leaveSession(expired = true)`.
 
 **Вход.** `openLogin(notice, jamPage, returnTo)` открывает `Screen.LOGIN` и запрашивает код устройства. `notice`: `null` из Library, `jam_join_needs_login` для ссылки на джем (`LinkAction.AskSignIn`, тогда ещё `jamPage` — кнопка «Открыть в браузере» с адресом ссылки), `login_expired` для `Expired`. Повторный `openLogin` при открытом входе меняет только `notice` и `jamPageUrl`: код тот же, человек, может быть, уже набирает его на ya.ru/device. Вход по коду и токеном (`useToken`) идёт в одном `loginJob`. Уйти со входа можно системным «назад» и «ПОЗЖЕ» (вкладок на нём нет); оба — `leaveLogin()`, то есть `go(returnTo)`, а `go()`, уходя с `LOGIN`, отменяет `loginJob` и забывает отложенную ссылку. Отменённый запрос дорабатывает в фоне, но токен нового входа не стирает (`yandex/Session.signIn`). Пояснение входа красное только у `login_expired` (`LoginUi.noticeIsError`). Отмена в любой фазе — не ошибка: `applyToken` пробрасывает `CancellationException`, ни тоста, ни `login/failed`; `Session.signIn` при отмене сбрасывает токен, как при любой неудаче, если после неё не начался новый вход. Удачный вход (`applyToken`, токен сохраняется только после успеха) уходит со входа через `finishLogin()` — на `returnTo` (`LIBRARY`, с экрана джема — `JAM`), затем открывает отложенную ссылку (GUEST-01).
 
@@ -101,7 +103,7 @@ fun likeOrUnlikePicked();  fun dislikePicked()
 
 `AppRoot` при `SessionState.Offline` показывает над экраном строку `session_offline` («НЕТ СЕТИ · ПОВТОРЮ САМ») с красным `LedDot`; на экранах входа (`Screen.isLogin`: в Яндекс и в Spotify) строки нет, как и вкладок, мини-плеера и диалога «продолжить джем». Повторы идут сами, кнопки «повторить» нет.
 
-**«Назад».** `Screen.backTarget`: с вкладок EQ, Плейлист и Библиотека — на вкладку «Плеер» (`AppRoot`, `BackHandler`), с комнаты гостя (`JAM_GUEST`) — тоже на «Плеер», с «Добавить треки» гостя (`JAM_GUEST_ADD`) — в комнату, а открытый там плейлист сначала закрывается; с экрана входа — туда, откуда вход открыли (`AppViewModel.leaveLogin()`: Library или экран джема; вход можно отложить, #115, а `go()` при этом отменяет вход; `LOGIN.backTarget` = Library только включает обработчик), со входа в Spotify — в Library (`go(SPOTIFY_LOGIN.backTarget)`, а уход с экрана отменяет оба способа входа, ниже, «Spotify»), с «Плеера» — системное поведение, то есть выход из приложения. Обработчики, объявленные позже, важнее: открытый раздел библиотеки сначала закрывается (`LibrarySectionScreen`), открытый лист пресетов EQ — тоже (`closePresets`), лист действий с треком — тоже (`closeTrackActions`, объявлен после пресетов), и только потом срабатывает переход на «Плеер».
+**«Назад».** `Screen.backTarget`: с вкладок EQ, Плейлист и Библиотека — на вкладку «Плеер» (`AppRoot`, `BackHandler`), с комнаты гостя (`JAM_GUEST`) — тоже на «Плеер», с «Добавить треки» гостя (`JAM_GUEST_ADD`) — в комнату, а открытый там плейлист сначала закрывается; с экрана входа — туда, откуда вход открыли (`AppViewModel.leaveLogin()`: Library или экран джема; вход можно отложить, #115, а `go()` при этом отменяет вход; `LOGIN.backTarget` = Library только включает обработчик), со входа в Spotify — туда, откуда его открыли (`SpotifyViewModel.leaveLogin()`: Library или экран поиска; `SPOTIFY_LOGIN.backTarget` = Library только включает обработчик, а уход с экрана отменяет оба способа входа, ниже, «Spotify»), с «Плеера» — системное поведение, то есть выход из приложения. Обработчики, объявленные позже, важнее: открытый раздел библиотеки сначала закрывается (`LibrarySectionScreen`), открытый лист пресетов EQ — тоже (`closePresets`), лист действий с треком — тоже (`closeTrackActions`, объявлен после пресетов), и только потом срабатывает переход на «Плеер».
 
 `PlaylistScreen` показывает внизу списка строку `playlist_loading_more`, пока `QueueState.loadingMore`, а не всё время, пока играет волна. Когда это так, решает очередь (`queue/README.md`, «Ждёт продолжения»): у своей волны — пока идёт догрузка, у волны по истории — только пока очередь ждёт её треков после конца головы; тихий запрос за два трека до конца головы строку не показывает (CONT-04: без статуса).
 
@@ -150,12 +152,12 @@ interface SpotifyGateway {   // что view model берёт из графа; в
     suspend fun requestCode(): PairLogin.Code;  suspend fun waitForToken(code: PairLogin.Code): String
     suspend fun loginInBrowser(pages: BrowserLogin.Pages, openPage: (String) -> Unit): String
     suspend fun likedTracks() / forYou() / playlists() / savedAlbums() / followedArtists() / playlistTracks(uri) / albumTracks(uri) / artistTopTracks(uri)
-    fun autoplay(contextUri: String): Continuation;  fun station(trackUri: String): Continuation;  suspend fun searchPick(text: String): SearchPick
+    fun autoplay(contextUri: String): Continuation;  fun station(trackUri: String): Continuation
     fun loggedIn(way: SpotifyLoginWay);  fun loggedOut()   // телеметрия TEL-18
 }
 class SpotifyViewModel(spotify: SpotifyGateway, queue: QueueController, strings: (Int, List<Any>) -> String,
                        io: CoroutineContext = Dispatchers.IO, log: (String, Throwable) -> Unit = { _, _ -> }) : ViewModel() {
-    val ui: StateFlow<SpotifyUi>               // access, canLogOut, username, searchText
+    val ui: StateFlow<SpotifyUi>               // access, canLogOut, username
     val login: StateFlow<SpotifyLoginUi>       // userCode, pairUrl, code: SpotifyCodeStatus, browser: SpotifyBrowserStatus
     val notices: Flow<String>                  // тосты → AppViewModel.say (канал с буфером)
     val moves: Flow<Screen>                    // переходы → AppViewModel.go
@@ -163,9 +165,9 @@ class SpotifyViewModel(spotify: SpotifyGateway, queue: QueueController, strings:
     val queueState: StateFlow<QueueState>
     val forYou, playlists, albums, artists: ListLoader<SpotifyItem>;  fun list(which: SpotifyList): ListLoader<SpotifyItem>
     fun load(which: SpotifyList);  fun loadLists()                                  // только с LOGGED_IN
-    fun openLogin();  fun leaveLogin();  fun cancelLogin();  fun startCodeLogin();  fun startBrowserLogin();  fun noBrowser()
+    fun openLogin(returnTo: Screen = Screen.LIBRARY);  fun leaveLogin();  fun cancelLogin();  fun startCodeLogin();  fun startBrowserLogin();  fun noBrowser()
     fun logout();  fun say(message: String)
-    fun playLiked();  fun play(which: SpotifyList, item: SpotifyItem);  fun setSearchText(text: String);  fun submitSearch()
+    fun playLiked();  fun play(which: SpotifyList, item: SpotifyItem)
     fun playRadio(track: Track)
     companion object { const val LIKED_SONGS = "spotify:liked"; const val RADIO_PREFIX = "spotify:radio:"; val Factory: ViewModelProvider.Factory }
 }
@@ -198,7 +200,7 @@ class SpotifyViewModel(spotify: SpotifyGateway, queue: QueueController, strings:
 - Токен любым путём: другой путь отменяется, `SpotifyAccount.login(token)`, тост `spotify_connecting`, переход в Library. Когда сессия станет `Online`, — тост `spotify_logged_in` и `feature spotify login-code` / `login-browser` (TEL-18), один раз на вход, как `loggedInWith` ПК; отказ AP до `Online` способ забывает, и вход не считается.
 - «ПОЗЖЕ» — `leaveLogin()`, «назад» — `go(LIBRARY)`. Любой уход с экрана отменяет оба способа: `AppRoot` на каждой смене экрана зовёт `cancelLogin()`, если экран не `SPOTIFY_LOGIN`, — порт `127.0.0.1` закрывается, опрос кода прекращается. Поворот экрана экран не меняет и вход не отменяет.
 
-**Раздел Library «Spotify»** (`SpotifySources`) — под «Яндекс Музыкой», со входом в Яндекс и без: своё поле поиска (`spotify_search_hint`; поиск Яндекса остаётся как есть, переключателя источника нет, как на ПК), «Liked Songs», «Для вас», «Плейлисты», «Альбомы», «Исполнители» с числом или статусом списка (`listMeta`, как у Яндекса). Списки грузятся, когда раздел виден с `LOGGED_IN` (`LaunchedEffect(access)` → `loadLists()`), и при открытии своего экрана (`load(list)`); у `ListLoader` — корневой `errorKindOf`, поэтому HTTP Spotify — «ошибка сервера N», а не «что-то пошло не так». Разделы — `LibrarySection.SPOTIFY_FOR_YOU`, `SPOTIFY_PLAYLISTS`, `SPOTIFY_ALBUMS`, `SPOTIFY_ARTISTS`; `spotifyList` переводит их в `SpotifyList`, и `AppRoot` открывает `SpotifySectionScreen`: «‹ БИБЛИОТЕКА / SPOTIFY · ПЛЕЙЛИСТЫ» и число справа, `LazyColumn` строк с именем (играющий — акцентом, по `activeSourceId`), «Загрузка…», ошибка с «нажмите, чтобы повторить» или «Пусто». Доступ ушёл из `LOGGED_IN`, пока раздел открыт (сохранённый вход отвергнут при переподключении — `Expired`): списки сброшены, `load()` без входа ничего не делает, и раздел сам закрывается (`LaunchedEffect(ui.access)` → `onClose`), а Library показывает новое состояние; иначе он вечно показывал бы «Загрузка…». Числа треков у строк нет: `SpotifyItem` — только URI и имя, как в меню ПК. `AppViewModel.loadSection` у этих разделов ничего не делает: их списки — у `SpotifyViewModel`.
+**Раздел Library «Spotify»** (`SpotifySources`) — под «Яндекс Музыкой», со входом в Яндекс и без: своё поле поиска (`spotify_search_hint`): Enter открывает экран поиска с чипом Spotify (ниже, «Поиск»), «Liked Songs», «Для вас», «Плейлисты», «Альбомы», «Исполнители» с числом или статусом списка (`listMeta`, как у Яндекса). Списки грузятся, когда раздел виден с `LOGGED_IN` (`LaunchedEffect(access)` → `loadLists()`), и при открытии своего экрана (`load(list)`); у `ListLoader` — корневой `errorKindOf`, поэтому HTTP Spotify — «ошибка сервера N», а не «что-то пошло не так». Разделы — `LibrarySection.SPOTIFY_FOR_YOU`, `SPOTIFY_PLAYLISTS`, `SPOTIFY_ALBUMS`, `SPOTIFY_ARTISTS`; `spotifyList` переводит их в `SpotifyList`, и `AppRoot` открывает `SpotifySectionScreen`: «‹ БИБЛИОТЕКА / SPOTIFY · ПЛЕЙЛИСТЫ» и число справа, `LazyColumn` строк с именем (играющий — акцентом, по `activeSourceId`), «Загрузка…», ошибка с «нажмите, чтобы повторить» или «Пусто». Доступ ушёл из `LOGGED_IN`, пока раздел открыт (сохранённый вход отвергнут при переподключении — `Expired`): списки сброшены, `load()` без входа ничего не делает, и раздел сам закрывается (`LaunchedEffect(ui.access)` → `onClose`), а Library показывает новое состояние; иначе он вечно показывал бы «Загрузка…». Числа треков у строк нет: `SpotifyItem` — только URI и имя, как в меню ПК. `AppViewModel.loadSection` у этих разделов ничего не делает: их списки — у `SpotifyViewModel`.
 
 **Выборы** — `queue.loadSource(title, sourceId, continuation = spotify.autoplay(контекст)) { треки }` и переход на «Плеер»:
 
@@ -211,7 +213,7 @@ class SpotifyViewModel(spotify: SpotifyGateway, queue: QueueController, strings:
 
 Liked Songs ещё и сразу показывает `queue_loading` («Любимые треки: загрузка…», как статус ПК: 2000 треков — это 20 запросов метаданных), а «загружено N» — обычный `SourceLoaded` очереди.
 
-**Поиск** (SPOT-11, SRC-12) — `submitSearch()`: обрезанный текст, пустой ничего не шлёт; `queue.search(text, "Поиск: <текст>", spotify::searchPick)` (`AppGraph.spotifySearch`), поле очищается, переход на «Плеер». «Ничего не найдено», статусы и автоплей найденного — у очереди (`queue/README.md`, «Своё продолжение»).
+**Поиск** Spotify — общий экран поиска (ниже, «Поиск»): поле раздела Library открывает его с чипом Spotify. Своего поиска у `SpotifyViewModel` нет.
 
 **Радио** (SPOT-12) — строка «Радио» листа действий плейлиста, только у трека Spotify (`TrackActions.radio`); текущий трек — тоже строка плейлиста. `playRadio(track)` → `queue.playContinuation("<трек>: radio", "spotify:radio:<id>", station("spotify:track:<id>"))`. Экран не меняется: новая очередь видна в том же плейлисте, статус «<трек>: радио: загрузка…» даёт очередь.
 
@@ -229,11 +231,42 @@ data class Found(bestTrack: Track? = null, bestArtist: FoundPick? = null, bestAl
     val isEmpty: Boolean          // показывать нечего: SRC-19
     fun shown(): Found            // недоступные треки прочь, лучший результат один раз
     fun playable(): List<Track>   // лучший трек, затем треки: очередь SRC-18
-    companion object { fun of(result: yandex.SearchResult): Found; fun of(found: SpotifyFound, tracks: List<Track>): Found }   // оба — уже shown()
+    companion object { fun of(result: yandex.SearchResult): Found; fun of(found: SpotifyFound, tracks: List<Track>): Found   // оба — уже shown()
+                       fun metadataUris(found: SpotifyFound): List<String> }   // что спросить у метаданных Spotify: найденные, потерянный лучший трек первым
 }
 ```
 
 Что показывает поиск (`spec/player/sources.md`, «Search», SRC-13; Spotify — SPOT-11), как `Core::SearchResults` и `Core::Shown` ПК. Лучший результат — исполнитель или альбом с непустым id или доступный трек; лучший плейлист, подкаст и что угодно другое не показываются. Лучший альбом берёт исполнителей, год и «сингл» из своей строки в альбомах ответа, если она там есть. Части оставляют без записи с id лучшего результата, треки — без недоступных и без трека с ключом лучшего. У Spotify лучший трек — найденный трек с URI лучшего (`SpotifyTracks.uriOf`); если его метаданных нет, лучшего трека нет, а остальные треки остаются.
+
+Экран поиска (`spec/player/sources.md`, «Search», SRC-13…19; Spotify — SPOT-11) и добавление в очередь (`spec/player/queue.md`), как окно SEARCH ПК (`src/ui/search_window.cpp`), только по-телефонному: свой экран `Screen.SEARCH` с чипами «Яндекс Музыка» и «Spotify», тап по треку играет, «+» открывает лист «Играть следом / В конец очереди» (решения владельца, Kickoman/QiYaa-android#144).
+
+```kotlin
+interface SearchGateway {   // в приложении — приватный GraphSearch над AppGraph
+    fun canSearch(source: SearchSource): Boolean   // Яндекс — SessionState.signedIn; Spotify — spotifyAccessOf(…) == LOGGED_IN
+    suspend fun find(source: SearchSource, text: String): Found
+    suspend fun tracksOf(source: SearchSource, pick: FoundPick): List<Track>   // исполнитель — artistTopTracks, альбом — albumTracks
+    fun autoplay(contextUri: String): Continuation   // автоплей Spotify (SPOT-20)
+}
+class SearchViewModel(gateway: SearchGateway, queue: QueueController, strings: (Int, List<Any>) -> String,
+                      io: CoroutineContext = Dispatchers.IO, log: (String, Throwable) -> Unit = { _, _ -> }) : ViewModel() {
+    val ui: StateFlow<SearchUi>
+    fun open(text: String, source: SearchSource);  fun setText(text: String);  fun setSource(source: SearchSource)
+    fun search();  fun retry();  fun toggle(part: SearchPart)
+    fun openPick(pick: FoundPick);  fun reopen();  fun back(): Boolean   // back: false — открытого нет
+    fun play(track: Track);  fun playAll();  fun playPick(pick: FoundPick)
+    fun chooseAdd(target: SearchTarget);  fun closeAdd();  fun add(placement: AddPlacement)
+    companion object { val Factory: ViewModelProvider.Factory }
+}
+```
+
+- **Поиск** (SRC-13, SRC-14). `search()` обрезает текст; пустой ничего не шлёт. Источник, который искать не может (`canSearch`), — фаза `Idle` без запроса. Экран показывает вход: у Яндекса «Войти…» (`openLogin(returnTo = SEARCH)`), у Spotify — те же строки состояния, что в Library (`SpotifyAccessRows`: вход, «Подключаюсь…», истёк, нужен Premium, отказ), и вход возвращает на экран поиска (`SpotifyViewModel.openLogin(returnTo = SEARCH)`). Когда вход появился, экран повторяет поиск сам. Иначе `Searching`, потом `Results(found)`, `NothingFound` (`found.isEmpty`, SRC-19) или `Failed(вид)` с «Повторить» (SRC-15, без тоста). Новый поиск побеждает: счётчик запросов, старый `Job` отменяется, его ответ отбрасывается; он же закрывает открытого исполнителя или альбом и сбрасывает развёрнутые части и метки. Смена чипа ищет тот же текст в другом источнике. Поиск не источник: запрос очереди он не отменяет, и тот его — тоже.
+- **Части** (SRC-13): «Лучшее», «Треки · N» (первые 6), «Исполнители · N», «Альбомы · N» (по 3, `SearchPart.first`), «Все» / «Меньше» — `toggle`. Трек — номер, название, исполнители и длительность, «+»; текущий трек очереди (`PlayerUi.current`, по ключу) — цветом акцента. Исполнитель — имя, «исполнитель», ▶; альбом — название, «исполнители · год · сингл», ▶ и «+».
+- **Игра** (SRC-18): тап по треку — `queue.playTracks("Search: <текст>", found.playable(), его индекс)`; у Spotify — с автоплеем от первого трека этой очереди (SPOT-20). ▶ у исполнителя или альбома — `queue.loadSource` под его именем с `sourceId` как в Library (`artist:<id>`, `album:<id>`; у Spotify — URI) и его загрузчиком (SRC-09, SRC-10, SPOT-09). На экран плеера поиск не уводит: результаты остаются, трек видно в мини-плеере.
+- **Открыть** (SRC-16): тап по исполнителю или альбому — `openPick`: его **доступные** треки на месте результатов («популярные треки» или «исполнители · год»), ▶ «Играть всё», у альбома «+». Новое открытие, «Назад» и новый поиск побеждают (свой счётчик). «Назад» — `back()`: результаты как были, без запроса, с той же прокруткой (состояние списка живёт в `SearchScreen` и новое только у новых результатов) и развёрнутыми частями. Тап по треку — `playTracks(имя, его треки, индекс, sourceId)`, у Spotify с автоплеем от URI исполнителя или альбома.
+- **Добавить** (SRC-17, ADD-01…09): «+» — `chooseAdd(цель)`, `AppRoot` рисует `SearchAddSheet`; выбор — `add(NEXT | END)`. Трек — `queue.add([трек], название поиска или открытого, …)`, под строкой «сыграет следом» / «в конце очереди» до нового поиска (`SearchUi.added`). Альбом, открытый сейчас, — `queue.add(его треки)`; иначе `queue.addLoaded(название) { tracksOf(…) }`, без билета. Статусы («Следом: …», «В конец: …», ошибка, «пусто») — события очереди, тосты `AppViewModel`.
+- **Навигация.** Поля Library (Яндекс и Spotify) держат свой текст (`LibrarySearchField`, `rememberSaveable`) и по Enter зовут `onSearch(текст, источник)`: `AppRoot` → `search.open(…)` и `AppViewModel.openSearch(returnTo = LIBRARY)`. «Назад» экрана (стрелка и системная, свой `BackHandler`) сначала закрывает открытое (`back()`), потом `leaveSearch()` — туда, откуда открыли. Вкладка Library на экране поиска подсвечена.
+
+`GraphSearch.find` у Spotify берёт метаданные одним `tracks(Found.metadataUris(found))`: найденные треки, а лучший трек, которого среди них нет, — первым, как у ПК (`catalog.cpp`), иначе он потерялся бы.
 
 **Traps:**
 - `of` уже зовёт `shown()`: снова звать не нужно, но и не вредно.
@@ -249,7 +282,7 @@ data class Found(bestTrack: Track? = null, bestArtist: FoundPick? = null, bestAl
 - **Без связи** (HOST-25) «В джем», «Следом», «Убрать» и «Новая ссылка» приглушены, а любое действие с комнатой даёт тост `jam_no_connection`; над любым экраном — красная строка `jam_offline_strip`, тап ведёт на экран джема. Строка «нет сети» Яндекса важнее и показывается вместо неё.
 - **«Продолжить джем?»** (HOST-23) — `JamContinueDialog` поверх любого экрана, кроме входа, пока `storedSession`.
 - **Плейлист** (HOST-34): метку строки даёт чистая `jamTrackNote(entry, isWave, jamOn, names)` по записи очереди (`QueueState.entries`), только пока джем идёт (`phase == ACTIVE`): у элемента этого джема (`item.itemId` есть, ждёт он или уже сыграл, текущий тоже) — `jam_added_by` («+ имя» по `item.addedBy` среди `room.participants`; незнакомому гостю — ничего); у записи `CONTINUATION` базы без своей волны (`!isWave`) — `jam_wave_mark` («Волна джема»), в том числе у треков волны по истории, пришедших до джема (D14); остальная база — голова, `OTHER`, своя волна «Моей волны» или станции, элементы прошлого джема — без метки, как вне джема. После конца джема меток нет. REM всегда зовёт `QueueController.removeIndices(selected)` (HOST-36): ждущие элементы джема очередь отправляет серверу (`remove{itemId}`, из плейлиста они уйдут со следующим `state`), остальные выделенные строки — трек базы, сыгранная строка, текущий трек — уходят сразу, а удаление текущего трека останавливает воспроизведение. Без связи REM доступен: строки базы убираются, а за элементы джема `JamHostEvent.NotConnected` даёт тост `jam_no_connection` (HOST-25). CLEAR оставляет текущий трек и часть джема и очищает базу. Тап по строке — переход: ждущие элементы переезжают за выбранную строку (HOST-12, `queue/README.md`). ADD ведёт на экран джема.
-- **Выбор источника во время джема** (HOST-21): плейлист, альбом, артист, волна, станция и поиск в библиотеке (D5) становятся новой базой, с теми же тостами, что вне джема; ничего не начинается сразу. Треки для джема ищут на экране джема (HOST-20).
+- **Выбор источника во время джема** (HOST-21): плейлист, альбом, артист, волна, станция и найденный трек (D5; база начинается с него, HOST-38) становятся новой базой, с теми же тостами, что вне джема; ничего не начинается сразу. Треки для джема ищут на экране джема (HOST-20).
 - «Выйти» заканчивает джем: гости ищут через аккаунт хозяина.
 - **`JamSettingsScreen`**: сервер (по умолчанию `qiyaaJamUrl`) и «Учить волну джема» (`jam/waveFeedback`, HOST-16). Пояснение `jam_wave_feedback_note` (вслед за `4dcc9ff` десктопа и словами пилюль `toggle_on` / `toggle_off`) говорит, что за пустой очередью гостей играет собственная очередь хозяина, а волна джема — после неё, если у очереди нет своей волны и она продолжается волной; учится только волна джема. Ключа хозяина нет. Строки `jam_queue_title`, `queue_jam_active` и `jam_remove_nothing` удалены (D4, HOST-21, HOST-36).
 
