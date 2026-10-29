@@ -198,16 +198,12 @@ class CatalogFixturesTest {
                 SpotifyFixtures.forEachCase("pathfinder-searchDesktop") { fixture ->
                     pathfinder(stack, problems, fixture, SpotifyLibrary.SEARCH_HASHES) {
                         val found = library.search("band")
-                        val (kind, best) =
-                            when (found) {
-                                is SpotifyFound.Artist -> "artist" to found.best
-                                is SpotifyFound.Album -> "album" to found.best
-                                is SpotifyFound.Tracks -> "tracks" to null
-                            }
                         buildJsonObject {
-                            put("kind", kind)
-                            put("best", best?.let { item(ListItem(it.uri, it.name)) } ?: JsonNull)
+                            put("kind", found.kind.key)
+                            put("best", found.best?.let { item(ListItem(it.uri, it.name)) } ?: JsonNull)
                             put("trackUris", strings(found.trackUris))
+                            put("artists", items(found.artists.map { ListItem(it.uri, it.name) }))
+                            put("albums", JsonArray(found.albums.map(::album)))
                         }
                     }
                 }
@@ -409,6 +405,14 @@ class CatalogFixturesTest {
     }
 
     private fun strings(values: List<String>): JsonArray = JsonArray(values.map(::JsonPrimitive))
+
+    private fun album(album: SpotifyFoundAlbum): JsonObject = buildJsonObject {
+        put("uri", album.uri)
+        put("name", album.name)
+        put("artists", strings(album.artists))
+        put("year", album.year?.let(::JsonPrimitive) ?: JsonNull)
+        put("single", album.single)
+    }
 
     private fun JsonObject.text(key: String): String = getValue(key).jsonPrimitive.content
 
