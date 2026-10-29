@@ -76,7 +76,7 @@ object TelemetryCodes {
                 JamHostEvent.Ended.Why.BY_HOST -> null
             }?.let { ErrorCode(ErrorArea.JAM, it) }
 
-        JamHostEvent.NotConnected -> null
+        is JamHostEvent.AddRefused, JamHostEvent.NotConnected -> null
     }
 
     fun error(problem: SpotifyProblem): ErrorCode? = when (problem) {

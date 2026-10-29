@@ -195,14 +195,11 @@
     <string name="jam_copied">Link copied</string>
     <string name="jam_share_text">Join my jam: %1$s</string>
     <string name="jam_add_tracks">Add tracks</string>
-    <string name="jam_search_hint">Search tracks for the jam</string>
-    <string name="jam_add">Add</string>
-    <string name="jam_next">Next</string>
+    <string name="jam_add_tracks_open">Add tracks…</string>
     <string name="jam_added">Sent to the jam</string>
     <string name="jam_added_next">Sent to the jam, plays next</string>
     <string name="jam_nothing_found">Nothing found</string>
     <string name="jam_searching">Searching…</string>
-    <string name="jam_search_failed">Search failed: %1$s</string>
     <string name="jam_guests">Guests · %1$d</string>
     <string name="jam_kind_host">host</string>
     <string name="jam_kind_web">web</string>
@@ -448,4 +445,9 @@
     <string name="search_plays_next">plays next</string>
     <string name="search_at_end">at the end of the queue</string>
     <string name="search_back">Back</string>
+    <string name="search_jam_add">To the jam</string>
+    <string name="search_jam_next">Next in the jam</string>
+    <string name="search_in_jam">in the jam · %1$s</string>
+    <string name="search_in_jam_anon">in the jam</string>
+    <string name="search_sending">sending…</string>
 </resources>
