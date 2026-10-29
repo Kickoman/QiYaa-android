@@ -855,13 +855,8 @@ class QueueController(
             emit(QueueEvent.SourceEmpty(title))
             return
         }
-        val first = if (tracks.getOrNull(start)?.available ==
-            true
-        ) {
-            tracks.take(start).count { it.available }
-        } else {
-            0
-        }
+        val chosen = tracks.getOrNull(start)?.takeIf { it.available }
+        val first = if (chosen == null) 0 else tracks.take(start).count { it.available }
         setQueue(
             available,
             title,
@@ -969,6 +964,16 @@ class QueueController(
         movingCursor = true
         current.seekTo(at)
         movingCursor = false
+        if (shuffleInEffect()) keepPass(current)
+    }
+
+    private fun keepPass(current: PlayerEngine) {
+        val entries = mutableState.value.entries
+        val index = current.currentIndex
+        val waiting = entries.indices.filter { it != index && entries[it].isWaiting }
+        val head = headOf(entries)
+        val heads = head.toSet()
+        current.shuffleHead(head, listOf(index) + waiting + current.playOrder().filter { it in heads })
     }
 
     private fun waitingTrack(track: Track): QueueEntry =
@@ -1826,13 +1831,8 @@ class QueueController(
                     .toSet(),
             )
         }
-        if (headStart?.let {
-                it >= mutableState.value.entries.count { entry -> entry.part == EntryPart.HEAD }
-            } ==
-            true
-        ) {
-            headStart = null
-        }
+        val headCount = mutableState.value.entries.count { it.part == EntryPart.HEAD }
+        headStart = headStart?.takeIf { it < headCount }
         current?.removeAt(index)
     }
 

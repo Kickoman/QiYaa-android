@@ -29,13 +29,8 @@ object QueueWalk {
     ): Int {
         if (repeatHoldsHead) return Int.MAX_VALUE
         val from = start?.takeIf { it != current && it in order }
-        val ahead = if (from ==
-            null
-        ) {
-            after(order, current)
-        } else {
-            order.drop(order.indexOf(from)).filter { it != current }
-        }
+        val ahead = from?.let { order.drop(order.indexOf(it)).filter { index -> index != current } }
+            ?: after(order, current)
         val rest = ahead.count { index ->
             entries.getOrNull(index)?.let { it.isSpent || it.isWaiting } != true
         }

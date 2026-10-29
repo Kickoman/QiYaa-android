@@ -2114,6 +2114,30 @@ class QueueJamTest {
         }
 
     @Test
+    fun `HOST-38 SHUF-09 Random track or another algorithm before the base begins keeps the start`() =
+        runTest {
+            for (first in listOf<ShuffleAlgorithm?>(null) + ShuffleAlgorithm.entries) {
+                val h = QueueHarness.likes(this, "a", "b", continueWithVibe = false)
+                if (first != null) {
+                    h.controller.setShuffleAlgorithm(first)
+                    h.controller.setShuffle(true)
+                }
+                h.engine.startPlaying()
+                h.startJam()
+                h.state(item("i1", "X"))
+                h.controller.playTracks("Search: k", found(), start = 2)
+                val then = if (first == ShuffleAlgorithm.RANDOM_TRACK) {
+                    ShuffleAlgorithm.WITHOUT_REPEATS
+                } else {
+                    ShuffleAlgorithm.RANDOM_TRACK
+                }
+                h.controller.setShuffleAlgorithm(then)
+                h.controller.setShuffle(true)
+                assertEquals("from $first to $then", listOf("X", "k2"), h.playOn(2))
+            }
+        }
+
+    @Test
     fun `HOST-38 a base held in an empty player keeps its start when the jam's items come in front`() =
         runTest {
             for (shuffle in listOf(false, true)) {

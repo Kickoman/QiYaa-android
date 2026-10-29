@@ -337,6 +337,54 @@ class QueueAddTest {
         }
 
     @Test
+    fun `ADD-07 SHUF-01 with shuffle, Play next while held moves the hold and keeps the pass's order`() =
+        runTest {
+            val h = playing(this, "a", "b", "c", "d")
+            h.controller.setShuffle(true)
+            h.controller.add(tracks("x"), "Search", AddPlacement.NEXT)
+            h.controller.removeIndices(setOf(0))
+            assertEquals("x", h.currentId())
+            val order = h.engine.playOrder().map { h.engine.tracks[it].id }
+            h.controller.add(tracks("y"), "Search", AddPlacement.NEXT)
+            assertEquals("y", h.currentId())
+            assertEquals(listOf("y") + order, h.engine.playOrder().map { h.engine.tracks[it].id })
+            h.controller.next()
+            h.engine.startPlaying()
+            assertEquals(listOf("x", "b", "c", "d"), h.playOn(4))
+        }
+
+    @Test
+    fun `ADD-07 a held waiting track survives the process, Play next before a player holds the added`() =
+        runTest {
+            val h = playing(this, "a", "b")
+            h.controller.add(tracks("x"), "Search", AddPlacement.NEXT)
+            h.controller.removeIndices(setOf(0))
+            runCurrent()
+            val restored = QueueHarness(this, attached = false, store = FakeQueueStore(h.store.text))
+            restored.controller.add(tracks("y"), "Search", AddPlacement.NEXT)
+            restored.controller.attach(restored.engine)
+            assertEquals(listOf("y", "x", "b"), restored.engine.ids())
+            assertEquals("y", restored.currentId())
+            assertFalse(restored.engine.playWhenReady)
+            assertEquals(listOf(true, true, null), restored.waiting())
+            restored.engine.play()
+            restored.engine.startPlaying()
+            assertEquals(listOf(false, true, null), restored.waiting())
+            assertEquals(listOf("x", "b"), restored.playOn(2))
+        }
+
+    @Test
+    fun `ADD-02 SHUF-05 with Random track a draw made before Play next stands after the waiting track`() =
+        runTest {
+            val h = playing(this, "a", "b", "c", "d")
+            h.controller.setShuffleAlgorithm(ShuffleAlgorithm.RANDOM_TRACK)
+            h.controller.setShuffle(true)
+            val drawn = h.engine.tracks[h.engine.playOrder()[1]].id
+            h.controller.add(tracks("x"), "Search", AddPlacement.NEXT)
+            assertEquals(listOf("x", drawn), h.playOn(2))
+        }
+
+    @Test
     fun `ADD-07 D8 removing the current track with a head track behind it still plays on`() = runTest {
         val h = playing(this, "a", "b", "c")
         h.controller.add(tracks("y"), "Search", AddPlacement.END)
