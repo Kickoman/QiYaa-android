@@ -88,6 +88,21 @@ class QueueWalkTest {
         assertNull(QueueWalk.next(entries("h0"), listOf(0), 0, true, leaving = setOf(0)))
     }
 
+    @Test
+    fun `HOST-38 a base not yet begun goes to its start after the waiting items, and counts from it`() {
+        val rows = other("o") + waiting("i1", "x") + entries("h0", "h1", "h2", "h3")
+        val order = rows.indices.toList()
+        assertEquals(1, QueueWalk.next(rows, order, 0, false, start = 4))
+        assertEquals(4, QueueWalk.next(rows, order, 1, false, start = 4))
+        assertEquals(1, QueueWalk.next(rows, order, 4, false, start = 4))
+        val begun = other("o") + played("i1", "x") + entries("h0", "h1", "h2", "h3")
+        assertEquals(5, QueueWalk.next(begun, order, 4, false, start = 4))
+        assertEquals(3, QueueWalk.remaining(rows, order, 1, false, start = 4))
+        assertEquals(5, QueueWalk.remaining(rows, order, 1, false))
+        assertEquals(5, QueueWalk.next(rows, order, 1, false, leaving = setOf(4), start = 4))
+        assertEquals(Int.MAX_VALUE, QueueWalk.remaining(rows, order, 1, true, start = 4))
+    }
+
     private fun entries(vararg ids: String) = ids.map { QueueEntry(track(it)) }
 
     private fun waiting(itemId: String?, trackId: String) =

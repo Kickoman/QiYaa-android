@@ -33,6 +33,10 @@ interface PlayerEngine {
 
     fun insertTracks(index: Int, tracks: List<Track>)
 
+    fun insertHead(index: Int, tracks: List<Track>, after: Int)
+
+    fun insertBefore(index: Int, tracks: List<Track>)
+
     fun removeAt(index: Int)
 
     fun reload(index: Int)

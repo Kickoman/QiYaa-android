@@ -69,6 +69,20 @@ class HeadShuffleOrder(
         fun afterSplice(copy: HeadShuffle, itemCount: Int, index: Int, count: Int): HeadShuffle =
             fitted(copy, itemCount).insertedAfter(index.coerceAtMost(itemCount), count)
 
+        fun afterSpliceBefore(copy: HeadShuffle, itemCount: Int, index: Int, count: Int): HeadShuffle =
+            fitted(copy, itemCount).insertedBefore(index.coerceAtMost(itemCount), count)
+
+        fun afterJoin(
+            copy: HeadShuffle,
+            itemCount: Int,
+            index: Int,
+            count: Int,
+            current: Int,
+            after: Int,
+            random: Random,
+        ): HeadShuffle =
+            fitted(copy, itemCount).joined(index.coerceAtMost(itemCount), count, current, after, random)
+
         fun afterRemove(copy: HeadShuffle, itemCount: Int, index: Int): HeadShuffle {
             val current = fitted(copy, itemCount)
             return if (index >= itemCount) current else current.removed(index, index + 1)

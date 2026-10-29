@@ -143,6 +143,8 @@
     </plurals>
     <string name="queue_empty">%1$s: пуста</string>
     <string name="queue_wave_started">%1$s: хваля пачалася</string>
+    <string name="queue_added_next">Следам: %1$s</string>
+    <string name="queue_added_to_end">У канец: %1$s</string>
     <string name="queue_nothing_found">Нічога не знойдзена</string>
     <string name="queue_liked">Дададзена ў «Мне падабаецца»</string>
     <string name="queue_unliked">Прыбрана з «Мне падабаецца»</string>

@@ -26,6 +26,7 @@ class QueueHarness(
     random: Random = Random(0),
     errorKindOf: (Throwable) -> ErrorKind = ErrorKind::of,
     continuationOf: (ContinuationKey) -> Continuation? = { null },
+    autoplayFrom: (Track) -> Continuation? = { null },
 ) {
     private var playIds = 0
     val source = FakeMusicSource()
@@ -45,6 +46,7 @@ class QueueHarness(
             random = random,
             errorKindOf = errorKindOf,
             continuationOf = continuationOf,
+            autoplayFrom = autoplayFrom,
         )
     val engine = FakeEngine(controller).also { if (attached) controller.attach(it) }
     val events = ArrayList<QueueEvent>()

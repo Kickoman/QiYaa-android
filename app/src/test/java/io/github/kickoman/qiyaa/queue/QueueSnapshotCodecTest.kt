@@ -438,4 +438,21 @@ class QueueSnapshotCodecTest {
                 """{"id":"22","title":"Спокойная ночь","artists":["Кино"],"albumId":"4054",""" +
                 """"durationMs":367000}]}"""
     }
+
+    @Test
+    fun `HOST-38 a base's start survives, an old file has none, and one past the head is dropped`() {
+        val base = snapshot.copy(
+            isWave = false,
+            sourceId = null,
+            waveSessionId = "",
+            waveStationId = "",
+            headStart = 1,
+        )
+        assertEquals(base, QueueSnapshotCodec.decode(QueueSnapshotCodec.encode(base)))
+        assertFalse(QueueSnapshotCodec.encode(base.copy(headStart = null)).contains("headStart"))
+        assertNull(
+            QueueSnapshotCodec.decode(QueueSnapshotCodec.encode(base.copy(headStart = null)))?.headStart,
+        )
+        assertNull(QueueSnapshotCodec.decode(QueueSnapshotCodec.encode(base.copy(headStart = 2)))?.headStart)
+    }
 }

@@ -2,6 +2,7 @@ package io.github.kickoman.qiyaa.ui
 
 import android.content.Context
 import io.github.kickoman.qiyaa.R
+import io.github.kickoman.qiyaa.queue.AddPlacement
 import io.github.kickoman.qiyaa.queue.QueueEvent
 import io.github.kickoman.qiyaa.queue.QueueEvent.Stage
 
@@ -20,6 +21,14 @@ fun QueueEvent.render(context: Context): String = when (this) {
     is QueueEvent.SourceEmpty -> context.getString(R.string.queue_empty, title)
 
     is QueueEvent.WaveStarted -> context.getString(R.string.queue_wave_started, title)
+
+    is QueueEvent.Added -> context.getString(
+        when (placement) {
+            AddPlacement.NEXT -> R.string.queue_added_next
+            AddPlacement.END -> R.string.queue_added_to_end
+        },
+        subject,
+    )
 
     QueueEvent.NothingFound -> context.getString(R.string.queue_nothing_found)
 

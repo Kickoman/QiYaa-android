@@ -27,6 +27,7 @@ data class QueueSnapshot(
     val waveFromHistory: Boolean = true,
     val continuation: ContinuationKey? = null,
     val started: List<TrackKey> = emptyList(),
+    val headStart: Int? = null,
 )
 
 object QueueSnapshotCodec {
@@ -54,6 +55,7 @@ object QueueSnapshotCodec {
                 waveFromHistory = snapshot.waveFromHistory.takeIf { !it },
                 continuation = snapshot.continuation?.let { ContinuationEntry(it.kind, it.value) },
                 started = snapshot.started.map { StartedEntry(it.id, sourceKeyOf(it.source)) },
+                headStart = snapshot.headStart,
                 tracks =
                     snapshot.tracks.mapIndexed { i, track ->
                         val item = snapshot.items.getOrNull(i)
@@ -115,6 +117,7 @@ object QueueSnapshotCodec {
         }
         val seedsVersions = file.tracks.map(TrackEntry::seedsVersion)
         val started = file.started.map { TrackKey(sourceOf(it.source) ?: return null, it.id) }
+        val headCount = parts.count { it == EntryPart.HEAD }
         return QueueSnapshot(
             tracks = tracks,
             batchIds = file.tracks.map { it.batchId },
@@ -135,6 +138,7 @@ object QueueSnapshotCodec {
             waveFromHistory = file.waveFromHistory ?: true,
             continuation = file.continuation?.let { ContinuationKey(it.kind, it.value) },
             started = started,
+            headStart = file.headStart?.takeIf { it in 0 until headCount },
         )
     }
 
@@ -159,6 +163,7 @@ object QueueSnapshotCodec {
         val waveFromHistory: Boolean? = null,
         val continuation: ContinuationEntry? = null,
         val started: List<StartedEntry> = emptyList(),
+        val headStart: Int? = null,
         val tracks: List<TrackEntry>,
     )
 

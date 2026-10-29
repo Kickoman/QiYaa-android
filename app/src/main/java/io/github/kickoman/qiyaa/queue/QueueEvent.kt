@@ -13,6 +13,8 @@ sealed interface QueueEvent {
 
     data class WaveStarted(val title: String) : QueueEvent
 
+    data class Added(val subject: String, val trackCount: Int, val placement: AddPlacement) : QueueEvent
+
     data object NothingFound : QueueEvent
 
     data object LoadingMore : QueueEvent
