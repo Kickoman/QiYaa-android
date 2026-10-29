@@ -367,10 +367,6 @@ private fun TrackRow(number: Int?, track: Track, current: Boolean, ui: SearchUi,
                 )
             } to colors.accent
 
-            jamId != null && jamId in ui.sending -> stringResource(R.string.search_sending) to colors.dim
-
-            refused != null -> stringResource(refusedText(refused)) to colors.error
-
             waitingFrom != null -> (
                 if (waitingFrom.isEmpty()) {
                     stringResource(R.string.search_in_jam_anon)
@@ -378,6 +374,10 @@ private fun TrackRow(number: Int?, track: Track, current: Boolean, ui: SearchUi,
                     stringResource(R.string.search_in_jam, waitingFrom)
                 }
                 ) to colors.accent
+
+            jamId != null && jamId in ui.sending -> stringResource(R.string.search_sending) to colors.dim
+
+            refused != null -> stringResource(refusedText(refused)) to colors.error
 
             else -> null to colors.dim
         }

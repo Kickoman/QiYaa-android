@@ -358,6 +358,23 @@ class SearchViewModelTest {
         }
 
     @Test
+    fun `HOST-38 HOST-20 Next in the jam on a track that already waits pins it, with no sending mark`() =
+        runTest {
+            val subject = Subject(this)
+            gateway.found = { found }
+            gateway.jam.value = jamState(item("t1", "g1"))
+            subject.model.open("кино", SearchSource.YANDEX)
+            runCurrent()
+            subject.model.chooseAdd(SearchTarget.OfTrack(track("t1")))
+            subject.model.add(AddPlacement.NEXT)
+            runCurrent()
+            assertEquals(listOf("jam next t1"), gateway.calls.filter { it.startsWith("jam") })
+            assertEquals(emptySet<String>(), subject.model.ui.value.sending)
+            assertEquals(listOf("jam_added_next"), subject.notices)
+            assertEquals(mapOf("t1" to "Маша"), subject.model.ui.value.jam?.waiting)
+        }
+
+    @Test
     fun `HOST-25 HOST-37 without a connection nothing is sent, a Spotify track cannot go to the jam`() =
         runTest {
             val subject = Subject(this)

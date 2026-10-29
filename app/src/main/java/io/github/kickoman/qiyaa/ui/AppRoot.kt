@@ -102,6 +102,10 @@ fun AppRoot(
         val guestState by guest.state.collectAsStateWithLifecycle()
         val guestOn = guestState.phase.isSession
         val openLink = { text: String -> app.openJamLink(text) }
+        val openJamSearch = { returnTo: Screen ->
+            search.setSource(SearchSource.YANDEX)
+            app.openSearch(returnTo)
+        }
         val backTarget = screen.backTarget
         LaunchedEffect(screen) { if (screen != Screen.SPOTIFY_LOGIN) spotify.cancelLogin() }
         BackHandler(enabled = backTarget != null) {
@@ -136,7 +140,7 @@ fun AppRoot(
                             player,
                             jam,
                             onAdd = {
-                                if (jamOn) app.openSearch(Screen.PLAYLIST) else app.go(Screen.LIBRARY)
+                                if (jamOn) openJamSearch(Screen.PLAYLIST) else app.go(Screen.LIBRARY)
                             },
                         )
 
@@ -169,7 +173,7 @@ fun AppRoot(
                             onSettings = { app.go(Screen.JAM_SETTINGS) },
                             onJoinLink = openLink,
                             onSignIn = { app.openLogin(returnTo = Screen.JAM) },
-                            onAddTracks = { app.openSearch(Screen.JAM) },
+                            onAddTracks = { openJamSearch(Screen.JAM) },
                         )
 
                         Screen.JAM_SETTINGS -> JamSettingsScreen(jam, onDone = { app.go(Screen.JAM) })
