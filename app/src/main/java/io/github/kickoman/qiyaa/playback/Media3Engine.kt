@@ -175,6 +175,15 @@ class Media3Engine(
         player.addMediaItems(at, tracks.map(MediaItems::toMediaItem))
     }
 
+    override fun insertBefore(index: Int, tracks: List<Track>) {
+        val count = player.mediaItemCount
+        val at = index.coerceAtMost(count)
+        val spliced = HeadShuffleOrder.afterSpliceBefore(order, count, at, tracks.size)
+        player.setShuffleOrder(HeadShuffleOrder.staging(order, count, spliced, random, at))
+        order = spliced
+        player.addMediaItems(at, tracks.map(MediaItems::toMediaItem))
+    }
+
     override fun insertHead(index: Int, tracks: List<Track>, after: Int) {
         val count = player.mediaItemCount
         val at = index.coerceAtMost(count)

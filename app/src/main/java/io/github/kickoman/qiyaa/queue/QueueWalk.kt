@@ -8,11 +8,12 @@ object QueueWalk {
         repeatHoldsHead: Boolean,
         leaving: Set<Int> = emptySet(),
         start: Int? = null,
+        from: Int? = null,
     ): Int? {
         val staying = { index: Int -> index !in leaving }
         waiting(entries, current).firstOrNull(staying)?.let { return it }
         startRow(entries, current, start, staying)?.let { return it }
-        val after = after(order, current).filter(staying)
+        val after = after(order, from ?: current).filter { staying(it) && it != current }
         if (repeatHoldsHead) {
             val isHead = { index: Int -> staying(index) && entries.getOrNull(index)?.part == EntryPart.HEAD }
             return after.firstOrNull(isHead) ?: order.firstOrNull(isHead)
@@ -26,11 +27,12 @@ object QueueWalk {
         current: Int,
         repeatHoldsHead: Boolean,
         start: Int? = null,
+        from: Int? = null,
     ): Int {
         if (repeatHoldsHead) return Int.MAX_VALUE
-        val from = start?.takeIf { it != current && it in order }
-        val ahead = from?.let { order.drop(order.indexOf(it)).filter { index -> index != current } }
-            ?: after(order, current)
+        val begin = start?.takeIf { it != current && it in order }
+        val ahead = begin?.let { order.drop(order.indexOf(it)).filter { index -> index != current } }
+            ?: after(order, from ?: current).filter { it != current }
         val rest = ahead.count { index ->
             entries.getOrNull(index)?.let { it.isSpent || it.isWaiting } != true
         }

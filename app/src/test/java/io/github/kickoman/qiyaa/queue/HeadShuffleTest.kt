@@ -136,4 +136,12 @@ class HeadShuffleTest {
         assertEquals(listOf(2, 0, 1), joined.head)
         assertEquals(listOf(2, 0, 1, 3), joined.order)
     }
+
+    @Test
+    fun `ADD-07 tracks inserted before a row of the pass stand right in front of it`() {
+        val pass = HeadShuffle(listOf(0, 3, 1), 5)
+        assertEquals(listOf(0, 3, 4, 5, 1), pass.insertedBefore(3, 2).head)
+        assertEquals(listOf(0, 3, 4, 5, 1, 2, 6), pass.insertedBefore(3, 2).order)
+        assertEquals(pass.inserted(2, 1), pass.insertedBefore(2, 1))
+    }
 }

@@ -28,6 +28,16 @@ data class HeadShuffle(val head: List<Int>, val length: Int) {
         )
     }
 
+    fun insertedBefore(at: Int, count: Int): HeadShuffle {
+        val shifted = inserted(at, count)
+        val split = head.indexOf(at)
+        if (split < 0) return shifted
+        return HeadShuffle(
+            shifted.head.take(split) + (at until at + count) + shifted.head.drop(split),
+            length + count,
+        )
+    }
+
     fun joined(at: Int, count: Int, current: Int, after: Int, random: Random): HeadShuffle {
         val shifted = inserted(at, count)
         if (length == 0) return shifted

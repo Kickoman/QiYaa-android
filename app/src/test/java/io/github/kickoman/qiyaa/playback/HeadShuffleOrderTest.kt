@@ -274,4 +274,13 @@ class HeadShuffleOrderTest {
         assertEquals(listOf(1), joined.head.take(1))
         assertEquals(setOf(0, 1, 2, 4, 5), joined.head.toSet())
     }
+
+    @Test
+    fun `ADD-07 a staged splice before a row is the order Media3 gets when it inserts the items`() {
+        val installed = HeadShuffle(listOf(2, 0, 1), 4)
+        val spliced = HeadShuffleOrder.afterSpliceBefore(installed, 4, 0, 1)
+        val staged = HeadShuffleOrder.staging(installed, 4, spliced, Random(0), at = 0)
+        assertEquals(spliced, (staged.cloneAndInsert(0, 1) as HeadShuffleOrder).shuffle)
+        assertEquals(listOf(3, 0, 1, 2), spliced.head)
+    }
 }

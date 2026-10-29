@@ -385,6 +385,60 @@ class QueueAddTest {
         }
 
     @Test
+    fun `ADD-07 SHUF-01 SHUF-05 a hold mid-pass takes Play next in front of it, played tracks stay played`() =
+        runTest {
+            for (algorithm in ShuffleAlgorithm.entries) {
+                val h = playing(this, "a", "b", "c", "d")
+                h.controller.setShuffleAlgorithm(algorithm)
+                h.controller.setShuffle(true)
+                val drawn = h.engine.tracks[h.engine.playOrder()[1]].id
+                h.controller.add(tracks("x", "z"), "Search", AddPlacement.NEXT)
+                assertEquals(listOf("x"), h.playOn(1))
+                h.controller.removeIndices(setOf(1))
+                assertEquals("z", h.currentId())
+                h.controller.add(tracks("y"), "Search", AddPlacement.NEXT)
+                assertEquals(listOf("a", "y", "z", "b", "c", "d"), h.engine.ids())
+                assertEquals("y", h.currentId())
+                h.controller.next()
+                h.engine.startPlaying()
+                val after = h.playOn(2)
+                assertEquals(algorithm.name, "z", after[0])
+                if (algorithm == ShuffleAlgorithm.RANDOM_TRACK) {
+                    assertEquals(drawn, after[1])
+                } else {
+                    assertEquals(listOf("z", "b"), after)
+                    assertEquals(listOf("c", "d"), h.playOn(2))
+                }
+            }
+        }
+
+    @Test
+    fun `ADD-02 after a played waiting track the user picks, the queue goes on from where it was`() =
+        runTest {
+            for (shuffle in listOf(false, true)) {
+                val h = playing(this, "h1", "h2", "h3", "h4", "h5")
+                h.controller.setShuffle(shuffle)
+                h.controller.add(tracks("x"), "Search", AddPlacement.NEXT)
+                assertEquals(listOf("x", "h2", "h3", "h4"), h.playOn(4))
+                h.engine.seekTo(1)
+                assertEquals("x", h.currentId())
+                assertEquals("shuffle $shuffle", listOf("h5"), h.playOn(1))
+            }
+        }
+
+    @Test
+    fun `ADD-02 a played waiting track picked in the continuation goes on after the last vibe track`() =
+        runTest {
+            val h = QueueHarness.wave(this, "w1", "w2", "w3", "w4", "w5")
+            h.engine.startPlaying()
+            h.controller.add(tracks("x"), "Search", AddPlacement.NEXT)
+            assertEquals(listOf("x", "w2", "w3"), h.playOn(3))
+            h.engine.seekTo(1)
+            assertEquals("x", h.currentId())
+            assertEquals(listOf("w4"), h.playOn(1))
+        }
+
+    @Test
     fun `ADD-07 D8 removing the current track with a head track behind it still plays on`() = runTest {
         val h = playing(this, "a", "b", "c")
         h.controller.add(tracks("y"), "Search", AddPlacement.END)

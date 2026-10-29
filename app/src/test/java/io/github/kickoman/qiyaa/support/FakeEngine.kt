@@ -111,6 +111,11 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
         insert(index, tracks, shuffle.insertedAfter(index, tracks.size))
     }
 
+    override fun insertBefore(index: Int, tracks: List<Track>) {
+        commands += "insert before $index ${tracks.map { it.id }}"
+        insert(index, tracks, shuffle.insertedBefore(index, tracks.size))
+    }
+
     override fun insertHead(index: Int, tracks: List<Track>, after: Int) {
         commands += "insert head $index ${tracks.map { it.id }} after $after"
         insert(index, tracks, shuffle.joined(index, tracks.size, currentIndex, after, joinRandom))

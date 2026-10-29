@@ -69,6 +69,9 @@ class HeadShuffleOrder(
         fun afterSplice(copy: HeadShuffle, itemCount: Int, index: Int, count: Int): HeadShuffle =
             fitted(copy, itemCount).insertedAfter(index.coerceAtMost(itemCount), count)
 
+        fun afterSpliceBefore(copy: HeadShuffle, itemCount: Int, index: Int, count: Int): HeadShuffle =
+            fitted(copy, itemCount).insertedBefore(index.coerceAtMost(itemCount), count)
+
         fun afterJoin(
             copy: HeadShuffle,
             itemCount: Int,
