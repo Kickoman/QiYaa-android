@@ -104,7 +104,11 @@ fun AppRoot(
         val backTarget = screen.backTarget
         LaunchedEffect(screen) { if (screen != Screen.SPOTIFY_LOGIN) spotify.cancelLogin() }
         BackHandler(enabled = backTarget != null) {
-            if (screen == Screen.LOGIN) app.leaveLogin() else backTarget?.let(app::go)
+            when (screen) {
+                Screen.LOGIN -> app.leaveLogin()
+                Screen.SPOTIFY_LOGIN -> spotify.leaveLogin()
+                else -> backTarget?.let(app::go)
+            }
         }
 
         Box(Modifier.fillMaxSize().background(colors.background)) {

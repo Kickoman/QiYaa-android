@@ -103,7 +103,7 @@ fun likeOrUnlikePicked();  fun dislikePicked()
 
 `AppRoot` при `SessionState.Offline` показывает над экраном строку `session_offline` («НЕТ СЕТИ · ПОВТОРЮ САМ») с красным `LedDot`; на экранах входа (`Screen.isLogin`: в Яндекс и в Spotify) строки нет, как и вкладок, мини-плеера и диалога «продолжить джем». Повторы идут сами, кнопки «повторить» нет.
 
-**«Назад».** `Screen.backTarget`: с вкладок EQ, Плейлист и Библиотека — на вкладку «Плеер» (`AppRoot`, `BackHandler`), с комнаты гостя (`JAM_GUEST`) — тоже на «Плеер», с «Добавить треки» гостя (`JAM_GUEST_ADD`) — в комнату, а открытый там плейлист сначала закрывается; с экрана входа — туда, откуда вход открыли (`AppViewModel.leaveLogin()`: Library или экран джема; вход можно отложить, #115, а `go()` при этом отменяет вход; `LOGIN.backTarget` = Library только включает обработчик), со входа в Spotify — в Library (`go(SPOTIFY_LOGIN.backTarget)`, а уход с экрана отменяет оба способа входа, ниже, «Spotify»), с «Плеера» — системное поведение, то есть выход из приложения. Обработчики, объявленные позже, важнее: открытый раздел библиотеки сначала закрывается (`LibrarySectionScreen`), открытый лист пресетов EQ — тоже (`closePresets`), лист действий с треком — тоже (`closeTrackActions`, объявлен после пресетов), и только потом срабатывает переход на «Плеер».
+**«Назад».** `Screen.backTarget`: с вкладок EQ, Плейлист и Библиотека — на вкладку «Плеер» (`AppRoot`, `BackHandler`), с комнаты гостя (`JAM_GUEST`) — тоже на «Плеер», с «Добавить треки» гостя (`JAM_GUEST_ADD`) — в комнату, а открытый там плейлист сначала закрывается; с экрана входа — туда, откуда вход открыли (`AppViewModel.leaveLogin()`: Library или экран джема; вход можно отложить, #115, а `go()` при этом отменяет вход; `LOGIN.backTarget` = Library только включает обработчик), со входа в Spotify — туда, откуда его открыли (`SpotifyViewModel.leaveLogin()`: Library или экран поиска; `SPOTIFY_LOGIN.backTarget` = Library только включает обработчик, а уход с экрана отменяет оба способа входа, ниже, «Spotify»), с «Плеера» — системное поведение, то есть выход из приложения. Обработчики, объявленные позже, важнее: открытый раздел библиотеки сначала закрывается (`LibrarySectionScreen`), открытый лист пресетов EQ — тоже (`closePresets`), лист действий с треком — тоже (`closeTrackActions`, объявлен после пресетов), и только потом срабатывает переход на «Плеер».
 
 `PlaylistScreen` показывает внизу списка строку `playlist_loading_more`, пока `QueueState.loadingMore`, а не всё время, пока играет волна. Когда это так, решает очередь (`queue/README.md`, «Ждёт продолжения»): у своей волны — пока идёт догрузка, у волны по истории — только пока очередь ждёт её треков после конца головы; тихий запрос за два трека до конца головы строку не показывает (CONT-04: без статуса).
 
@@ -231,7 +231,8 @@ data class Found(bestTrack: Track? = null, bestArtist: FoundPick? = null, bestAl
     val isEmpty: Boolean          // показывать нечего: SRC-19
     fun shown(): Found            // недоступные треки прочь, лучший результат один раз
     fun playable(): List<Track>   // лучший трек, затем треки: очередь SRC-18
-    companion object { fun of(result: yandex.SearchResult): Found; fun of(found: SpotifyFound, tracks: List<Track>): Found }   // оба — уже shown()
+    companion object { fun of(result: yandex.SearchResult): Found; fun of(found: SpotifyFound, tracks: List<Track>): Found   // оба — уже shown()
+                       fun metadataUris(found: SpotifyFound): List<String> }   // что спросить у метаданных Spotify: найденные, потерянный лучший трек первым
 }
 ```
 
