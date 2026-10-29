@@ -22,7 +22,7 @@ grep -rn --include='*.kt' '^import io\.github\.kickoman\.qiyaa\.' app/src/main/j
 | `PairLogin.kt` | `PairLogin` — вход кодом на spotify.com/pair (SPOT-01) |
 | `BrowserLogin.kt` | `BrowserLogin` — вход в браузере: PKCE и переход на `127.0.0.1` (SPOT-02) |
 | `SpotifyAccount.kt` | `SpotifyAccount` — вход сохранённый и по токену, отказы, выход (SPOT-03…06); `SavedCredentials` |
-| `SpotifyLibrary.kt` | `SpotifyLibrary` — каталог: выборы SPOT-07…12, метаданные пачками, Pathfinder с хешами, станция и автоплей; `SpotifyItem`, `SpotifyFound`, `SpotifyFoundAlbum`, `SpotifyPick`, `ContextPage` |
+| `SpotifyLibrary.kt` | `SpotifyLibrary` — каталог: выборы SPOT-07…12, метаданные пачками, Pathfinder с хешами, станция и автоплей; `SpotifyItem`, `SpotifyFound`, `SpotifyFoundAlbum`, `ContextPage` |
 | `SpotifyTracks.kt` | `SpotifyTracks` — трек Spotify как `Track`: id, доступность, обложка (SPOT-15, SPOT-19) |
 | `SpotifyFiles.kt` | `SpotifyFiles` — файл трека для игры: `TRACK_V4`, Ogg Vorbis по битрейтам, ключ, `storage-resolve`; кэш на процесс и `askedInOtherQuality` (SPOT-13, SPOT-15, QUAL-05); `SpotifyFile` |
 | `SpotifyStream.kt` | `SpotifyStream` — байты файла с CDN диапазонами: позиции без заголовка 167 байт, расшифровка, ответ 200, переход по ссылкам и второй `storage-resolve` (SPOT-14), отмена — не сбой ссылки; `ReadGuard` |
@@ -346,7 +346,6 @@ class SpotifyLibrary(
     suspend fun artistTopTracks(uri: String): List<Track>
     suspend fun forYou(): List<SpotifyItem>                  // SPOT-10
     suspend fun search(text: String): SpotifyFound           // SPOT-11
-    suspend fun searchPick(text: String): SpotifyPick        // SPOT-11: лучший исполнитель, альбом или найденные треки
     suspend fun station(trackUri: String): ContextPage       // SPOT-12
     suspend fun autoplay(contextUri: String, recentTrackUris: List<String>): ContextPage   // SPOT-20
     suspend fun nextPage(pageUrl: String): ContextPage       // hm://… из ContextPage.next
@@ -354,7 +353,6 @@ class SpotifyLibrary(
 data class SpotifyItem(val uri: String, val name: String)
 data class SpotifyFound(kind: Kind = TRACKS, best: SpotifyItem? = null, trackUris: List<String> = emptyList(), artists: List<SpotifyItem> = emptyList(), albums: List<SpotifyFoundAlbum> = emptyList()) { enum class Kind(key) { ARTIST, ALBUM, TRACK, TRACKS } }   // key — как kind в expected/spotify
 data class SpotifyFoundAlbum(uri: String, name: String, artists: List<String> = emptyList(), year: Int? = null, single: Boolean = false)   // year null — нет или 0
-data class SpotifyPick(val best: SpotifyItem?, val contextUri: String, val tracks: List<Track>)   // best == null — найденные треки
 data class ContextPage(val tracks: List<Track>, val next: String)                                  // next == "" — страница последняя
 ```
 
@@ -371,7 +369,6 @@ data class ContextPage(val tracks: List<Track>, val next: String)               
 | `artistTopTracks(uri)` | `ARTIST_V4` | `Metadata.topTracksIn(artist, session.country)`, первые 10 (`kTopTracks`) |
 | SPOT-10 `forYou` | Pathfinder `home`: `homeEndUserIntegration` `INTEGRATION_DESKTOP`, `timeZone` (пустой — `UTC`), `sp_t` и `facet` пустые, `sectionItemsLimit` 20, `includeEpisodeContentRatingsV2` | плейлисты раздела «Made For You» (`CatalogJson.madeForYou`) |
 | SPOT-11 `search(text)` | Pathfinder `searchDesktop`: `searchTerm` — обрезанный текст, `offset` 0, `limit` 50, `numberOfTopResults` 5, пять `include…` — `false`. Пустой текст — без запроса, `SpotifyFound()` | `CatalogJson.found` |
-| `searchPick(text)` | `search`, потом `artistTopTracks` или `albumTracks` лучшего исполнителя или альбома, иначе (лучший трек тоже) `tracks` найденных | `contextUri` — URI лучшего или первого найденного трека (`catalog.cpp:101–115`), `""` без треков. Пустые `tracks` (или ни одного доступного) — «ничего не найдено» (SRC-12): это решает вызывающий |
 | SPOT-12 `station(trackUri)` | `GET /context-resolve/v1/spotify:station:track:<id>`, `Accept: application/json`, без `product`, `country`, `salt` | первая страница контекста, её `next` |
 | SPOT-20 `autoplay(context, recent)` | `POST /context-resolve/v1/autoplay`, тело — protobuf `{1 context_uri, 2 recent_track_uri…}` (`CatalogMessages.autoplayRequest`, вектор `messages.json`), `Content-Type: application/x-protobuf`, `Accept: application/json`, без `product`, `country`, `salt` | то же. `recent` отбирает вызывающий: начавшиеся треки Spotify, старые первыми, до 50 (корневой `SpotifyContinuations.recentUris`) |
 | `nextPage(url)` | `GET` на spclient по пути `url` без `hm:/` (`hm://radio-apollo/v5/…` → `/radio-apollo/v5/…`), с его запросом как есть, без `product`, `country`, `salt` | страница контекста. Не `hm://` — `SpotifyContentException` без запроса и без `Content`, как у ПК |
@@ -398,7 +395,6 @@ data class ContextPage(val tracks: List<Track>, val next: String)               
 
 **Traps:**
 - Страна аккаунта приходит с AP чуть после входа (`SpotifySession.country`); топ исполнителя до неё — по `""`, затем мировой (ловушка ПК).
-- `searchPick` для лучшего исполнителя или альбома не смотрит найденные треки: у пустого топа исполнителя (страна, где топа нет и мирового тоже) выбор пуст, хотя треки нашлись. Так же у ПК.
 - Коллекция и список читаются страница за страницей, пока сервер говорит «ещё», но не больше `maxPages` (1000) страниц: дальше — `SpotifyContentException` («a collection of more than 1000 pages», «a list of more than 1000 pages») и `Content`. Это сверх ПК, где предела нет и сервер, который всегда отвечает токеном или огромным `length`, держит цикл вечно. 1000 страниц — 300 000 сохранённых треков или 1 000 000 записей списка.
 
 ## `SpotifyTracks`

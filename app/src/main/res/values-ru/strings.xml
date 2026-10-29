@@ -127,7 +127,6 @@
     <string name="library_empty">ПУСТО</string>
     <string name="library_error">ОШИБКА: %1$s</string>
     <string name="queue_search_title">Поиск: %1$s</string>
-    <string name="queue_searching">%1$s…</string>
     <string name="queue_loading">%1$s: загрузка…</string>
     <plurals name="queue_loaded">
         <item quantity="one">%1$s: %2$d трек</item>
@@ -145,7 +144,6 @@
     <string name="queue_wave_started">%1$s: волна запущена</string>
     <string name="queue_added_next">Следом: %1$s</string>
     <string name="queue_added_to_end">В конец: %1$s</string>
-    <string name="queue_nothing_found">Ничего не найдено</string>
     <string name="queue_liked">Добавлено в «Мне нравится»</string>
     <string name="queue_unliked">Убрано из «Мне нравится»</string>
     <string name="queue_disliked">Не нравится · пропускаю</string>
@@ -153,7 +151,6 @@
     <string name="queue_wave_error">Ошибка волны: %1$s</string>
     <string name="queue_wave_more_error">Волна: %1$s</string>
     <string name="queue_autoplay_error">Ошибка автоплея Spotify: %1$s</string>
-    <string name="queue_search_error">Ошибка поиска: %1$s</string>
     <string name="queue_playback_error">Ошибка воспроизведения: %1$s</string>
     <string name="player_service_unavailable">Сервис плеера недоступен</string>
     <string name="error_generic">Ошибка: %1$s</string>
@@ -410,4 +407,32 @@
     <string name="queue_autoplay_on">За этой очередью пойдёт автоплей Spotify</string>
     <string name="player_shuffle_radio">В радио порядок задаёт Spotify · shuffle не действует</string>
     <string name="player_repeat_radio">В радио повтор не действует · радио продолжается само</string>
+    <string name="search_title">Поиск</string>
+    <string name="search_yandex">Яндекс Музыка</string>
+    <string name="search_hint">Исполнитель, альбом или трек</string>
+    <string name="search_intro">Найдите трек, альбом или исполнителя. Нажмите, чтобы сыграть, «+» — чтобы поставить следом или в конец очереди.</string>
+    <string name="search_log_in">%1$s: чтобы искать, войдите в аккаунт.</string>
+    <string name="search_log_in_action">Войти…</string>
+    <string name="search_searching">Ищу…</string>
+    <string name="search_failed">Поиск не удался: %1$s</string>
+    <string name="search_retry">Повторить</string>
+    <string name="search_nothing">Ничего не нашлось</string>
+    <string name="search_no_tracks">Треков нет</string>
+    <string name="search_best">Лучшее</string>
+    <string name="search_tracks">Треки · %1$d</string>
+    <string name="search_artists">Исполнители · %1$d</string>
+    <string name="search_albums">Альбомы · %1$d</string>
+    <string name="search_all">Все</string>
+    <string name="search_fewer">Меньше</string>
+    <string name="search_artist">исполнитель</string>
+    <string name="search_single">сингл</string>
+    <string name="search_popular">популярные треки</string>
+    <string name="search_play_all">Играть всё</string>
+    <string name="search_play">Играть</string>
+    <string name="search_add">Добавить</string>
+    <string name="search_add_next">Играть следом</string>
+    <string name="search_add_end">В конец очереди</string>
+    <string name="search_plays_next">сыграет следом</string>
+    <string name="search_at_end">в конце очереди</string>
+    <string name="search_back">Назад</string>
 </resources>

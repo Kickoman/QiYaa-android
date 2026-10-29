@@ -15,7 +15,6 @@ import io.github.kickoman.qiyaa.errorKindOf
 import io.github.kickoman.qiyaa.queue.Continuation
 import io.github.kickoman.qiyaa.queue.QueueController
 import io.github.kickoman.qiyaa.queue.QueueState
-import io.github.kickoman.qiyaa.queue.SearchPick
 import io.github.kickoman.qiyaa.spotify.BrowserLogin
 import io.github.kickoman.qiyaa.spotify.PairLogin
 import io.github.kickoman.qiyaa.spotify.SpotifyItem
@@ -47,7 +46,6 @@ data class SpotifyUi(
     val access: SpotifyAccess = SpotifyAccess.LOG_IN,
     val canLogOut: Boolean = false,
     val username: String = "",
-    val searchText: String = "",
 )
 
 sealed interface SpotifyCodeStatus {
@@ -110,8 +108,6 @@ interface SpotifyGateway {
     fun autoplay(contextUri: String): Continuation
 
     fun station(trackUri: String): Continuation
-
-    suspend fun searchPick(text: String): SearchPick
 
     fun loggedIn(way: SpotifyLoginWay)
 
@@ -284,16 +280,6 @@ class SpotifyViewModel(
         notice(string(R.string.spotify_logged_out))
     }
 
-    fun setSearchText(text: String) = mutableUi.update { it.copy(searchText = text) }
-
-    fun submitSearch() {
-        val text = mutableUi.value.searchText.trim()
-        if (text.isEmpty()) return
-        mutableUi.update { it.copy(searchText = "") }
-        queue.search(text, string(R.string.queue_search_title, text), spotify::searchPick)
-        move(Screen.PLAYER)
-    }
-
     fun playLiked() {
         val title = string(R.string.spotify_liked_songs)
         notice(string(R.string.queue_loading, title))
@@ -447,8 +433,6 @@ private class GraphSpotify(private val graph: AppGraph) : SpotifyGateway {
     override fun autoplay(contextUri: String): Continuation = graph.spotifyContinuations.autoplay(contextUri)
 
     override fun station(trackUri: String): Continuation = graph.spotifyContinuations.station(trackUri)
-
-    override suspend fun searchPick(text: String): SearchPick = graph.spotifySearch(text)
 
     override fun loggedIn(way: SpotifyLoginWay) {
         graph.telemetry?.spotifyLoggedIn(way)

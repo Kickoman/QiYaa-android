@@ -54,6 +54,8 @@ import io.github.kickoman.qiyaa.ui.screens.LoginScreen
 import io.github.kickoman.qiyaa.ui.screens.PlayerScreen
 import io.github.kickoman.qiyaa.ui.screens.PlaylistScreen
 import io.github.kickoman.qiyaa.ui.screens.PresetsSheet
+import io.github.kickoman.qiyaa.ui.screens.SearchAddSheet
+import io.github.kickoman.qiyaa.ui.screens.SearchScreen
 import io.github.kickoman.qiyaa.ui.screens.SpotifyLoginScreen
 import io.github.kickoman.qiyaa.ui.screens.SpotifySectionScreen
 import io.github.kickoman.qiyaa.ui.screens.TrackActionsSheet
@@ -75,6 +77,7 @@ fun AppRoot(
     jam: JamViewModel = viewModel(),
     guest: JamGuestViewModel = viewModel(),
     spotify: SpotifyViewModel = viewModel(factory = SpotifyViewModel.Factory),
+    search: SearchViewModel = viewModel(factory = SearchViewModel.Factory),
 ) {
     val theme by app.settings.theme.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { player.notices.collect(app::say) }
@@ -89,6 +92,8 @@ fun AppRoot(
         val toast by app.toast.collectAsStateWithLifecycle()
         val presetsOpen by player.presetsOpen.collectAsStateWithLifecycle()
         val trackActions by player.trackActions.collectAsStateWithLifecycle()
+        val searchUi by search.ui.collectAsStateWithLifecycle()
+        val spotifyUi by spotify.ui.collectAsStateWithLifecycle()
         val playerUi by player.ui.collectAsStateWithLifecycle()
         val sessionState by app.sessionState.collectAsStateWithLifecycle()
         val jamState by jam.state.collectAsStateWithLifecycle()
@@ -145,6 +150,10 @@ fun AppRoot(
                                 jamState,
                                 guestOf = (guestState.room?.hostName ?: "…").takeIf { guestOn },
                                 onJam = { app.go(if (guestOn) Screen.JAM_GUEST else Screen.JAM) },
+                                onSearch = { text, source ->
+                                    search.open(text, source)
+                                    app.openSearch(Screen.LIBRARY)
+                                },
                             )
 
                         Screen.JAM -> JamScreen(
@@ -168,6 +177,16 @@ fun AppRoot(
                             guest,
                             onBack = { app.go(Screen.JAM_GUEST) },
                         )
+
+                        Screen.SEARCH -> SearchScreen(
+                            search,
+                            current = playerUi.current,
+                            yandexSignedIn = sessionState.signedIn,
+                            spotifyAccess = spotifyUi.access,
+                            onYandexLogin = { app.openLogin(returnTo = Screen.SEARCH) },
+                            onSpotifyLogin = spotify::openLogin,
+                            onLeave = app::leaveSearch,
+                        )
                     }
                 }
                 val track = playerUi.current
@@ -189,6 +208,13 @@ fun AppRoot(
             if (presetsOpen) {
                 BackHandler { player.closePresets() }
                 PresetsSheet(player)
+            }
+
+            if (screen == Screen.SEARCH) {
+                searchUi.adding?.let { target ->
+                    BackHandler(onBack = search::closeAdd)
+                    SearchAddSheet(target, onAdd = search::add, onClose = search::closeAdd)
+                }
             }
 
             trackActions?.let { actions ->
@@ -305,7 +331,7 @@ private fun TabBar(current: Screen, onSelect: (Screen) -> Unit) {
                     Box(Modifier.weight(1f).height(7.dp).background(color))
                 }
             }
-            Tab(stringResource(R.string.tab_library), current == Screen.LIBRARY, {
+            Tab(stringResource(R.string.tab_library), current == Screen.LIBRARY || current == Screen.SEARCH, {
                 onSelect(Screen.LIBRARY)
             }) { color ->
                 Column(Modifier.size(18.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {

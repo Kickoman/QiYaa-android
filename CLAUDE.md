@@ -103,7 +103,7 @@ Writing rules for READMEs:
   | `playback` | ExoPlayer, MediaSession, the Media3 adapter for `queue`, audio processors, the jam host and its WebSocket transport, the Spotify track's data source | `track`, `queue`, `jam`, `yandex`, `spotify`, `audio`, `data` |
   | `ui` | Compose screens, view models, theme | everything above |
   | `telemetry` | Anonymous statistics and crash reports: events, the crash handler, the run's files, sending, the schedule and the switch | — (pure JVM; only root imports it) |
-  | root | `AppGraph`, `QiYaaApp` (composition root), `NetworkMonitor`, `ScreenPresence` (platform signals), `AppTelemetry`, `TelemetryCodes` (telemetry wiring), `YandexLyrics`, `SourceLyrics` (lyrics sources: Yandex's, and the choice by the track's source), `SpotifySavedCredentials` (`data`'s Spotify store for `spotify`'s account), `SpotifyErrorKinds` (`spotify`'s failures as an `ErrorKind`), `SpotifyContinuations` (`spotify`'s autoplay and station as a `queue.Continuation`, the Spotify search for the queue) | everything |
+  | root | `AppGraph`, `QiYaaApp` (composition root), `NetworkMonitor`, `ScreenPresence` (platform signals), `AppTelemetry`, `TelemetryCodes` (telemetry wiring), `YandexLyrics`, `SourceLyrics` (lyrics sources: Yandex's, and the choice by the track's source), `SpotifySavedCredentials` (`data`'s Spotify store for `spotify`'s account), `SpotifyErrorKinds` (`spotify`'s failures as an `ErrorKind`), `SpotifyContinuations` (`spotify`'s autoplay and station as a `queue.Continuation`, and the autoplay of a track added to an empty queue) | everything |
 
   Dependencies point down the table only. `track`, `yandex`, `spotify` and `audio` are pure JVM
   and must not import `android.*` or `androidx.*`; that keeps them testable on

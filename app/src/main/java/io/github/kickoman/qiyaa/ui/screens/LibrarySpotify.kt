@@ -30,7 +30,11 @@ import io.github.kickoman.qiyaa.ui.theme.Qi
 import io.github.kickoman.qiyaa.ui.theme.mono
 
 @Composable
-internal fun SpotifySources(spotify: SpotifyViewModel, onOpenSection: (LibrarySection) -> Unit) {
+internal fun SpotifySources(
+    spotify: SpotifyViewModel,
+    onOpenSection: (LibrarySection) -> Unit,
+    onSearch: (String) -> Unit,
+) {
     val colors = Qi.colors
     val ui by spotify.ui.collectAsStateWithLifecycle()
     val access = ui.access
@@ -80,7 +84,7 @@ internal fun SpotifySources(spotify: SpotifyViewModel, onOpenSection: (LibrarySe
     }
 
     when (access) {
-        SpotifyAccess.LOGGED_IN -> SpotifyPicks(spotify, onOpenSection)
+        SpotifyAccess.LOGGED_IN -> SpotifyPicks(spotify, onOpenSection, onSearch)
 
         SpotifyAccess.CONNECTING -> SpotifyNote(stringResource(R.string.spotify_connecting), colors.muted)
 
@@ -108,19 +112,18 @@ internal fun SpotifySources(spotify: SpotifyViewModel, onOpenSection: (LibrarySe
 }
 
 @Composable
-private fun SpotifyPicks(spotify: SpotifyViewModel, onOpenSection: (LibrarySection) -> Unit) {
+private fun SpotifyPicks(
+    spotify: SpotifyViewModel,
+    onOpenSection: (LibrarySection) -> Unit,
+    onSearch: (String) -> Unit,
+) {
     val colors = Qi.colors
     val ui by spotify.ui.collectAsStateWithLifecycle()
     val forYou by spotify.forYou.state.collectAsStateWithLifecycle()
     val playlists by spotify.playlists.state.collectAsStateWithLifecycle()
     val albums by spotify.albums.state.collectAsStateWithLifecycle()
     val artists by spotify.artists.state.collectAsStateWithLifecycle()
-    SearchField(
-        ui.searchText,
-        stringResource(R.string.spotify_search_hint),
-        onChange = spotify::setSearchText,
-        onSearch = spotify::submitSearch,
-    )
+    LibrarySearchField(stringResource(R.string.spotify_search_hint), onSearch)
     Column(
         Modifier
             .padding(start = 16.dp, end = 16.dp, top = 10.dp)

@@ -5,7 +5,6 @@ import io.github.kickoman.qiyaa.SpotifyLoginWay
 import io.github.kickoman.qiyaa.queue.Continuation
 import io.github.kickoman.qiyaa.queue.ContinuationKey
 import io.github.kickoman.qiyaa.queue.QueueEvent
-import io.github.kickoman.qiyaa.queue.SearchPick
 import io.github.kickoman.qiyaa.spotify.AuthorizationException
 import io.github.kickoman.qiyaa.spotify.BrowserLogin
 import io.github.kickoman.qiyaa.spotify.NotLoggedInException
@@ -476,33 +475,6 @@ class SpotifyViewModelTest {
         }
 
     @Test
-    fun `SPOT-11 SRC-12 Spotify's search goes through its own pick, never Yandex's`() = runTest {
-        val subject = Subject(this)
-        loggedIn()
-        subject.model.submitSearch()
-        subject.model.setSearchText("   ")
-        subject.model.submitSearch()
-        runCurrent()
-        assertEquals(emptyList<String>(), spotify.calls)
-
-        subject.model.setSearchText("  кино ")
-        subject.model.submitSearch()
-        runCurrent()
-
-        assertEquals(listOf("searchPick кино"), spotify.calls)
-        assertEquals(emptyList<String>(), subject.harness.source.calls)
-        assertEquals(
-            listOf(
-                QueueEvent.SearchStarted("queue_search_title(кино)"),
-                QueueEvent.SourceLoaded("Кино", 1),
-            ),
-            subject.harness.events,
-        )
-        assertEquals("", subject.model.ui.value.searchText)
-        assertEquals(listOf(Screen.PLAYER.name), subject.moves)
-    }
-
-    @Test
     fun `SPOT-12 Radio plays the track's station under its title with a source of its own`() = runTest {
         val subject = Subject(this)
         val track = spotify("6PCoZdjSPbRMehHviTrpB3").copy(title = "Кукушка")
@@ -627,9 +599,6 @@ class SpotifyViewModelTest {
                 replies(listOf(spotify("r1"), spotify("r2")))
             }
         }
-
-        override suspend fun searchPick(text: String): SearchPick =
-            called("searchPick $text") { SearchPick(listOf(spotify("s1")), "Кино") }
 
         override fun loggedIn(way: SpotifyLoginWay) {
             calls += "telemetry $way"

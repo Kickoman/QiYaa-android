@@ -3,8 +3,6 @@ package io.github.kickoman.qiyaa
 import io.github.kickoman.qiyaa.queue.ContinuationKey
 import io.github.kickoman.qiyaa.spotify.ContextPage
 import io.github.kickoman.qiyaa.spotify.SpotifyContentException
-import io.github.kickoman.qiyaa.spotify.SpotifyItem
-import io.github.kickoman.qiyaa.spotify.SpotifyPick
 import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.track.TrackSource
 import kotlinx.coroutines.test.runTest
@@ -100,24 +98,6 @@ class SpotifyContinuationsTest {
         }
 
     @Test
-    fun `SPOT-11 a search pick has the best result's name and its autoplay, found tracks no name`() =
-        runTest {
-            val artist = SpotifyItem("spotify:artist:a", "Кино")
-            catalog.pick = SpotifyPick(artist, "spotify:artist:a", listOf(spotify("t1")))
-            val best = continuations.searchPick("кино")
-            assertEquals("Кино", best.name)
-            assertEquals(listOf("t1"), best.tracks.map(Track::id))
-            assertEquals(autoplayOf("spotify:artist:a"), best.continuation?.key)
-            catalog.pick = SpotifyPick(null, "spotify:track:t2", listOf(spotify("t2"), spotify("t3")))
-            val found = continuations.searchPick("песня")
-            assertEquals("", found.name)
-            assertEquals(autoplayOf("spotify:track:t2"), found.continuation?.key)
-            catalog.pick = SpotifyPick(null, "", emptyList())
-            assertNull(continuations.searchPick("ничего").continuation)
-            assertEquals(listOf("search кино", "search песня", "search ничего"), catalog.calls)
-        }
-
-    @Test
     fun `ADD-05 an added Spotify track brings autoplay from its own URI, other tracks none`() {
         assertEquals(autoplayOf("spotify:track:t9"), continuations.autoplayFrom(spotify("t9"))?.key)
         assertNull(continuations.autoplayFrom(Track(id = "42", title = "Yandex 42")))
@@ -132,7 +112,6 @@ class SpotifyContinuationsTest {
         val calls = ArrayList<String>()
         val pages = ArrayDeque<ContextPage>()
         var failure: Exception? = null
-        var pick = SpotifyPick(null, "", emptyList())
 
         override suspend fun autoplay(contextUri: String, recentTrackUris: List<String>): ContextPage {
             calls += "autoplay $contextUri $recentTrackUris"
@@ -147,11 +126,6 @@ class SpotifyContinuationsTest {
         override suspend fun nextPage(pageUrl: String): ContextPage {
             calls += "next $pageUrl"
             return page()
-        }
-
-        override suspend fun searchPick(text: String): SpotifyPick {
-            calls += "search $text"
-            return pick
         }
 
         private fun page(): ContextPage {
