@@ -156,6 +156,8 @@
     </plurals>
     <string name="queue_empty">%1$s: empty</string>
     <string name="queue_wave_started">%1$s: vibe started</string>
+    <string name="queue_added_next">Plays next: %1$s</string>
+    <string name="queue_added_to_end">Added to the end: %1$s</string>
     <string name="queue_nothing_found">Nothing found</string>
     <string name="queue_liked">Added to Liked</string>
     <string name="queue_unliked">Removed from Liked</string>

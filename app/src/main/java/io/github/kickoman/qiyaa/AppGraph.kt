@@ -154,6 +154,7 @@ class AppGraph(val context: Context) {
             continueWithVibeByDefault = { settings.continueWithVibe.value },
             errorKindOf = ::errorKindOf,
             continuationOf = spotifyContinuations::of,
+            autoplayFrom = spotifyContinuations::autoplayFrom,
         ).also { controller ->
             mainScope.launch(start = CoroutineStart.UNDISPATCHED) {
                 settings.shuffleAlgorithm.collect { controller.setShuffleAlgorithm(algorithmOf(it)) }
