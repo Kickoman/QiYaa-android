@@ -22,7 +22,7 @@ grep -rn --include='*.kt' '^import io\.github\.kickoman\.qiyaa\.' app/src/main/j
 | `PairLogin.kt` | `PairLogin` — вход кодом на spotify.com/pair (SPOT-01) |
 | `BrowserLogin.kt` | `BrowserLogin` — вход в браузере: PKCE и переход на `127.0.0.1` (SPOT-02) |
 | `SpotifyAccount.kt` | `SpotifyAccount` — вход сохранённый и по токену, отказы, выход (SPOT-03…06); `SavedCredentials` |
-| `SpotifyLibrary.kt` | `SpotifyLibrary` — каталог: выборы SPOT-07…12, метаданные пачками, Pathfinder с хешами, станция и автоплей; `SpotifyItem`, `SpotifyFound`, `SpotifyPick`, `ContextPage` |
+| `SpotifyLibrary.kt` | `SpotifyLibrary` — каталог: выборы SPOT-07…12, метаданные пачками, Pathfinder с хешами, станция и автоплей; `SpotifyItem`, `SpotifyFound`, `SpotifyFoundAlbum`, `SpotifyPick`, `ContextPage` |
 | `SpotifyTracks.kt` | `SpotifyTracks` — трек Spotify как `Track`: id, доступность, обложка (SPOT-15, SPOT-19) |
 | `SpotifyFiles.kt` | `SpotifyFiles` — файл трека для игры: `TRACK_V4`, Ogg Vorbis по битрейтам, ключ, `storage-resolve`; кэш на процесс и `askedInOtherQuality` (SPOT-13, SPOT-15, QUAL-05); `SpotifyFile` |
 | `SpotifyStream.kt` | `SpotifyStream` — байты файла с CDN диапазонами: позиции без заголовка 167 байт, расшифровка, ответ 200, переход по ссылкам и второй `storage-resolve` (SPOT-14), отмена — не сбой ссылки; `ReadGuard` |
@@ -352,7 +352,8 @@ class SpotifyLibrary(
     suspend fun nextPage(pageUrl: String): ContextPage       // hm://… из ContextPage.next
 }
 data class SpotifyItem(val uri: String, val name: String)
-sealed interface SpotifyFound { val trackUris: List<String>; Artist(best, trackUris); Album(best, trackUris); Tracks(trackUris) }
+data class SpotifyFound(kind: Kind = TRACKS, best: SpotifyItem? = null, trackUris: List<String>, artists: List<SpotifyItem>, albums: List<SpotifyFoundAlbum>) { enum class Kind(key) { ARTIST, ALBUM, TRACK, TRACKS } }   // key — как kind в expected/spotify
+data class SpotifyFoundAlbum(uri: String, name: String, artists: List<String>, year: Int? = null, single: Boolean = false)   // year null — нет или 0
 data class SpotifyPick(val best: SpotifyItem?, val contextUri: String, val tracks: List<Track>)   // best == null — найденные треки
 data class ContextPage(val tracks: List<Track>, val next: String)                                  // next == "" — страница последняя
 ```
@@ -369,8 +370,8 @@ data class ContextPage(val tracks: List<Track>, val next: String)               
 | `albumTracks(uri)` | `ALBUM_V4` | треки диск за диском в порядке полей 11; альбом без метаданных — пустой список без ошибки |
 | `artistTopTracks(uri)` | `ARTIST_V4` | `Metadata.topTracksIn(artist, session.country)`, первые 10 (`kTopTracks`) |
 | SPOT-10 `forYou` | Pathfinder `home`: `homeEndUserIntegration` `INTEGRATION_DESKTOP`, `timeZone` (пустой — `UTC`), `sp_t` и `facet` пустые, `sectionItemsLimit` 20, `includeEpisodeContentRatingsV2` | плейлисты раздела «Made For You» (`CatalogJson.madeForYou`) |
-| SPOT-11 `search(text)` | Pathfinder `searchDesktop`: `searchTerm` — обрезанный текст, `offset` 0, `limit` 50, `numberOfTopResults` 5, пять `include…` — `false`. Пустой текст — без запроса, `Tracks(emptyList())` | `CatalogJson.found` |
-| `searchPick(text)` | `search`, потом `artistTopTracks` или `albumTracks` лучшего, иначе `tracks` найденных | `contextUri` — URI лучшего или первого найденного трека (`catalog.cpp:101–115`), `""` без треков. Пустые `tracks` (или ни одного доступного) — «ничего не найдено» (SRC-12): это решает вызывающий |
+| SPOT-11 `search(text)` | Pathfinder `searchDesktop`: `searchTerm` — обрезанный текст, `offset` 0, `limit` 50, `numberOfTopResults` 5, пять `include…` — `false`. Пустой текст — без запроса, `SpotifyFound()` | `CatalogJson.found` |
+| `searchPick(text)` | `search`, потом `artistTopTracks` или `albumTracks` лучшего исполнителя или альбома, иначе (лучший трек тоже) `tracks` найденных | `contextUri` — URI лучшего или первого найденного трека (`catalog.cpp:101–115`), `""` без треков. Пустые `tracks` (или ни одного доступного) — «ничего не найдено» (SRC-12): это решает вызывающий |
 | SPOT-12 `station(trackUri)` | `GET /context-resolve/v1/spotify:station:track:<id>`, `Accept: application/json`, без `product`, `country`, `salt` | первая страница контекста, её `next` |
 | SPOT-20 `autoplay(context, recent)` | `POST /context-resolve/v1/autoplay`, тело — protobuf `{1 context_uri, 2 recent_track_uri…}` (`CatalogMessages.autoplayRequest`, вектор `messages.json`), `Content-Type: application/x-protobuf`, `Accept: application/json`, без `product`, `country`, `salt` | то же. `recent` отбирает вызывающий: начавшиеся треки Spotify, старые первыми, до 50 (корневой `SpotifyContinuations.recentUris`) |
 | `nextPage(url)` | `GET` на spclient по пути `url` без `hm:/` (`hm://radio-apollo/v5/…` → `/radio-apollo/v5/…`), с его запросом как есть, без `product`, `country`, `salt` | страница контекста. Не `hm://` — `SpotifyContentException` без запроса и без `Content`, как у ПК |
@@ -437,7 +438,7 @@ data class ContextUris(val trackUris: List<String>, val next: String)
 
 - Контекст: при `pages` читается первая страница, иначе сам корень; `trackUris` — `uri` из `tracks` с `spotify:track:`, `next` — `next_page_url` или `""`.
 - Главная: плейлисты — `sectionItems.items[].content.data` раздела `MADE_FOR_YOU` с `__typename` `Playlist`; без раздела — пустой список.
-- Поиск: `trackUris` — `tracksV2.items[].item.data.uri` (или `item.uri`, когда у `item` нет `data`) с `spotify:track:`; лучший — только `topResultsV2.itemsV2[0]`: `Artist` с `spotify:artist:` — `Artist` (имя — `profile.name`), `Album` с `spotify:album:` — `Album`, иначе `Tracks`.
+- Поиск: `trackUris` — `tracksV2.items[].item.data.uri` (или `item.uri`, когда у `item` нет `data`) с `spotify:track:`; лучший — только `topResultsV2.itemsV2[0]`: `Artist` с `spotify:artist:` — `ARTIST` (имя — `profile.name`), `Track` с `spotify:track:` — `TRACK` (имя — `name`), `Album` с `spotify:album:` — `ALBUM`, иначе `TRACKS` без лучшего. Исполнители — `artists.items[]` (через `item`, когда он есть, затем `data`) с `spotify:artist:`: `uri` и `profile.name`; альбомы — так же `albumsV2.items[]` с `spotify:album:`: `uri`, `name`, `profile.name` каждого из `artists.items`, `date.year` (не число, дробное или 0 — `null`), `single` при `type` `SINGLE`. Форма `artists` и `albumsV2` написана по веб-клиенту Pathfinder и в живом ответе не проверена (SPOT-11 «not checked»).
 
 ## `SpotifyFiles`
 

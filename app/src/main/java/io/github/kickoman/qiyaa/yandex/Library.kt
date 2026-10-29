@@ -13,6 +13,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 
@@ -206,8 +207,9 @@ class Library(val api: YandexApi) : AccountGateway {
         val result = api.getJson("/search", query).objectOrEmpty
         val best = result["best"].objectOrEmpty
         val bestItem = best["result"].objectOrEmpty
+        val bestType = bestTypeOf(best.string("type"))
         return SearchResult(
-            bestType = bestTypeOf(best.string("type")),
+            bestType = bestType,
             bestId = idString(bestItem["id"]),
             bestName = if (bestItem.containsKey(
                     "name",
@@ -218,8 +220,25 @@ class Library(val api: YandexApi) : AccountGateway {
                 bestItem.string("title")
             },
             tracks = TrackParsing.parseTrackArray(result["tracks"].objectOrEmpty["results"]),
+            bestTrack = if (bestType == SEARCH_BEST_TRACK) TrackParsing.parseTrack(bestItem) else null,
+            artists = result["artists"].objectOrEmpty["results"].arrayOrEmpty.map { element ->
+                val artist = element.objectOrEmpty
+                NamedRef(idString(artist["id"]), artist.string("name"))
+            },
+            albums = result["albums"].objectOrEmpty["results"].arrayOrEmpty
+                .map { it.objectOrEmpty }
+                .filter { it.string("metaType") == ALBUM_MUSIC && it.boolean("available", true) }
+                .map(::foundAlbum),
         )
     }
+
+    private fun foundAlbum(album: JsonObject): FoundAlbum = FoundAlbum(
+        id = idString(album["id"]),
+        title = album.string("title"),
+        artists = album["artists"].arrayOrEmpty.map { it.objectOrEmpty.string("name") },
+        year = (album["year"] as? JsonPrimitive)?.doubleOrNull?.toInt(),
+        single = album.string("type") == ALBUM_SINGLE,
+    )
 
     /** Tracks only, as a jam host searches for its guests (HOST-28). */
     suspend fun searchTracks(text: String): List<Track> {
@@ -308,7 +327,10 @@ class Library(val api: YandexApi) : AccountGateway {
         const val LANDING_PERSONAL_PLAYLISTS = "personalplaylists"
         const val WHEEL_CONTEXT_WAVE = "WAVE"
         const val SEARCH_BEST_OTHER = "other"
-        val SEARCH_BEST_TYPES = setOf("artist", "album", "track", "playlist")
+        const val SEARCH_BEST_TRACK = "track"
+        const val ALBUM_MUSIC = "music"
+        const val ALBUM_SINGLE = "single"
+        val SEARCH_BEST_TYPES = setOf("artist", "album", SEARCH_BEST_TRACK, "playlist")
         private val CLIENT_ERRORS = 400..499
 
         fun parseWaveBatch(result: JsonElement): WaveBatch {

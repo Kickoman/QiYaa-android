@@ -8,6 +8,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.intOrNull
 
 data class ContextUris(val trackUris: List<String>, val next: String)
 
@@ -50,20 +51,48 @@ object CatalogJson {
         val trackUris = search.items(TRACKS_V2)
             .map { dataOf(it.obj()[ITEM].obj()).text(URI) }
             .filter { it.startsWith(Ids.TRACK_URI_PREFIX) }
+        val artists = search.items(ARTISTS)
+            .map(::foundItem)
+            .filter { it.text(URI).startsWith(Ids.ARTIST_URI_PREFIX) }
+            .map { SpotifyItem(it.text(URI), it[PROFILE].obj().text(NAME)) }
+        val albums = search.items(ALBUMS_V2)
+            .map(::foundItem)
+            .filter { it.text(URI).startsWith(Ids.ALBUM_URI_PREFIX) }
+            .map(::foundAlbum)
         val top = search[TOP_RESULTS].obj()[TOP_ITEMS].array()
-        if (top.isEmpty()) return SpotifyFound.Tracks(trackUris)
-        val best = dataOf(top.first().obj()[ITEM].obj())
+        val best = top.firstOrNull()?.let { dataOf(it.obj()[ITEM].obj()) } ?: JsonObject(emptyMap())
         val uri = best.text(URI)
-        return when {
-            best.text(TYPENAME) == ARTIST && uri.startsWith(Ids.ARTIST_URI_PREFIX) ->
-                SpotifyFound.Artist(SpotifyItem(uri, best[PROFILE].obj().text(NAME)), trackUris)
+        val (kind, item) =
+            when {
+                best.text(TYPENAME) == ARTIST && uri.startsWith(Ids.ARTIST_URI_PREFIX) ->
+                    SpotifyFound.Kind.ARTIST to SpotifyItem(uri, best[PROFILE].obj().text(NAME))
 
-            best.text(TYPENAME) == ALBUM && uri.startsWith(Ids.ALBUM_URI_PREFIX) ->
-                SpotifyFound.Album(SpotifyItem(uri, best.text(NAME)), trackUris)
+                best.text(TYPENAME) == TRACK && uri.startsWith(Ids.TRACK_URI_PREFIX) ->
+                    SpotifyFound.Kind.TRACK to SpotifyItem(uri, best.text(NAME))
 
-            else -> SpotifyFound.Tracks(trackUris)
-        }
+                best.text(TYPENAME) == ALBUM && uri.startsWith(Ids.ALBUM_URI_PREFIX) ->
+                    SpotifyFound.Kind.ALBUM to SpotifyItem(uri, best.text(NAME))
+
+                else -> SpotifyFound.Kind.TRACKS to null
+            }
+        return SpotifyFound(kind, item, trackUris, artists, albums)
     }
+
+    private fun foundItem(element: JsonElement): JsonObject {
+        val wrapper = element.obj()
+        return dataOf(if (ITEM in wrapper) wrapper[ITEM].obj() else wrapper)
+    }
+
+    private fun foundAlbum(album: JsonObject): SpotifyFoundAlbum = SpotifyFoundAlbum(
+        uri = album.text(URI),
+        name = album.text(NAME),
+        artists = album[ARTISTS].obj()[ITEMS].array().map { it.obj()[PROFILE].obj().text(NAME) },
+        year = yearOf(album[DATE].obj()[YEAR]),
+        single = album.text(TYPE) == SINGLE,
+    )
+
+    private fun yearOf(value: JsonElement?): Int? =
+        (value as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull?.takeIf { it != 0 }
 
     private fun dataOf(wrapper: JsonObject): JsonObject =
         if (DATA in wrapper) wrapper[DATA].obj() else wrapper
@@ -100,4 +129,11 @@ object CatalogJson {
     private const val TOP_ITEMS = "itemsV2"
     private const val ITEM = "item"
     private const val PROFILE = "profile"
+    private const val TRACK = "Track"
+    private const val ARTISTS = "artists"
+    private const val ALBUMS_V2 = "albumsV2"
+    private const val DATE = "date"
+    private const val YEAR = "year"
+    private const val TYPE = "type"
+    private const val SINGLE = "SINGLE"
 }

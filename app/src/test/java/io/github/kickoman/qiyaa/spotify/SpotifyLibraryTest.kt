@@ -305,7 +305,7 @@ class SpotifyLibraryTest {
             SpotifyPick(best = null, contextUri = "", tracks = emptyList()),
             library.searchPick("zzz"),
         )
-        assertEquals(SpotifyFound.Tracks(emptyList()), library.search(" \t "))
+        assertEquals(SpotifyFound(), library.search(" \t "))
         assertEquals(1, stack.requests(SpotifyWeb.PATHFINDER_PATH).size)
         assertEquals(0, stack.requests(SpotifyLibrary.METADATA_PATH).size)
     }
@@ -321,7 +321,7 @@ class SpotifyLibraryTest {
                     replies.removeFirstOrNull() ?: "best-album",
                 ).response()
             }
-            assertTrue(library.search("double") is SpotifyFound.Album)
+            assertEquals(SpotifyFound.Kind.ALBUM, library.search("double").kind)
             assertEquals(
                 SpotifyLibrary.SEARCH_HASHES.take(3),
                 stack.requests(SpotifyWeb.PATHFINDER_PATH).map {

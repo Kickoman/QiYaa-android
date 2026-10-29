@@ -19,15 +19,23 @@ import kotlinx.serialization.json.putJsonObject
 
 data class SpotifyItem(val uri: String, val name: String)
 
-sealed interface SpotifyFound {
-    val trackUris: List<String>
-
-    data class Artist(val best: SpotifyItem, override val trackUris: List<String>) : SpotifyFound
-
-    data class Album(val best: SpotifyItem, override val trackUris: List<String>) : SpotifyFound
-
-    data class Tracks(override val trackUris: List<String>) : SpotifyFound
+data class SpotifyFound(
+    val kind: Kind = Kind.TRACKS,
+    val best: SpotifyItem? = null,
+    val trackUris: List<String> = emptyList(),
+    val artists: List<SpotifyItem> = emptyList(),
+    val albums: List<SpotifyFoundAlbum> = emptyList(),
+) {
+    enum class Kind(val key: String) { ARTIST("artist"), ALBUM("album"), TRACK("track"), TRACKS("tracks") }
 }
+
+data class SpotifyFoundAlbum(
+    val uri: String,
+    val name: String,
+    val artists: List<String> = emptyList(),
+    val year: Int? = null,
+    val single: Boolean = false,
+)
 
 data class SpotifyPick(val best: SpotifyItem?, val contextUri: String, val tracks: List<Track>)
 
@@ -108,7 +116,7 @@ class SpotifyLibrary(
 
     suspend fun search(text: String): SpotifyFound {
         val term = text.trim()
-        if (term.isEmpty()) return SpotifyFound.Tracks(emptyList())
+        if (term.isEmpty()) return SpotifyFound()
         val variables =
             buildJsonObject {
                 put("searchTerm", term)
@@ -125,14 +133,20 @@ class SpotifyLibrary(
         return CatalogJson.found(data) ?: throw pathfinderUnreadable("$SEARCH_OPERATION without searchV2")
     }
 
-    suspend fun searchPick(text: String): SpotifyPick = when (val found = search(text)) {
-        is SpotifyFound.Artist -> SpotifyPick(found.best, found.best.uri, artistTopTracks(found.best.uri))
+    suspend fun searchPick(text: String): SpotifyPick {
+        val found = search(text)
+        val best = found.best
+        return when {
+            found.kind == SpotifyFound.Kind.ARTIST && best != null ->
+                SpotifyPick(best, best.uri, artistTopTracks(best.uri))
 
-        is SpotifyFound.Album -> SpotifyPick(found.best, found.best.uri, albumTracks(found.best.uri))
+            found.kind == SpotifyFound.Kind.ALBUM && best != null ->
+                SpotifyPick(best, best.uri, albumTracks(best.uri))
 
-        is SpotifyFound.Tracks -> {
-            val contextUri = found.trackUris.firstOrNull().orEmpty()
-            SpotifyPick(best = null, contextUri = contextUri, tracks = tracks(found.trackUris))
+            else -> {
+                val contextUri = found.trackUris.firstOrNull().orEmpty()
+                SpotifyPick(best = null, contextUri = contextUri, tracks = tracks(found.trackUris))
+            }
         }
     }
 

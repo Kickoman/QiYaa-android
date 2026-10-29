@@ -25,6 +25,17 @@ data class SearchResult(
     val bestId: String = "",
     val bestName: String = "",
     val tracks: List<Track> = emptyList(),
+    val bestTrack: Track? = null,
+    val artists: List<NamedRef> = emptyList(),
+    val albums: List<FoundAlbum> = emptyList(),
+)
+
+data class FoundAlbum(
+    val id: String,
+    val title: String,
+    val artists: List<String> = emptyList(),
+    val year: Int? = null,
+    val single: Boolean = false,
 )
 
 data class DownloadVariant(
