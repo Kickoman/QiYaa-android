@@ -27,6 +27,7 @@ ui/
 | `QueueNotices.kt` | `QueueState.fromSpotify`, `continueNotice`, `lockedShuffleNotice`, `lockedRepeatNotice` — тосты «продолжать волной», shuffle и повтора: у очереди Spotify свои (`QueueNoticesTest`) |
 | `LinkRouting.kt` | `HostSide`, `GuestSide`, `LinkRefusal`, `LinkAction`, `route(…)`, `GuestPhase.isSession` — решение, что делать со ссылкой на джем (GUEST-01, GUEST-20, GUEST-21) |
 | `LocalAccess.kt` | `LocalAccess` (`GRANTED`, `ASK`, `ASK_AGAIN`, `SETTINGS`), `LocalAccessRule` — что предлагает раздел «Свои файлы» до и после ответа на запрос разрешения (LOCAL-10, чистые функции, `LocalAccessTest`) |
+| `SearchModel.kt` | `FoundPick`, `Found` (`of(yandex.SearchResult)`, `of(SpotifyFound, треки)`, `shown()`, `playable()`, `isEmpty`) — что показывает поиск (ниже, «Поиск»; `SearchModelTest`) |
 | `ListLoader.kt` | `ListState` (`Idle`, `Loading`, `Loaded(items)`, `Failed(error)`), `ListLoader` — загрузка одного списка библиотеки со своей ошибкой и повтором |
 | `PlayerViewModel.kt` | `PlayerUi`, `TrackActions`, `PlayerViewModel`, `AccentTheme.labelId` |
 | `JamViewModel.kt` | `JamUi`, `JamViewModel` — хозяин джема для экранов: `playback/JamHost`, поиск треков для джема, настройки `jam/*` |
@@ -219,6 +220,24 @@ Liked Songs ещё и сразу показывает `queue_loading` («Люб�
 - `moves` — канал с буфером, а не `SharedFlow`: переход после токена приходит, когда приложение в фоне (пользователь ещё в браузере), и не должен потеряться.
 - `notices` — тоже канал с буфером, а не `SharedFlow` без подписчиков: тост, отложенный до экрана (`noticeOnScreen`), уходит в `onStart` новой Activity, а `AppRoot` подписывается на него позже, когда композиция прикреплена к окну (после `onResume`). Так бывает, если Activity пересоздалась, пока пользователь был в браузере (поворот, тема, язык); `tryEmit` в `SharedFlow` его бы потерял.
 - `onState` читает `hasSavedLogin()` (SharedPreferences, `data/SpotifyStore`) на главном потоке, только при смене состояния. Поэтому и `canLogOut` пересчитывается только тогда: вход сохраняется на `APWelcome`, к `Online` он уже есть.
+
+## Поиск
+
+```kotlin
+data class FoundPick(kind: Kind /* ARTIST, ALBUM */, id: String, name: String, artists: List<String> = emptyList(), year: Int? = null, single: Boolean = false)   // id — id Яндекса или URI Spotify
+data class Found(bestTrack: Track? = null, bestArtist: FoundPick? = null, bestAlbum: FoundPick? = null, tracks: List<Track>, artists: List<FoundPick>, albums: List<FoundPick>) {
+    val isEmpty: Boolean          // показывать нечего: SRC-19
+    fun shown(): Found            // недоступные треки прочь, лучший результат один раз
+    fun playable(): List<Track>   // лучший трек, затем треки: очередь SRC-18
+    companion object { fun of(result: yandex.SearchResult): Found; fun of(found: SpotifyFound, tracks: List<Track>): Found }   // оба — уже shown()
+}
+```
+
+Что показывает поиск (`spec/player/sources.md`, «Search», SRC-13; Spotify — SPOT-11), как `Core::SearchResults` и `Core::Shown` ПК. Лучший результат — исполнитель или альбом с непустым id или доступный трек; лучший плейлист, подкаст и что угодно другое не показываются. Лучший альбом берёт исполнителей, год и «сингл» из своей строки в альбомах ответа, если она там есть. Части оставляют без записи с id лучшего результата, треки — без недоступных и без трека с ключом лучшего. У Spotify лучший трек — найденный трек с URI лучшего (`SpotifyTracks.uriOf`); если его метаданных нет, лучшего трека нет, а остальные треки остаются.
+
+**Traps:**
+- `of` уже зовёт `shown()`: снова звать не нужно, но и не вредно.
+- `isEmpty` смотрит на показанное: ответ из одних недоступных треков — «ничего не найдено».
 
 ## Джем
 

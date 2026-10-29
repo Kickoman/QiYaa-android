@@ -263,14 +263,24 @@ class YandexApiTest {
     }
 
     @Test
-    fun `search results match the spec for artist, album, track, playlist and no best result`() =
+    fun `SRC-13 search results match the spec for every best result, all parts and the album filter`() =
         runBlocking {
-            for (case in listOf("best-artist", "best-album", "best-track", "best-playlist", "no-best")) {
+            val cases =
+                listOf(
+                    "best-artist",
+                    "best-album",
+                    "best-track",
+                    "best-playlist",
+                    "no-best",
+                    "all-parts",
+                    "album-filter",
+                )
+            for (case in cases) {
                 route("GET", "/search", Spec.fixture("search", case))
                 val result = library.search("кино")
                 assertEquals(
                     "search/$case",
-                    SpecJson.expectedTracks(Spec.expected("search", case)),
+                    SpecJson.expectedSearch(Spec.expected("search", case)),
                     SpecJson.search(result),
                 )
             }
@@ -292,11 +302,26 @@ class YandexApiTest {
     }
 
     @Test
+    fun `SRC-13 an album's year 0 is no year, a year sent as a string is still its number`() = runBlocking {
+        routes["GET /search"] =
+            MockResponse().setBody(
+                """{"result": {"albums": {"results": [
+                    {"id": 1, "title": "Zero", "metaType": "music", "year": 0},
+                    {"id": 2, "title": "Text", "metaType": "music", "year": "1989"},
+                    {"id": 3, "title": "None", "metaType": "music"}
+                ]}}}""",
+            )
+        val albums = library.search("кино").albums
+        assertEquals(listOf(null, 1989, null), albums.map { it.year })
+        assertEquals(listOf("1", "2", "3"), albums.map { it.id })
+    }
+
+    @Test
     fun `a best result of another type is reported as other`() = runBlocking {
         route("GET", "/search", Spec.fixture("search", "best-podcast"))
         val result = library.search("кино")
         assertEquals(
-            SpecJson.expectedTracks(Spec.expected("search", "best-podcast")),
+            SpecJson.expectedSearch(Spec.expected("search", "best-podcast")),
             SpecJson.search(result),
         )
     }

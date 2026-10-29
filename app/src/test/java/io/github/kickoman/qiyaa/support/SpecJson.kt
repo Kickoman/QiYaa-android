@@ -149,6 +149,30 @@ object SpecJson {
         put("bestId", result.bestId)
         put("bestName", result.bestName)
         put("tracks", JsonArray(result.tracks.map(::track)))
+        put("bestTrack", result.bestTrack?.let(::track) ?: JsonNull)
+        put("artists", named("artists", result.artists).getValue("artists"))
+        put(
+            "albums",
+            buildJsonArray {
+                for (album in result.albums) {
+                    add(
+                        buildJsonObject {
+                            put("id", album.id)
+                            put("title", album.title)
+                            put("artists", buildJsonArray { album.artists.forEach { add(it) } })
+                            put("year", album.year?.let(::JsonPrimitive) ?: JsonNull)
+                            put("single", album.single)
+                        },
+                    )
+                }
+            },
+        )
+    }
+
+    fun expectedSearch(expected: JsonObject): JsonObject = buildJsonObject {
+        for ((key, value) in expectedTracks(expected)) {
+            put(key, if (key == "bestTrack" && value is JsonObject) expectedTrack(value) else value)
+        }
     }
 
     fun string(element: JsonElement?): String? = (element as? JsonPrimitive)?.contentOrNull

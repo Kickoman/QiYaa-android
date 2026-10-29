@@ -296,6 +296,47 @@ class SpotifyLibraryTest {
         }
 
     @Test
+    fun `SPOT-11 artists and albums are read through item when there is one, a year 0 is no year`() =
+        runBlocking {
+            val (stack, library) = online()
+            stack.route("POST", SpotifyWeb.PATHFINDER_PATH) {
+                SpotifyStack.json(
+                    Json.parseToJsonElement(
+                        """{"data": {"searchV2": {
+                            "artists": {"items": [
+                                {"item": {"data": {"uri": "spotify:artist:a1", "profile": {"name": "Wrapped"}}}},
+                                {"data": {"uri": "spotify:artist:a2", "profile": {"name": "Plain"}}},
+                                {"item": {"uri": "spotify:artist:a3", "profile": {"name": "No data"}}}
+                            ]},
+                            "albumsV2": {"items": [
+                                {"item": {"data": {"uri": "spotify:album:b1", "name": "Zero", "date": {"year": 0}}}},
+                                {"data": {"uri": "spotify:album:b2", "name": "Text", "date": {"year": "1991"}}},
+                                {"item": {"data": {"uri": "spotify:playlist:p1", "name": "Not an album"}}}
+                            ]}
+                        }}}""",
+                    ).jsonObject,
+                )
+            }
+            val found = library.search("band")
+            assertEquals(
+                listOf(
+                    SpotifyItem("spotify:artist:a1", "Wrapped"),
+                    SpotifyItem("spotify:artist:a2", "Plain"),
+                    SpotifyItem("spotify:artist:a3", "No data"),
+                ),
+                found.artists,
+            )
+            assertEquals(
+                listOf(
+                    SpotifyFoundAlbum("spotify:album:b1", "Zero"),
+                    SpotifyFoundAlbum("spotify:album:b2", "Text"),
+                ),
+                found.albums,
+            )
+            assertEquals(SpotifyFound.Kind.TRACKS, found.kind)
+        }
+
+    @Test
     fun `SPOT-11 nothing found is no tracks, and an empty text sends nothing`() = runBlocking {
         val (stack, library) = online()
         stack.route("POST", SpotifyWeb.PATHFINDER_PATH) {
@@ -305,7 +346,7 @@ class SpotifyLibraryTest {
             SpotifyPick(best = null, contextUri = "", tracks = emptyList()),
             library.searchPick("zzz"),
         )
-        assertEquals(SpotifyFound.Tracks(emptyList()), library.search(" \t "))
+        assertEquals(SpotifyFound(), library.search(" \t "))
         assertEquals(1, stack.requests(SpotifyWeb.PATHFINDER_PATH).size)
         assertEquals(0, stack.requests(SpotifyLibrary.METADATA_PATH).size)
     }
@@ -321,7 +362,7 @@ class SpotifyLibraryTest {
                     replies.removeFirstOrNull() ?: "best-album",
                 ).response()
             }
-            assertTrue(library.search("double") is SpotifyFound.Album)
+            assertEquals(SpotifyFound.Kind.ALBUM, library.search("double").kind)
             assertEquals(
                 SpotifyLibrary.SEARCH_HASHES.take(3),
                 stack.requests(SpotifyWeb.PATHFINDER_PATH).map {

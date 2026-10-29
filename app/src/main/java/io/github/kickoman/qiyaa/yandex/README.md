@@ -14,7 +14,7 @@ grep -rlnE '^import (android|androidx)' app/src/main/java/io/github/kickoman/qiy
 | `ErrorKind.kt` | `ErrorKind` — вид ошибки для пользователя по типу исключения |
 | `RequestFailure.kt` | `RequestFailure` — неудачный запрос для телеметрии: `NETWORK`, `HTTP` со статусом, `CONTENT` |
 | `JsonFields.kt` | мягкий доступ к JSON: `objectOrEmpty`, `arrayOrEmpty`, `string`, `int`, `long`, `boolean`, `scalarString`, `idString`, `parseJsonObjectOrNull` |
-| `Models.kt` | `Account` (сам `Track` — `track/`, его страница в браузере — `ui/TrackPages.kt`), `NamedRef`, `PlaylistRef`, `Station`, `WheelWave`, `WaveBatch`, `SearchResult`, `DownloadVariant`, `DownloadInfo`, `ResolvedUrl`, `WaveEvent`, `WaveContext` |
+| `Models.kt` | `Account` (сам `Track` — `track/`, его страница в браузере — `ui/TrackPages.kt`), `NamedRef`, `PlaylistRef`, `Station`, `WheelWave`, `WaveBatch`, `SearchResult`, `FoundAlbum`, `DownloadVariant`, `DownloadInfo`, `ResolvedUrl`, `WaveEvent`, `WaveContext` |
 | `YandexApi.kt` | `YandexApi` — транспорт (OkHttp), конверт, `accountStatus`, `tracks`, `lyricsText`, `resolveTrackUrl`, `reportPlayStarted` |
 | `TrackLyrics.kt` | `TrackLyrics` — текст трека из ответа `/tracks/{id}/supplement` (LYR-02) |
 | `TrackParsing.kt` | `TrackParsing` — `JsonElement` → `Track` |
@@ -232,7 +232,7 @@ class Library(val api: YandexApi) : AccountGateway {
 | GET | `/albums/{id}/with-tracks` | — → `volumes[][]`, `albumId` подставляется при отсутствии |
 | POST | `/rotor/session/new` | JSON `{seeds, includeTracksInResponse, includeWaveModel, interactive: true}` |
 | POST | `/rotor/session/{id}/tracks` | JSON `{queue: [последние id]}` |
-| GET | `/search` | `text`, `type=all`, `page=0` → `best.{type,result}`, `tracks.results`. `bestType` — `artist`, `album`, `track`, `playlist` как есть, любой другой тип — `other`, без `best` — `""` |
+| GET | `/search` | `text`, `type=all`, `page=0` → `best.{type,result}`, `tracks.results`, `artists.results`, `albums.results`. `bestType` — `artist`, `album`, `track`, `playlist` как есть, любой другой тип — `other`, без `best` — `""`. `bestTrack` — `best.result` как трек, когда `bestType` — `track`, иначе `null`. `artists` — `NamedRef(id, name)` по порядку; `albums` — `FoundAlbum(id, title, имена артистов, year, single)` только с `metaType` `music` и `available` не `false`, `year` — `null` без него и при 0 (как на ПК), строка с числом — число, `single` — `type` `single`. Показ (лучший результат один раз, недоступные треки прочь) — не здесь, а в `ui/SearchModel.kt` |
 | GET | `/search` | `searchTracks`: `text`, `type=track`, `page=0` → `tracks.results` |
 | POST | `/users/{uid}/likes/tracks/add-multiple`, `…/remove`, `…/dislikes/tracks/add-multiple` | `track-ids=<id>` |
 
