@@ -134,6 +134,8 @@ sealed interface SearchTarget {
     data class OfAlbum(val album: FoundPick) : SearchTarget
 }
 
+data class SearchJam(val connected: Boolean = false, val waiting: Map<String, String> = emptyMap())
+
 data class SearchUi(
     val source: SearchSource = SearchSource.YANDEX,
     val text: String = "",
@@ -143,6 +145,9 @@ data class SearchUi(
     val opened: SearchOpened? = null,
     val added: Map<TrackKey, AddPlacement> = emptyMap(),
     val adding: SearchTarget? = null,
+    val jam: SearchJam? = null,
+    val sending: Set<String> = emptySet(),
+    val refused: Map<String, String> = emptyMap(),
 )
 
 fun <T> shownPart(part: SearchPart, items: List<T>, expanded: Set<SearchPart>): List<T> =

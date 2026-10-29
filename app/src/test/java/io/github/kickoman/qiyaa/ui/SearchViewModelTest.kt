@@ -1,21 +1,38 @@
 package io.github.kickoman.qiyaa.ui
 
 import io.github.kickoman.qiyaa.R
+import io.github.kickoman.qiyaa.jam.Decoded
+import io.github.kickoman.qiyaa.jam.JamCodec
+import io.github.kickoman.qiyaa.jam.JamParticipant
+import io.github.kickoman.qiyaa.jam.JamQueueItem
+import io.github.kickoman.qiyaa.jam.JamRoom
+import io.github.kickoman.qiyaa.jam.JamTrack
+import io.github.kickoman.qiyaa.jam.ParticipantKind
+import io.github.kickoman.qiyaa.jam.State
+import io.github.kickoman.qiyaa.playback.JamHostEvent
+import io.github.kickoman.qiyaa.playback.JamHostPhase
+import io.github.kickoman.qiyaa.playback.JamHostState
 import io.github.kickoman.qiyaa.queue.AddPlacement
 import io.github.kickoman.qiyaa.queue.Continuation
 import io.github.kickoman.qiyaa.queue.ContinuationKey
 import io.github.kickoman.qiyaa.queue.QueueEvent
 import io.github.kickoman.qiyaa.support.FakeContinuation
 import io.github.kickoman.qiyaa.support.QueueHarness
+import io.github.kickoman.qiyaa.support.Spec
 import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.track.TrackSource
 import io.github.kickoman.qiyaa.yandex.ErrorKind
+import java.io.File
 import java.net.ConnectException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -290,6 +307,127 @@ class SearchViewModelTest {
             assertEquals(emptyMap<Any, Any>(), subject.model.ui.value.added)
         }
 
+    @Test
+    fun `HOST-38 in a jam a found track goes to the jam, is marked sending until the state brings it`() =
+        runTest {
+            val subject = Subject(this)
+            gateway.found = { found }
+            gateway.jam.value = jamState()
+            subject.model.open("кино", SearchSource.YANDEX)
+            runCurrent()
+            assertEquals(SearchJam(connected = true), subject.model.ui.value.jam)
+            subject.model.chooseAdd(SearchTarget.OfTrack(track("t1")))
+            subject.model.add(AddPlacement.END)
+            subject.model.chooseAdd(SearchTarget.OfTrack(track("t2")))
+            subject.model.add(AddPlacement.NEXT)
+            runCurrent()
+            assertEquals(listOf("jam add t1", "jam next t2"), gateway.calls.filter { it.startsWith("jam") })
+            assertEquals(setOf("t1", "t2"), subject.model.ui.value.sending)
+            assertEquals(listOf("jam_added", "jam_added_next"), subject.notices)
+            assertTrue(subject.harness.controller.state.value.entries.isEmpty())
+            gateway.jam.value = jamState(item("t1", "g1"))
+            runCurrent()
+            assertEquals(setOf("t2"), subject.model.ui.value.sending)
+            assertEquals(mapOf("t1" to "Маша"), subject.model.ui.value.jam?.waiting)
+        }
+
+    @Test
+    fun `HOST-38 a refused add shows on its row, a dropped connection and the jam's end clear the marks`() =
+        runTest {
+            val subject = Subject(this)
+            gateway.found = { found }
+            gateway.jam.value = jamState()
+            subject.model.open("кино", SearchSource.YANDEX)
+            runCurrent()
+            for (id in listOf("t1", "t2")) {
+                subject.model.chooseAdd(SearchTarget.OfTrack(track(id)))
+                subject.model.add(AddPlacement.END)
+            }
+            gateway.jamEvents.emit(JamHostEvent.AddRefused("t1", "queue-full"))
+            runCurrent()
+            assertEquals(setOf("t2"), subject.model.ui.value.sending)
+            assertEquals(mapOf("t1" to "queue-full"), subject.model.ui.value.refused)
+            gateway.jam.value = jamState().copy(connected = false)
+            runCurrent()
+            assertEquals(emptySet<String>(), subject.model.ui.value.sending)
+            assertEquals(false, subject.model.ui.value.jam?.connected)
+            gateway.jam.value = JamHostState()
+            runCurrent()
+            assertNull(subject.model.ui.value.jam)
+            assertEquals(emptyMap<String, String>(), subject.model.ui.value.refused)
+        }
+
+    @Test
+    fun `HOST-38 HOST-20 Next in the jam on a track that already waits pins it, with no sending mark`() =
+        runTest {
+            val subject = Subject(this)
+            gateway.found = { found }
+            gateway.jam.value = jamState(item("t1", "g1"))
+            subject.model.open("кино", SearchSource.YANDEX)
+            runCurrent()
+            subject.model.chooseAdd(SearchTarget.OfTrack(track("t1")))
+            subject.model.add(AddPlacement.NEXT)
+            runCurrent()
+            assertEquals(listOf("jam next t1"), gateway.calls.filter { it.startsWith("jam") })
+            assertEquals(emptySet<String>(), subject.model.ui.value.sending)
+            assertEquals(listOf("jam_added_next"), subject.notices)
+            assertEquals(mapOf("t1" to "Маша"), subject.model.ui.value.jam?.waiting)
+        }
+
+    @Test
+    fun `HOST-25 HOST-37 without a connection nothing is sent, a Spotify track cannot go to the jam`() =
+        runTest {
+            val subject = Subject(this)
+            gateway.found = { found }
+            gateway.jam.value = jamState()
+            gateway.jamSends = false
+            subject.model.open("кино", SearchSource.YANDEX)
+            runCurrent()
+            subject.model.chooseAdd(SearchTarget.OfTrack(track("t1")))
+            subject.model.add(AddPlacement.END)
+            runCurrent()
+            assertEquals(listOf("jam_no_connection"), subject.notices)
+            assertEquals(emptySet<String>(), subject.model.ui.value.sending)
+            assertTrue(subject.model.jamAddable(track("t1")))
+            assertEquals(false, subject.model.jamAddable(spotify("s1")))
+        }
+
+    @Test
+    fun `HOST-38 HOST-21 in a jam a found track played is the new base from it, an album is not added`() =
+        runTest {
+            val subject = Subject(this)
+            gateway.found = { found }
+            gateway.jam.value = jamState()
+            subject.model.open("кино", SearchSource.YANDEX)
+            runCurrent()
+            subject.model.chooseAdd(SearchTarget.OfAlbum(album))
+            subject.model.add(AddPlacement.END)
+            runCurrent()
+            assertEquals(listOf("find YANDEX кино"), gateway.calls)
+            subject.model.play(track("t1"))
+            runCurrent()
+            assertEquals(listOf("best", "t1", "t2"), subject.harness.engine.ids())
+        }
+
+    private fun jamState(vararg queue: JamQueueItem) = JamHostState(
+        phase = JamHostPhase.ACTIVE,
+        connected = true,
+        room = ROOM.copy(
+            participants = listOf(
+                JamParticipant("g1", "Маша", ParticipantKind.WEB, online = true, pending = 0),
+            ),
+            queue = queue.toList(),
+        ),
+    )
+
+    private fun item(trackId: String, addedBy: String) = JamQueueItem(
+        itemId = "i-$trackId",
+        track = JamTrack(id = trackId, title = "T$trackId", artists = listOf("A"), durationMs = 1_000),
+        addedBy = addedBy,
+        addedAt = 0,
+        pinned = false,
+    )
+
     private inner class Subject(scope: TestScope) {
         val harness = QueueHarness(scope)
         val model =
@@ -299,6 +437,14 @@ class SearchViewModelTest {
                 strings = ::text,
                 io = StandardTestDispatcher(scope.testScheduler),
             )
+
+        val notices = ArrayList<String>()
+
+        init {
+            scope.backgroundScope.launch(UnconfinedTestDispatcher(scope.testScheduler)) {
+                model.notices.collect { notices += it }
+            }
+        }
 
         fun currentId(): String = harness.engine.tracks[harness.engine.currentIndex].id
     }
@@ -325,9 +471,29 @@ class SearchViewModelTest {
             calls += "autoplay $contextUri"
             return FakeContinuation(ContinuationKey("spotify-autoplay", contextUri)).apply { replies() }
         }
+
+        override val jam = MutableStateFlow(JamHostState())
+        override val jamEvents = MutableSharedFlow<JamHostEvent>(extraBufferCapacity = 8)
+        var jamSends = true
+
+        override fun jamAdd(track: Track): Boolean {
+            calls += "jam add ${track.id}"
+            return jamSends
+        }
+
+        override fun jamPlayNext(track: Track): Boolean {
+            calls += "jam next ${track.id}"
+            return jamSends
+        }
+
+        override fun jamCanAdd(track: Track): Boolean = track.source == TrackSource.YANDEX
     }
 
     private companion object {
+        val ROOM: JamRoom by lazy {
+            val text = File(Spec.root, "jam/protocol/examples/state/host.json").readText()
+            ((JamCodec.decodeServer(text) as Decoded.Message).message as State).room
+        }
         val NAMES: Map<Int, String> = R.string::class.java.fields.associate { it.getInt(null) to it.name }
         val artist = FoundPick(FoundPick.Kind.ARTIST, "9", "Кино")
         val album = FoundPick(FoundPick.Kind.ALBUM, "4", "Группа крови", listOf("Кино"), 1988)

@@ -45,9 +45,7 @@ import io.github.kickoman.qiyaa.jam.JamStatus
 import io.github.kickoman.qiyaa.jam.ParticipantKind
 import io.github.kickoman.qiyaa.playback.JamHostPhase
 import io.github.kickoman.qiyaa.playback.JamHostState
-import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.ui.JamViewModel
-import io.github.kickoman.qiyaa.ui.ListState
 import io.github.kickoman.qiyaa.ui.components.ActionButton
 import io.github.kickoman.qiyaa.ui.components.Divider
 import io.github.kickoman.qiyaa.ui.components.InsetField
@@ -62,8 +60,6 @@ import io.github.kickoman.qiyaa.ui.components.ScreenHeader
 import io.github.kickoman.qiyaa.ui.components.SectionLabel
 import io.github.kickoman.qiyaa.ui.components.SettingRow
 import io.github.kickoman.qiyaa.ui.components.tap
-import io.github.kickoman.qiyaa.ui.formatTime
-import io.github.kickoman.qiyaa.ui.render
 import io.github.kickoman.qiyaa.ui.theme.HintStyle
 import io.github.kickoman.qiyaa.ui.theme.LabelStyle
 import io.github.kickoman.qiyaa.ui.theme.Qi
@@ -83,6 +79,7 @@ fun JamScreen(
     onSettings: () -> Unit,
     onJoinLink: (String) -> Boolean,
     onSignIn: () -> Unit,
+    onAddTracks: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
@@ -109,7 +106,7 @@ fun JamScreen(
 
             JamHostPhase.CREATING -> Connecting(viewModel)
 
-            JamHostPhase.ACTIVE -> ActiveJam(viewModel, state)
+            JamHostPhase.ACTIVE -> ActiveJam(viewModel, state, onAddTracks)
         }
     }
 }
@@ -215,7 +212,7 @@ private fun Connecting(viewModel: JamViewModel) {
 }
 
 @Composable
-private fun ActiveJam(viewModel: JamViewModel, state: JamHostState) {
+private fun ActiveJam(viewModel: JamViewModel, state: JamHostState, onAddTracks: () -> Unit) {
     val colors = Qi.colors
     val context = LocalContext.current
     val clipboard = LocalClipboard.current
@@ -261,7 +258,13 @@ private fun ActiveJam(viewModel: JamViewModel, state: JamHostState) {
         }
     }
 
-    AddTracks(viewModel, enabled)
+    SectionLabel(stringResource(R.string.jam_add_tracks))
+    ActionButton(
+        stringResource(R.string.jam_add_tracks_open).uppercase(),
+        Modifier.padding(horizontal = 16.dp).fillMaxWidth(),
+        height = 48.dp,
+        onClick = onAddTracks,
+    )
     if (room != null) Guests(viewModel, room, enabled)
     if (room != null) RoomSettings(viewModel, room, enabled)
 
@@ -281,84 +284,6 @@ private fun ActiveJam(viewModel: JamViewModel, state: JamHostState) {
     ) {
         if (confirmEnd) viewModel.end() else confirmEnd = true
     }
-}
-
-@Composable
-private fun AddTracks(viewModel: JamViewModel, enabled: Boolean) {
-    val colors = Qi.colors
-    val ui by viewModel.ui.collectAsStateWithLifecycle()
-    SectionLabel(stringResource(R.string.jam_add_tracks))
-    InsetField(
-        value = ui.searchText,
-        onValueChange = viewModel::setSearchText,
-        hint = stringResource(R.string.jam_search_hint),
-        imeAction = ImeAction.Search,
-        onAction = { viewModel.search() },
-    )
-    when (val results = ui.results) {
-        ListState.Idle -> Unit
-
-        ListState.Loading -> Note(stringResource(R.string.jam_searching))
-
-        is ListState.Failed -> Note(
-            stringResource(R.string.jam_search_failed, results.error.render()),
-            colors.error,
-        )
-
-        is ListState.Loaded ->
-            if (results.items.isEmpty()) {
-                Note(stringResource(R.string.jam_nothing_found))
-            } else {
-                Panel {
-                    results.items.forEachIndexed { index, track ->
-                        ResultRow(track, enabled, last = index == results.items.lastIndex, viewModel)
-                    }
-                }
-            }
-    }
-}
-
-@Composable
-private fun ResultRow(track: Track, enabled: Boolean, last: Boolean, viewModel: JamViewModel) {
-    val colors = Qi.colors
-    Row(
-        Modifier.fillMaxWidth().height(56.dp).padding(start = 14.dp, end = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Column(Modifier.weight(1f)) {
-            QiText(
-                track.title,
-                sans(14.sp, 500),
-                color = colors.text,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            QiText(
-                track.artistLine + " · " + formatTime(track.durationMs),
-                mono(11.sp, 400),
-                Modifier.padding(top = 3.dp),
-                color = colors.dim,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        val textColor = if (enabled) colors.text else colors.dimmer
-        ActionButton(
-            stringResource(R.string.jam_next).uppercase(),
-            Modifier.width(ROW_BUTTON_WIDTH),
-            height = 36.dp,
-            color = textColor,
-        ) { viewModel.playNext(track) }
-        ActionButton(
-            stringResource(R.string.jam_add).uppercase(),
-            Modifier.width(ROW_BUTTON_WIDTH),
-            height = 36.dp,
-            background = if (enabled) colors.accentBackground else colors.surface,
-            color = if (enabled) colors.accent else colors.dimmer,
-        ) { viewModel.add(track) }
-    }
-    if (!last) Divider()
 }
 
 @Composable
