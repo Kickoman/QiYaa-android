@@ -10,6 +10,7 @@ import io.github.kickoman.qiyaa.yandex.WaveEvent
 import java.util.UUID
 import kotlin.coroutines.CoroutineContext
 import kotlin.random.Random
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -58,6 +59,7 @@ class QueueController(
     private val random: Random = Random.Default,
     private val errorKindOf: (Throwable) -> ErrorKind = ErrorKind::of,
     private val continuationOf: (ContinuationKey) -> Continuation? = { null },
+    private val autoplayFrom: (Track) -> Continuation? = { null },
 ) {
     private val mutableState = MutableStateFlow(QueueState(continueWithVibe = continueWithVibeByDefault()))
     val state: StateFlow<QueueState> = mutableState.asStateFlow()
@@ -114,6 +116,7 @@ class QueueController(
     private var stoppedAtEnd = false
     private var inHead = false
     private var headMark = -1
+    private var headStart: Int? = null
     private var algorithm = ShuffleAlgorithm.WITHOUT_REPEATS
     private var waveSeedsVersion: Int? = null
     private var radioStartedPending: WaveContext? = null
@@ -155,7 +158,7 @@ class QueueController(
         applyModes()
         val index = restore.index.coerceIn(0, state.tracks.lastIndex)
         val head = headOf(state.entries)
-        val lead = leadAt(state.entries, index)
+        val lead = withStart(state.entries, index, leadAt(state.entries, index))
         movingCursor = holding
         engine.setTracks(state.tracks, restore.playWhenReady, index, restore.positionMs, head, lead)
         movingCursor = false
@@ -244,13 +247,29 @@ class QueueController(
         }
         val head = wrappingHead(current)
         val shuffled = shuffledPrevious(current)
+        val pastWaiting = headBeforeWaiting(current)
         when {
             current.positionMs > RESTART_AFTER_MS -> current.seekToPosition(0)
             shuffled != null -> wrapTo(shuffled, current)
             current.currentIndex == head.firstOrNull() -> wrapTo(head.last(), current)
+            pastWaiting != null -> wrapTo(pastWaiting, current)
             current.hasPrevious() -> current.skipToPrevious()
             else -> restart(current)
         }
+    }
+
+    private fun headBeforeWaiting(current: PlayerEngine): Int? {
+        val entries = mutableState.value.entries
+        val index = current.currentIndex
+        if (entries.getOrNull(index)?.part != EntryPart.HEAD) return null
+        val order = current.playOrder()
+        val position = order.indexOf(index)
+        val above = order.getOrNull(position - 1) ?: order.lastOrNull()?.takeIf { current.repeatEnabled }
+        if (above == null || entries.getOrNull(above)?.part != EntryPart.ITEM) return null
+        val isHead = { row: Int -> entries.getOrNull(row)?.part == EntryPart.HEAD }
+        return order.take(position).lastOrNull(isHead)
+            ?: order.lastOrNull(isHead)?.takeIf { repeatHoldsHead() }
+            ?: index
     }
 
     private fun shuffledPrevious(current: PlayerEngine): Int? {
@@ -301,7 +320,14 @@ class QueueController(
     private fun walkNext(current: PlayerEngine): Int? {
         if (current.itemCount == 0) return null
         val entries = mutableState.value.entries
-        return QueueWalk.next(entries, current.playOrder(), current.currentIndex, repeatHoldsHead())
+        val index = current.currentIndex
+        return QueueWalk.next(
+            entries,
+            current.playOrder(),
+            index,
+            repeatHoldsHead(),
+            start = pendingStart(entries, index),
+        )
     }
 
     private fun naturalNext(current: PlayerEngine): Int? {
@@ -392,6 +418,7 @@ class QueueController(
             stoppedAtEnd = false
             stopWaiting()
             noteCursor(current.currentIndex)
+            if (!movingCursor) settleStart(current.currentIndex)
             gatherWaiting(current)
             dropStaleTail()
             drawOnHeadTrack(current)
@@ -456,6 +483,7 @@ class QueueController(
     private fun releaseHeld(current: PlayerEngine) {
         if (!holding || movingCursor) return
         holding = false
+        settleStart(current.currentIndex)
         markStarted(current.currentIndex)?.let { itemId -> jam?.listener?.onItemStarted(itemId) }
         save()
     }
@@ -518,6 +546,7 @@ class QueueController(
     private fun passLead(entries: List<QueueEntry>, index: Int): List<Int> {
         val head = headOf(entries)
         val lead = leadAt(entries, index)
+        if (pendingStart(entries, index) != null) return withStart(entries, index, lead)
         if (lead.isEmpty()) return listOfNotNull(head.getOrNull(headMark))
         if (!drawsRandomly(entries)) return lead
         val excluded = if (entries[index].part == EntryPart.HEAD) index else head.getOrElse(headMark) { -1 }
@@ -526,6 +555,22 @@ class QueueController(
 
     private fun headOf(entries: List<QueueEntry>): List<Int> =
         entries.indices.filter { entries[it].part == EntryPart.HEAD }
+
+    private fun withStart(entries: List<QueueEntry>, index: Int, lead: List<Int>): List<Int> {
+        val start = pendingStart(entries, index) ?: return lead
+        return if (start in lead) lead else lead + start
+    }
+
+    private fun pendingStart(entries: List<QueueEntry>, index: Int): Int? {
+        val row = headStart?.let { headOf(entries).getOrNull(it) } ?: return null
+        if (row == index || (entries.getOrNull(index)?.part == EntryPart.HEAD && !holding)) return null
+        return row
+    }
+
+    private fun settleStart(index: Int) {
+        if (headStart == null) return
+        if (mutableState.value.entries.getOrNull(index)?.part == EntryPart.HEAD && !holding) headStart = null
+    }
 
     private fun leadAt(entries: List<QueueEntry>, index: Int): List<Int> {
         if (!inHead || index !in entries.indices) return emptyList()
@@ -796,6 +841,147 @@ class QueueController(
             }
     }
 
+    fun playTracks(
+        title: String,
+        tracks: List<Track>,
+        start: Int,
+        sourceId: String? = null,
+        continuation: Continuation? = null,
+    ) {
+        newSourceRequest()
+        loadJob?.cancel()
+        val available = tracks.filter { it.available }
+        if (available.isEmpty()) {
+            emit(QueueEvent.SourceEmpty(title))
+            return
+        }
+        val first = if (tracks.getOrNull(start)?.available ==
+            true
+        ) {
+            tracks.take(start).count { it.available }
+        } else {
+            0
+        }
+        setQueue(
+            available,
+            title,
+            isWave = false,
+            autoplay = true,
+            sourceId,
+            continuation = continuation,
+            start = first,
+        )
+        emit(QueueEvent.SourceLoaded(title, available.size))
+    }
+
+    fun add(tracks: List<Track>, title: String, placement: AddPlacement) {
+        val available = tracks.filter { it.available }
+        if (available.isEmpty()) return
+        val added = QueueEvent.Added(available.singleOrNull()?.title ?: title, available.size, placement)
+        if (mutableState.value.entries.isEmpty()) {
+            val continuation = autoplayFrom(available.first())
+            setQueue(
+                available,
+                title,
+                isWave = false,
+                autoplay = false,
+                sourceId = null,
+                continuation = continuation,
+            )
+            emit(added)
+            return
+        }
+        val current = engine?.takeIf { it.itemCount > 0 }
+        val joinsHead = placement == AddPlacement.END && inHead && mutableState.value.entries.any {
+            it.part == EntryPart.HEAD
+        }
+        if (joinsHead) addToHead(current, available) else addWaiting(current, available, placement)
+        if (current != null && continueAtEnd) playAdded(current)
+        applyModes()
+        save()
+        reportJam()
+        emit(added)
+    }
+
+    fun addLoaded(title: String, placement: AddPlacement, loader: suspend () -> List<Track>) {
+        scope.launch {
+            val found =
+                try {
+                    withContext(io) { loader() }
+                } catch (failed: Exception) {
+                    if (failed is CancellationException) throw failed
+                    fail(Stage.SOURCE, failed)
+                    return@launch
+                }
+            if (found.none { it.available }) {
+                emit(QueueEvent.SourceEmpty(title))
+                return@launch
+            }
+            add(found, title, placement)
+        }
+    }
+
+    private fun addToHead(current: PlayerEngine?, tracks: List<Track>) {
+        val entries = mutableState.value.entries
+        var at = entries.indexOfLast { it.part == EntryPart.HEAD } + 1
+        while (at < entries.size && entries[at].part == EntryPart.ITEM) at++
+        val after = if (current != null && shuffleInEffect()) leadBehind(current, entries) else 0
+        val added = tracks.map { QueueEntry(it, EntryPart.HEAD) }
+        mutableState.update { state ->
+            val rows = state.entries.toMutableList().apply { addAll(at, added) }
+            val selected = state.selected.map { if (it >= at) it + added.size else it }.toSet()
+            state.copy(entries = rows, selected = selected)
+        }
+        if (current != null) {
+            current.insertHead(at, tracks, after)
+            return
+        }
+        restorePoint =
+            restorePoint?.let { if (at <= it.index) it.copy(index = it.index + added.size) else it }
+    }
+
+    private fun leadBehind(current: PlayerEngine, entries: List<QueueEntry>): Int {
+        val order = current.playOrder()
+        val index = current.currentIndex
+        val following = order.drop(order.indexOf(index) + 1)
+        val waiting = following.takeWhile { entries.getOrNull(it)?.isWaiting == true }.size
+        val next = following.getOrNull(waiting) ?: return waiting
+        val drawn = drawsRandomly(entries) && entries[next].part == EntryPart.HEAD
+        return if (next == pendingStart(entries, index) || drawn) waiting + 1 else waiting
+    }
+
+    private fun addWaiting(current: PlayerEngine?, tracks: List<Track>, placement: AddPlacement) {
+        val entries = mutableState.value.entries
+        val cursor = cursorIndex(current)
+        val held = holding && entries.getOrNull(cursor)?.isWaiting == true
+        val waiting = entries.indices.filter { it != cursor && entries[it].isWaiting }
+        val at =
+            when {
+                placement == AddPlacement.END -> (waiting.lastOrNull() ?: cursor) + 1
+
+                held -> cursor
+
+                else -> waiting.lastOrNull { entries[it].isJamItem }?.plus(1) ?: waiting.firstOrNull()
+                    ?: (cursor + 1)
+            }
+        insertEntries(current, at, tracks.map(::waitingTrack))
+        if (!held || placement != AddPlacement.NEXT || current == null) return
+        movingCursor = true
+        current.seekTo(at)
+        movingCursor = false
+    }
+
+    private fun waitingTrack(track: Track): QueueEntry =
+        QueueEntry(track, EntryPart.ITEM, item = ItemMark(itemId = null, addedBy = "", waiting = true))
+
+    private fun playAdded(current: PlayerEngine) {
+        val target = walkNext(current) ?: return
+        stopWaiting()
+        current.seekTo(target)
+        current.prepare()
+        if (playAfterWait) current.play()
+    }
+
     fun setQueue(
         tracks: List<Track>,
         title: String,
@@ -804,10 +990,11 @@ class QueueController(
         sourceId: String?,
         waveFromHistory: Boolean = true,
         continuation: Continuation? = null,
+        start: Int? = null,
     ) {
         val part = EntryPart.defaultFor(isWave)
         val entries = tracks.map { QueueEntry(it, part) }
-        replaceQueue(entries, title, isWave, autoplay, sourceId, waveFromHistory, continuation)
+        replaceQueue(entries, title, isWave, autoplay, sourceId, waveFromHistory, continuation, start)
     }
 
     private fun replaceQueue(
@@ -818,9 +1005,10 @@ class QueueController(
         sourceId: String?,
         waveFromHistory: Boolean = true,
         continuation: Continuation? = null,
+        start: Int? = null,
     ) {
         if (jam != null) {
-            replaceBase(entries, title, isWave, sourceId, waveFromHistory, continuation)
+            replaceBase(entries, title, isWave, sourceId, waveFromHistory, continuation, start)
             return
         }
         val current = engine
@@ -847,15 +1035,17 @@ class QueueController(
             )
         inHead = playable.any { it.part == EntryPart.HEAD }
         headMark = -1
+        headStart = null
+        val first = (start ?: 0).coerceIn(0, (playable.size - 1).coerceAtLeast(0))
         applyModes()
         if (current == null) {
-            restorePoint = RestorePoint(0, 0, playWhenReady = autoplay)
+            restorePoint = RestorePoint(first, 0, playWhenReady = autoplay)
             save()
             return
         }
         restorePoint = null
         val tracks = playable.map(QueueEntry::track)
-        current.setTracks(tracks, autoplay, head = headOf(playable), lead = leadAt(playable, 0))
+        current.setTracks(tracks, autoplay, first, head = headOf(playable), lead = leadAt(playable, first))
         save()
     }
 
@@ -866,6 +1056,7 @@ class QueueController(
         sourceId: String?,
         waveFromHistory: Boolean = true,
         continuation: Continuation? = null,
+        start: Int? = null,
     ) {
         val current = engine
         val before = mutableState.value.entries
@@ -904,11 +1095,13 @@ class QueueController(
         val playable = entries.filter { it.track.available }
         inHead = playable.any { it.part == EntryPart.HEAD }
         headMark = -1
+        headStart = start?.takeIf { it < playable.count { entry -> entry.part == EntryPart.HEAD } }
         if (cursor < 0) holding = playable.isNotEmpty()
         if (playable.isNotEmpty()) {
             mutableState.update { it.copy(entries = it.entries + playable) }
             movingCursor = holding
             current?.appendTracks(playable.map(QueueEntry::track))
+            holdStart(current)
             movingCursor = false
         }
         if (current != null && current.itemCount > 0 && shuffleInEffect()) startShufflePass()
@@ -916,16 +1109,29 @@ class QueueController(
             val point = restorePoint
             restorePoint =
                 if (cursor < 0) {
-                    RestorePoint(0, 0, playWhenReady = false)
+                    RestorePoint(startRowOrFirst(), 0, playWhenReady = false)
                 } else {
                     RestorePoint(cursorAt, point?.positionMs ?: 0, point?.playWhenReady ?: false)
                 }
         }
+        settleStart(cursorIndex(current))
         applyModes()
         publishLoadingMore()
         save()
         reportJam()
     }
+
+    private fun holdStart(current: PlayerEngine?) {
+        if (!holding || current == null || current.itemCount == 0) return
+        val entries = mutableState.value.entries
+        val row = headStart?.let { headOf(entries).getOrNull(it) } ?: return
+        if (entries.getOrNull(current.currentIndex)?.part == EntryPart.HEAD && current.currentIndex != row) {
+            current.seekTo(row)
+        }
+    }
+
+    private fun startRowOrFirst(): Int =
+        headStart?.let { headOf(mutableState.value.entries).getOrNull(it) } ?: 0
 
     private fun forgetContinuation() {
         continuation = null
@@ -964,6 +1170,7 @@ class QueueController(
         waveStationId = ""
         inHead = false
         headMark = -1
+        headStart = null
         mutableState.value = QueueState(continueWithVibe = continueWithVibeByDefault())
         publishModes()
         save()
@@ -997,9 +1204,17 @@ class QueueController(
         val index = current.currentIndex
         val entries = mutableState.value.entries
         val staying = entries.filterIndexed { i, _ -> i !in leaving }
-        val target = QueueWalk.next(entries, current.playOrder(), index, repeatHoldsHead(staying), leaving)
+        val start = pendingStart(entries, index)
+        val target = QueueWalk.next(
+            entries,
+            current.playOrder(),
+            index,
+            repeatHoldsHead(staying),
+            leaving,
+            start,
+        )
             ?.let(entries::get)
-        val stops = jam != null
+        val stops = jam != null || target?.isWaiting == true
         movingCursor = true
         holding = stops
         if (stops) current.pause()
@@ -1017,6 +1232,7 @@ class QueueController(
         }
         movingCursor = false
         holding = stops && currentEntry()?.isWaiting == true
+        settleStart(current.currentIndex)
         if (stops || current.itemCount == 0) return
         markStarted(current.currentIndex)
         if (playing) playTracker.onPlayingChanged(true)?.let(::onStarted)
@@ -1161,6 +1377,7 @@ class QueueController(
             -1
         }
         holding = entries.getOrNull(snapshot.index)?.isWaiting == true
+        headStart = snapshot.headStart?.takeIf { entries.getOrNull(snapshot.index)?.part != EntryPart.HEAD }
         mutableState.value =
             QueueState(
                 entries = entries,
@@ -1243,6 +1460,7 @@ class QueueController(
                 waveFromHistory = state.waveFromHistory,
                 continuation = continuation?.key,
                 started = started.tracks.map(Track::key),
+                headStart = headStart,
             )
         saves.trySend(QueueSnapshotCodec.encode(snapshot))
     }
@@ -1409,7 +1627,9 @@ class QueueController(
     private fun remaining(current: PlayerEngine): Int {
         if (randomHoldsHead()) return Int.MAX_VALUE
         val entries = mutableState.value.entries
-        return QueueWalk.remaining(entries, current.playOrder(), current.currentIndex, repeatHoldsHead())
+        val index = current.currentIndex
+        val start = pendingStart(entries, index)
+        return QueueWalk.remaining(entries, current.playOrder(), index, repeatHoldsHead(), start)
     }
 
     private fun repeatHoldsHead(entries: List<QueueEntry> = mutableState.value.entries): Boolean {
@@ -1498,7 +1718,10 @@ class QueueController(
         insertEntries(current, edit.insertAt, edit.insert.map(::waitingItem))
         if (ahead && edit.insert.isNotEmpty() && current != null) holdFirstItem(current, edit.insertAt)
         val dropsHeld = holding && currentItemId != null && wanted.none { it.itemId == currentItemId }
-        if (!dropsHeld) return
+        if (!dropsHeld) {
+            settleStart(cursorIndex(current))
+            return
+        }
         if (current != null) {
             removeCurrent(current, setOf(index), setOf(index))
             return
@@ -1506,6 +1729,7 @@ class QueueController(
         removeEntry(null, index)
         restorePoint = restorePoint?.copy(positionMs = 0)
         holding = mutableState.value.entries.getOrNull(index)?.isWaiting == true
+        settleStart(index)
     }
 
     private fun holdFirstItem(current: PlayerEngine, index: Int) {
@@ -1590,13 +1814,24 @@ class QueueController(
     private fun removeEntry(current: PlayerEngine?, index: Int) {
         val entries = mutableState.value.entries
         val removesHead = entries.getOrNull(index)?.part == EntryPart.HEAD
-        if (removesHead && headOrdinal(entries, index) <= headMark) headMark--
+        if (removesHead) {
+            val ordinal = headOrdinal(entries, index)
+            if (ordinal <= headMark) headMark--
+            headStart = headStart?.let { if (ordinal < it) it - 1 else it }
+        }
         mutableState.update { state ->
             state.copy(
                 entries = state.entries.filterIndexed { i, _ -> i != index },
                 selected = state.selected.filter { it != index }.map { if (it > index) it - 1 else it }
                     .toSet(),
             )
+        }
+        if (headStart?.let {
+                it >= mutableState.value.entries.count { entry -> entry.part == EntryPart.HEAD }
+            } ==
+            true
+        ) {
+            headStart = null
         }
         current?.removeAt(index)
     }

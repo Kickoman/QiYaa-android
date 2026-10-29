@@ -256,4 +256,22 @@ class HeadShuffleOrderTest {
         generateSequence(order.lastIndex.takeIf { it != C.INDEX_UNSET }) { index ->
             order.getPreviousIndex(index).takeIf { it != C.INDEX_UNSET }
         }.toList()
+
+    @Test
+    fun `ADD-03 a staged join is the order Media3 gets when it inserts the added items`() {
+        val installed = HeadShuffle(listOf(1, 0, 2), 4)
+        val joined = HeadShuffleOrder.afterJoin(
+            installed,
+            4,
+            4,
+            2,
+            current = 1,
+            after = 0,
+            random = Random(3),
+        )
+        val staged = HeadShuffleOrder.staging(installed, 4, joined, Random(0), at = 4)
+        assertEquals(joined, (staged.cloneAndInsert(4, 2) as HeadShuffleOrder).shuffle)
+        assertEquals(listOf(1), joined.head.take(1))
+        assertEquals(setOf(0, 1, 2, 4, 5), joined.head.toSet())
+    }
 }

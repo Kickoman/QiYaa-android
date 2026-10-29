@@ -114,4 +114,26 @@ class HeadShuffleTest {
         assertThrows(IllegalArgumentException::class.java) { HeadShuffle(listOf(0), 2).removed(1, 3) }
         assertThrows(IllegalArgumentException::class.java) { HeadShuffle(listOf(0), 2).inserted(3, 1) }
     }
+
+    @Test
+    fun `ADD-03 joined tracks join the pass after the current track and the rows pinned behind it`() {
+        val pass = HeadShuffle(listOf(2, 0, 3, 1), 6)
+        repeat(20) { seed ->
+            val joined = pass.joined(at = 4, count = 2, current = 0, after = 1, random = Random(seed))
+            assertEquals(8, joined.length)
+            assertEquals(listOf(2, 0, 3), joined.head.take(3))
+            assertEquals(setOf(0, 1, 2, 3, 4, 5), joined.head.toSet())
+            assertEquals(listOf(6, 7), joined.order.drop(6))
+        }
+        val spread = (0 until 50).map { pass.joined(4, 1, 0, 0, Random(it)).head.indexOf(4) }.toSet()
+        assertEquals(setOf(2, 3, 4), spread)
+    }
+
+    @Test
+    fun `ADD-03 joined tracks shift the indices at and after them, outside the pass they go to its end`() {
+        val pass = HeadShuffle(listOf(1, 0), 3)
+        val joined = pass.joined(at = 1, count = 1, current = 2, after = 0, random = Random(0))
+        assertEquals(listOf(2, 0, 1), joined.head)
+        assertEquals(listOf(2, 0, 1, 3), joined.order)
+    }
 }

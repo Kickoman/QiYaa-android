@@ -117,6 +117,13 @@ class SpotifyContinuationsTest {
             assertEquals(listOf("search кино", "search песня", "search ничего"), catalog.calls)
         }
 
+    @Test
+    fun `ADD-05 an added Spotify track brings autoplay from its own URI, other tracks none`() {
+        assertEquals(autoplayOf("spotify:track:t9"), continuations.autoplayFrom(spotify("t9"))?.key)
+        assertNull(continuations.autoplayFrom(Track(id = "42", title = "Yandex 42")))
+        assertNull(continuations.autoplayFrom(Track(id = "7", title = "Local 7", source = TrackSource.LOCAL)))
+    }
+
     private fun spotify(id: String) = Track(id = id, title = "Spotify $id", source = TrackSource.SPOTIFY)
 
     private fun autoplayOf(contextUri: String) = ContinuationKey(SpotifyContinuations.AUTOPLAY, contextUri)

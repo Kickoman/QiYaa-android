@@ -8,6 +8,7 @@ import io.github.kickoman.qiyaa.queue.QueueController
 import io.github.kickoman.qiyaa.queue.Transition
 import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.yandex.ErrorKind
+import kotlin.random.Random
 
 // Mirrors the parts of ExoPlayer the queue relies on: a playlist with a cursor, the end state,
 // a shuffle order, repeat of the whole queue, and listener callbacks fired synchronously after
@@ -16,6 +17,7 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
     val tracks = ArrayList<Track>()
     val commands = ArrayList<String>()
     val leads = ArrayList<List<Int>>()
+    var joinRandom: Random = Random(0)
     override var playWhenReady = false
         private set
     var playing = false
@@ -107,6 +109,11 @@ class FakeEngine(private val controller: QueueController) : PlayerEngine {
     override fun insertTracks(index: Int, tracks: List<Track>) {
         commands += "insert $index ${tracks.map { it.id }}"
         insert(index, tracks, shuffle.insertedAfter(index, tracks.size))
+    }
+
+    override fun insertHead(index: Int, tracks: List<Track>, after: Int) {
+        commands += "insert head $index ${tracks.map { it.id }} after $after"
+        insert(index, tracks, shuffle.joined(index, tracks.size, currentIndex, after, joinRandom))
     }
 
     private fun insert(index: Int, added: List<Track>, order: HeadShuffle) {

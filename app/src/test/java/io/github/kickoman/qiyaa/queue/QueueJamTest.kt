@@ -2086,6 +2086,148 @@ class QueueJamTest {
             assertEquals(emptyList<String>(), h.source.calls)
         }
 
+    @Test
+    fun `HOST-38 a found track played in a jam begins the new base, after the jam's items`() = runTest {
+        val h = QueueHarness.likes(this, "a", "b", continueWithVibe = false)
+        h.engine.startPlaying()
+        h.startJam()
+        h.state(item("i1", "X"))
+        h.controller.playTracks("Search: k", found(), start = 2)
+        assertEquals(listOf("a", "X", "k0", "k1", "k2", "k3"), h.engine.ids())
+        assertEquals("a", h.currentId())
+        assertEquals(listOf("X", "k2", "k3"), h.playOn(3))
+    }
+
+    @Test
+    fun `HOST-38 with shuffle the base's pass begins with the found track, with either algorithm`() =
+        runTest {
+            for (algorithm in ShuffleAlgorithm.entries) {
+                val h = QueueHarness.likes(this, "a", "b", continueWithVibe = false)
+                h.controller.setShuffleAlgorithm(algorithm)
+                h.controller.setShuffle(true)
+                h.engine.startPlaying()
+                h.startJam()
+                h.state(item("i1", "X"))
+                h.controller.playTracks("Search: k", found(), start = 2)
+                assertEquals(algorithm.name, listOf("X", "k2"), h.playOn(2))
+            }
+        }
+
+    @Test
+    fun `HOST-38 a base held in an empty player keeps its start when the jam's items come in front`() =
+        runTest {
+            for (shuffle in listOf(false, true)) {
+                val h = QueueHarness(this)
+                h.controller.setShuffle(shuffle)
+                h.startJam()
+                h.controller.playTracks("Search: k", found(), start = 2)
+                assertEquals("k2", h.currentId())
+                h.state(item("i1", "X"))
+                assertEquals("X", h.currentId())
+                h.controller.next()
+                h.engine.startPlaying()
+                assertEquals("shuffle $shuffle", listOf("k2"), h.playOn(1))
+            }
+        }
+
+    @Test
+    fun `HOST-38 picked with no player, the start comes after the held items once a player attaches`() =
+        runTest {
+            for (algorithm in ShuffleAlgorithm.entries) {
+                val h = QueueHarness(this, attached = false)
+                h.controller.setShuffleAlgorithm(algorithm)
+                h.controller.setShuffle(true)
+                h.startJam()
+                h.controller.playTracks("Search: k", found(), start = 2)
+                h.state(item("i1", "X"))
+                h.controller.attach(h.engine)
+                assertEquals("X", h.currentId())
+                assertEquals(
+                    algorithm.name,
+                    h.engine.tracks.indexOfFirst {
+                        it.id == "k2"
+                    },
+                    h.engine.playOrder()[1],
+                )
+                h.controller.next()
+                h.engine.startPlaying()
+                assertEquals(algorithm.name, listOf("k2"), h.playOn(1))
+            }
+        }
+
+    @Test
+    fun `HOST-38 HOST-23 the start survives the process, and the base begins with it after No`() = runTest {
+        val h = QueueHarness.likes(this, "a", "b", continueWithVibe = false)
+        h.engine.startPlaying()
+        h.startJam()
+        h.controller.playTracks("Search: k", found(), start = 2)
+        runCurrent()
+        val restored = QueueHarness(this, store = FakeQueueStore(h.store.text))
+        restored.controller.setShuffle(true)
+        assertEquals("a", restored.currentId())
+        restored.engine.startPlaying()
+        assertEquals(listOf("k2"), restored.playOn(1))
+    }
+
+    @Test
+    fun `HOST-38 removing the current track before the base begins uses the start up, in a jam or not`() =
+        runTest {
+            for (inJam in listOf(true, false)) {
+                val h = QueueHarness.likes(this, "a", "b", continueWithVibe = false)
+                h.engine.startPlaying()
+                h.startJam()
+                h.controller.playTracks("Search: k", found(), start = 2)
+                if (!inJam) h.controller.endJam()
+                h.controller.removeIndices(setOf(0))
+                assertEquals("k2", h.currentId())
+                h.engine.startPlaying()
+                assertEquals("in a jam $inJam", listOf("k3"), h.playOn(1))
+            }
+        }
+
+    @Test
+    fun `HOST-38 a removed row before the start keeps it, the removed start passes to its follower`() =
+        runTest {
+            val h = QueueHarness.likes(this, "a", "b", continueWithVibe = false)
+            h.engine.startPlaying()
+            h.startJam()
+            h.controller.playTracks("Search: k", found(), start = 2)
+            h.controller.removeIndices(setOf(1))
+            assertEquals(listOf("a", "k1", "k2", "k3"), h.engine.ids())
+            h.controller.removeIndices(setOf(2))
+            assertEquals(listOf("a", "k1", "k3"), h.engine.ids())
+            assertEquals(listOf("k3"), h.playOn(1))
+        }
+
+    @Test
+    fun `HOST-38 ADD-03 tracks added to the end join the pass behind a start not yet begun`() = runTest {
+        val h = QueueHarness.likes(this, "a", "b", continueWithVibe = false)
+        h.controller.setShuffle(true)
+        h.engine.startPlaying()
+        h.startJam()
+        h.controller.playTracks("Search: k", found(), start = 2)
+        h.controller.endJam()
+        h.controller.add(tracks("x", "y"), "Album", AddPlacement.END)
+        assertTrue(h.engine.commands.last { it.startsWith("insert") }.endsWith("after 1"))
+        assertEquals(listOf("k2"), h.playOn(1))
+    }
+
+    @Test
+    fun `ADD-09 Play next's tracks are the base's, the jam's items come first and a new base drops them`() =
+        runTest {
+            val h = QueueHarness.likes(this, "a", "b", continueWithVibe = false)
+            h.engine.startPlaying()
+            h.controller.add(tracks("x"), "Search", AddPlacement.NEXT)
+            h.startJam()
+            h.state(item("i1", "X"))
+            assertEquals(listOf("a", "X", "x", "b"), h.engine.ids())
+            h.controller.loadSource("Likes") { tracks("n") }
+            runCurrent()
+            assertEquals(listOf("a", "X", "n"), h.engine.ids())
+        }
+
+    private fun found() = tracks("k0", "k1", "k2", "k3")
+
     private fun localTrack(id: String) = Track(id = id, title = "Свой $id", source = TrackSource.LOCAL)
 
     private fun spotifyTrack(id: String) = Track(id = id, title = "Spotify $id", source = TrackSource.SPOTIFY)

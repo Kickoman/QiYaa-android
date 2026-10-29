@@ -18,13 +18,14 @@ grep -rln 'qiyaa\.\(playback\|ui\|data\)\.' app/src/main/java/io/github/kickoman
 | `PlayerEngine.kt` | `PlayerEngine` — что очереди нужно от плеера |
 | `QueueWalk.kt` | `QueueWalk` — обход очереди: какая запись играет следующей и сколько осталось; порядок движка — его быстрый путь |
 | `StartHistory.kt` | `StartHistory` — сиды волны по истории: последние 5 разных треков очереди (любой части, кроме продолжения), которые начинались, последний первым |
-| `HeadShuffle.kt` | `HeadShuffle` — порядок shuffle: проход головы, за ним остальные индексы по возрастанию; вставка в остаток или сразу за соседом, удаление и новый проход по любым индексам головы с заданным началом (чистая арифметика для `playback/HeadShuffleOrder` и `support/FakeEngine`) |
+| `HeadShuffle.kt` | `HeadShuffle` — порядок shuffle: проход головы, за ним остальные индексы по возрастанию; вставка в остаток, сразу за соседом или на случайные места в ещё не сыгранную часть прохода (`joined`, ADD-03), удаление и новый проход по любым индексам головы с заданным началом (чистая арифметика для `playback/HeadShuffleOrder` и `support/FakeEngine`) |
 | `ShuffleAlgorithm.kt` | `ShuffleAlgorithm` — `WITHOUT_REPEATS`, `RANDOM_TRACK`: алгоритм shuffle (SHUF-09); хранит выбор не очередь, а `data/Settings` (`shuffle/algorithm`, SHUF-10) |
 | `RandomTrack.kt` | `RandomTrack` — случайный трек: `draw` — другой трек головы с равной вероятностью (SHUF-06), `previous` — трек головы перед текущим по исходному порядку (SHUF-07); чистая арифметика по индексам |
 | `MusicSource.kt` | `MusicSource` — какие запросы к библиотеке делает очередь |
 | `Continuation.kt` | `Continuation` — продолжение очереди не из Яндекса (ниже, «Своё продолжение»), `ContinuationKey` — его ключ в файле очереди, `SearchPick` — найденное поиском не через `MusicSource`, `StartedTracks` — начавшиеся треки для продолжения: без повторов, старые первыми, до 50 каждого источника |
 | `LibraryMusicSource.kt` | `LibraryMusicSource` — `MusicSource` поверх `yandex/Library` |
 | `QueueEvent.kt` | `QueueEvent` — что очередь сообщает наружу |
+| `AddPlacement.kt` | `AddPlacement` — `NEXT` («Играть следующим») или `END` («В конец очереди»), ниже «Добавление в очередь» |
 | `QueueActivity.kt` | `QueueActivity` — что очередь сообщает телеметрии: `TrackStarted`, `PlayingChanged(playing)`, `PlaybackFailed(kind)` |
 | `ErrorPolicy.kt` | `ErrorAction`, `ErrorPolicy` — что делать с ошибкой; ожидание сети перед повтором |
 | `FailureKind.kt` | `FailureKind` — `NETWORK`, `SESSION`, `TRACK` (определяет `playback/PlaybackFailures`) |
@@ -52,7 +53,8 @@ data class ItemMark(itemId: String?, addedBy: String, waiting: Boolean)   // ite
 data class PlayModes(shuffle: Boolean = false, repeat: Boolean = false, locked: Boolean = false)   // выбор пользователя; locked — «Моя волна» или станция
 
 class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: CoroutineScope, io: CoroutineContext, newPlayId: () -> String = UUID, clock: () -> Long = монотонные мс, store: QueueStore? = null, logFailure: (Stage, Throwable) -> Unit = {}, continueWithVibeByDefault: () -> Boolean = { true }, random: Random = Random.Default,
-                      errorKindOf: (Throwable) -> ErrorKind = ErrorKind::of, continuationOf: (ContinuationKey) -> Continuation? = { null }) {
+                      errorKindOf: (Throwable) -> ErrorKind = ErrorKind::of, continuationOf: (ContinuationKey) -> Continuation? = { null },
+                      autoplayFrom: (Track) -> Continuation? = { null }) {   // ADD-05: своё продолжение очереди, начатой добавлением
     val state: StateFlow<QueueState>;  val events: SharedFlow<QueueEvent>;  val engine: PlayerEngine?
     val activity: SharedFlow<QueueActivity>   // для телеметрии, см. ниже
     val modes: StateFlow<PlayModes>
@@ -65,7 +67,10 @@ class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: C
     fun playContinuation(title: String, sourceId: String?, continuation: Continuation)   // радио Spotify (SPOT-12): пустая голова, как станция
     fun search(text: String, title: String)   // поиск Яндекса через MusicSource
     fun search(text: String, title: String, find: suspend (String) -> SearchPick)   // поиск Spotify (SPOT-11): find даёт корень
-    fun setQueue(tracks, title, isWave, autoplay, sourceId, waveFromHistory = true, continuation = null);  fun clear()   // setQueue: записи части defaultFor(isWave), без контекстов; в джеме оба — новая база (HOST-21, HOST-36)
+    fun playTracks(title: String, tracks: List<Track>, start: Int, sourceId: String? = null, continuation: Continuation? = null)   // SRC-16, SRC-18: источник без своего запроса, с выбранного трека
+    fun add(tracks: List<Track>, title: String, placement: AddPlacement)   // ADD-01…09: не источник, билета не берёт
+    fun addLoaded(title: String, placement: AddPlacement, loader: suspend () -> List<Track>)   // SRC-17: альбом, добавить, когда придёт
+    fun setQueue(tracks, title, isWave, autoplay, sourceId, waveFromHistory = true, continuation = null, start: Int? = null);  fun clear()   // start — выбранный трек (playTracks)   // setQueue: записи части defaultFor(isWave), без контекстов; в джеме оба — новая база (HOST-21, HOST-36)
     fun removeIndices(indices: Set<Int>);  fun toggleSelected(index: Int);  fun selectAllOrNone()   // в джеме ждущие элементы джема уходят через сервер (HOST-36)
     fun next();  fun previous();  fun stop()   // транспорт: сюда приходят кнопки приложения, уведомление и гарнитура
     fun setShuffle(on: Boolean);  fun setRepeat(on: Boolean)   // выбор пользователя: экран плеера и команды сессии
@@ -93,7 +98,7 @@ class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: C
 }
 ```
 
-В приложении `AppGraph` создаёт контроллер со `scope` на `Dispatchers.Main.immediate` и `io = Dispatchers.IO`; все методы вызываются с главного потока, запросы `MusicSource` и загрузчики — на `io`. В тестах оба — диспетчер `runTest`, время виртуальное. `random` — то, чем `RandomTrack.draw` тянет случайный трек (в тестах — `Random(0)` из `support/QueueHarness`, так что частоты детерминированы); проход без повторов перемешивает движок своим `Random`. `continueWithVibeByDefault` — значение настройки «продолжать волной» для новых очередей (CONT-01), в том числе для начальной пустой очереди нового контроллера (её флаг решает в джеме, HOST-14); пакет не может импортировать `data/`, поэтому это лямбда. `AppGraph` передаёт `{ settings.continueWithVibe.value }` (ключ `playback/continueWithVibe`, `data/README.md`); переключатели на экранах — `ui/README.md`, «Продолжать волной». `errorKindOf` — вид ошибки в `QueueEvent.Failed` любого упавшего запроса (источник, волна, автоплей, поиск, лайк); `AppGraph` передаёт корневой `errorKindOf` (`SpotifyErrorKinds.kt`, `spotify/README.md`, «Вид ошибки для статуса»), который узнаёт исключения Spotify, а потом зовёт `ErrorKind.of`; по умолчанию — сам `ErrorKind.of`, как раньше. `continuationOf` — продолжение по ключу из файла очереди при восстановлении; `AppGraph` передаёт `SpotifyContinuations::of`, по умолчанию продолжения нет.
+В приложении `AppGraph` создаёт контроллер со `scope` на `Dispatchers.Main.immediate` и `io = Dispatchers.IO`; все методы вызываются с главного потока, запросы `MusicSource` и загрузчики — на `io`. В тестах оба — диспетчер `runTest`, время виртуальное. `random` — то, чем `RandomTrack.draw` тянет случайный трек (в тестах — `Random(0)` из `support/QueueHarness`, так что частоты детерминированы); проход без повторов перемешивает движок своим `Random`. `continueWithVibeByDefault` — значение настройки «продолжать волной» для новых очередей (CONT-01), в том числе для начальной пустой очереди нового контроллера (её флаг решает в джеме, HOST-14); пакет не может импортировать `data/`, поэтому это лямбда. `AppGraph` передаёт `{ settings.continueWithVibe.value }` (ключ `playback/continueWithVibe`, `data/README.md`); переключатели на экранах — `ui/README.md`, «Продолжать волной». `errorKindOf` — вид ошибки в `QueueEvent.Failed` любого упавшего запроса (источник, волна, автоплей, поиск, лайк); `AppGraph` передаёт корневой `errorKindOf` (`SpotifyErrorKinds.kt`, `spotify/README.md`, «Вид ошибки для статуса»), который узнаёт исключения Spotify, а потом зовёт `ErrorKind.of`; по умолчанию — сам `ErrorKind.of`, как раньше. `continuationOf` — продолжение по ключу из файла очереди при восстановлении; `AppGraph` передаёт `SpotifyContinuations::of`, по умолчанию продолжения нет. `autoplayFrom` — своё продолжение очереди, которую начало добавление в пустую очередь (ADD-05), по первому доступному добавленному треку; `AppGraph` передаёт `SpotifyContinuations::autoplayFrom` (автоплей Spotify от URI трека Spotify, у остальных — `null`).
 
 Гарантии (сценарии `spec/player/`):
 - **Побеждает последний источник** (SRC-01…03). Каждый `loadSource`/`playWave`/`playContinuation`/`search` берёт билет; ответ или ошибка устаревшего билета отбрасываются молча. Поиск с лучшим артистом или альбомом — один источник, как бы много запросов он ни делал. `SourceLoaded` несёт число доступных треков источника, а не всей очереди: в джеме очередь держит ещё текущий трек и элементы.
@@ -158,6 +163,30 @@ class QueueController(source: MusicSource, connectivity: Flow<Boolean>, scope: C
 
 Это не `QueueEvent`: экран разбирает `QueueEvent` исчерпывающим `when`, а эти события ему не нужны.
 
+## Добавление в очередь
+
+«Играть следующим» и «В конец очереди» (`spec/player/queue.md`, ADD-01…09), как `Player::add` и `Queue::add` ПК. Зовёт экран поиска (`ui/README.md`, «Поиск»); в джеме поиск добавляет в джем, а не сюда (HOST-38).
+
+- **`add(tracks, title, placement)`** берёт доступные треки, билета не берёт и запрос источника в пути не отменяет: ответ, который придёт потом, заменит очередь вместе с добавленным (SRC-06). Ни одного доступного — ничего, даже события (ADD-05). Иначе событие `Added(subject, count, placement)`: `subject` — название трека, если он один, иначе `title` (как `AddedNotice` ПК).
+  - **Пустая очередь** (ADD-05): `setQueue(…, autoplay = false)` под `title`, с флагом новой очереди и продолжением `autoplayFrom(первый трек)`; курсор на первом, ничего не играет.
+  - **`NEXT`** (ADD-01): записи `ITEM` с `ItemMark(itemId = null, addedBy = "", waiting = true)` — те же ждущие строки, что у элементов прошлого джема: обход играет их первыми, `gatherWaiting` держит их за текущей строкой, shuffle и повтор их не берут, файл очереди их хранит. Встают за текущей строкой впереди уже ждущих; в джеме — за элементами джема (ADD-09). Если текущая строка — удержанная ждущая (ниже, ADD-07), они встают перед ней, курсор под `movingCursor` переходит на первый добавленный (`seekTo`), удерживается уже он; нового прохода нет: вставка за соседом и так ставит строки по порядку. Без плеера курсор восстановления сам указывает на первый добавленный.
+  - **`END` в голове** (ADD-03: `inHead` и в очереди есть записи `HEAD`): записи `HEAD` после последней записи `HEAD`, за всеми строками `ITEM` сразу за ней (отыгранными тоже: обход без shuffle идёт по индексу, и трек перед текущей отыгранной ждущей строкой «вперёд» уже не достал бы), перед продолжением. Движок вставляет их `insertHead(index, tracks, after)`: с «без повторов» каждый встаёт в проход на случайное место среди того, что проход ещё не сыграл — после текущего трека и `after` строк за ним (ждущие, вытянутый «случайного трека», строка ещё не начатого старта базы); `after` считает контроллер (`leadBehind`), без действующего shuffle — 0. Со «случайным треком» вытянутый остаётся следующим, следующее вытягивание может выбрать добавленные (SHUF-05, SHUF-06).
+  - **Иначе `END`** (ADD-04: очередь в продолжении или голова пуста): ждущие строки за последней ждущей.
+  - **ADD-06**: остановка в конце (`stoppedAtEnd`) не снимается, ничего не стартует; «вперёд» играет первый добавленный (`next()` из остановки — `prepare()` + `play()`).
+  - **ADD-08**: очередь ждёт продолжения (`continueAtEnd`) — цель обхода сразу `seekTo` + `prepare()` (+ `play()`, если плеер играл, `playAfterWait`), ожидание снимается; ответ продолжения потом только дописывается.
+  - Флаг «продолжать волной», продолжение, `stalled`, билет и поколение не меняются. Трек другого сервиса остаётся своим: сиды волны по истории и `moreWave` берут только треки Яндекса, автоплей Spotify — только треки Spotify (как и раньше).
+- **`addLoaded(title, placement, loader)`** (SRC-17, альбом): `loader` на `io` без билета; ответ — `add` к очереди, какой она стала к его приходу; сбой — `Failed(Stage.SOURCE, вид)`, ни одного доступного — `SourceEmpty(title)`.
+- **ADD-07, удаление текущего трека.** Вне джема удаление текущего играет дальше цель обхода (D8), кроме одного случая: цель — ждущая строка. Тогда, как в джеме, пауза, курсор на ней, `holding`, старт не отмечается; «плей» (`onPlayingChanged(true)` → `releaseHeld`) или «вперёд» начинают её. Общий случай спекой не описан (Kickoman/QiYaa-spec#17), поэтому у ADD-07 Android «no: gap A6».
+- **ADD-02, «назад».** С записи `HEAD`, над которой в порядке воспроизведения стоит строка `ITEM` (сыгранная ждущая), «назад» идёт к предыдущей записи `HEAD` в `playOrder()` (`headBeforeWaiting`, через `wrapTo`); если её нет — к последней записи `HEAD`, пока повтор держит голову, иначе рестарт (TR-01). В остальных случаях — как раньше. В джеме «назад» — по-прежнему перемотка в 0.
+
+**`playTracks(title, tracks, start, sourceId, continuation)`** (SRC-16, SRC-18) — выбор источника без своего запроса: новый билет и отмена запроса в пути (SRC-01), доступные треки, `start` пересчитан после фильтра (недоступный или вне диапазона — первый). Ни одного доступного — `SourceEmpty(title)`. Иначе `setQueue(…, autoplay = true, start)` и `SourceLoaded`: курсор на выбранном, проход shuffle начинается с него (`lead = [start]`), треки перед ним остаются в очереди.
+
+**Старт новой базы в джеме** (HOST-38, `headStart`). В джеме `playTracks` — новая база (HOST-21), и начинается она с выбранного трека и по порядку, и с shuffle, как `QueueSource::start` и `resetBefore` ПК:
+- `headStart` — номер среди записей `HEAD` (как метка головы), не индекс строки: элементы, которые вставляет каждый `state`, его не сдвигают. Удаление записи `HEAD` перед ним сдвигает его на один, удаление его самого передаёт роль следующей записи `HEAD`, за последней — снимается. Новая очередь, новая база без старта и `clear()` его сбрасывают.
+- **Ждёт** (`pendingStart`), пока текущая строка — не запись `HEAD` без удержания. **Израсходован** (`settleStart`), когда текущей стала запись `HEAD`, которая не удерживается: конец `onItemChanged` не под `movingCursor`, конец `removeCurrent`, `releaseHeld` записи `HEAD`, конец `replaceBase` и `editJamPart`. Так база, удержанная в пустом плеере на строке старта (`holdStart`), старт не теряет, а удаление текущего трека, после которого курсор встал на строку старта, его расходует (иначе обход целился бы в саму текущую строку).
+- Ждущий старт читают все: `QueueWalk.next/remaining(…, start)` — после ждущих цель обхода строка старта, и осталось считается от неё (записи `HEAD` перед ней без повтора не играют); `passLead` — строка старта в `lead` прохода (у «случайного трека» она и есть вытянутый); `attach` — то же без вытягивания; `leadBehind` — `insertHead` не ставит добавленные перед ней. Без shuffle цель обхода расходится с естественным следующим ExoPlayer, и переход делает пауза в конце (`pauseAtEndOfCurrent` → `wrapTo`): стык не бесшовный.
+- Пишется в файл (`headStart`, ниже «Формат сохранённой очереди»): после выгрузки процесса и «Нет» на HOST-23 база начинается с выбранного трека. Восстановление снимает его, если восстановленная текущая строка — запись `HEAD`.
+
 ## Своё продолжение: `Continuation`
 
 ```kotlin
@@ -191,13 +220,13 @@ class StartedTracks(tracks: List<Track> = emptyList()) { val tracks: List<Track>
 
 ```kotlin
 object QueueWalk {
-    fun next(entries: List<QueueEntry>, order: List<Int>, current: Int, repeatHoldsHead: Boolean, leaving: Set<Int> = emptySet()): Int?   // null — дальше ничего; leaving — строки, которые сейчас уходят
-    fun remaining(entries: List<QueueEntry>, order: List<Int>, current: Int, repeatHoldsHead: Boolean): Int   // вместе с текущим; Int.MAX_VALUE, пока повтор держит голову
+    fun next(entries: List<QueueEntry>, order: List<Int>, current: Int, repeatHoldsHead: Boolean, leaving: Set<Int> = emptySet(), start: Int? = null): Int?   // null — дальше ничего; leaving — строки, которые сейчас уходят; start — строка ждущего старта базы
+    fun remaining(entries: List<QueueEntry>, order: List<Int>, current: Int, repeatHoldsHead: Boolean, start: Int? = null): Int   // вместе с текущим; Int.MAX_VALUE, пока повтор держит голову
 }
 ```
 
 Что играет следующим, решает обход очереди, как `Queue::next` десктопа. `order` — `engine.playOrder()`, `current` — `engine.currentIndex`, `repeatHoldsHead` — «повтор держит голову» (выше), `leaving` — строки, которые никогда не цель: выбранные для удаления вместе с текущим треком (HOST-36). `next`:
-1. первый по индексу ждущий элемент (`isWaiting`), кроме текущей записи, — в том числе элемент закончившегося джема;
+1. первый по индексу ждущий элемент (`isWaiting`), кроме текущей записи, — в том числе элемент закончившегося джема и трек «Играть следующим»; за ними — ждущий старт новой базы (`start`, HOST-38), если это не текущая строка (уходит он сам — первая остающаяся запись `HEAD` с его индекса);
 2. повтор держит голову — следующая запись `HEAD` после текущей в порядке воспроизведения, а если её нет — первая запись `HEAD` в этом порядке (заворот; у головы из одного трека — сам текущий трек);
 3. иначе — следующая после текущей в порядке воспроизведения запись, которая не отыграна (`isSpent`: `OTHER` и элементы, которые уже не ждут);
 4. иначе null.
@@ -226,6 +255,7 @@ interface PlayerEngine {
     fun shuffleHead(head: List<Int>, lead: List<Int>)   // новый проход головы: сначала lead, затем остальная голова
     fun appendTracks(tracks)              // после всего, головой не становятся (продолжение, CONT-09)
     fun insertTracks(index, tracks)       // сразу за треком index - 1 в порядке воспроизведения («играть следующим»)
+    fun insertHead(index, tracks, after)  // ADD-03: в проход головы, каждый на случайное место после текущего и after строк за ним
     fun removeAt(index);  fun clear()
     fun reload(index)                     // загрузить элемент заново с нуля; index — не текущий; плейлист, порядок и курсор те же, колбэков нет
     fun seekTo(index);  fun seekToPosition(positionMs);  fun skipToNext();  fun skipToPrevious()
@@ -355,6 +385,8 @@ object ErrorPolicy {
 `spotify` как трек Яндекса с чужим id.
 
 `shuffle` и `repeat` — выбор пользователя (`WaveModeRule.wanted`), а не режим плеера в волне. `sourceId`, `coverUrl` могут отсутствовать; `batchId` пуст у записей без порции (голова), `waveSessionId` и `waveStationId` — пока у очереди нет сессии своей волны или волны по истории (у волны по истории станция — первый сид, `track:<id>`). `decode` зажимает `index` в границы треков, неизвестные поля пропускает, при другой `version` возвращает null.
+
+Старт новой базы, которая ещё не началась (HOST-38), — `"headStart":<n>` на верхнем уровне: номер среди записей `HEAD`. Нет поля — нет старта; номер не меньше числа записей `HEAD` файла `decode` отбрасывает.
 
 ## Тесты
 

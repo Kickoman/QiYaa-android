@@ -28,6 +28,9 @@ class SpotifyContinuations(private val catalog: SpotifyCatalog) {
     fun station(trackUri: String): Continuation =
         Pages(ContinuationKey(STATION, trackUri)) { catalog.station(trackUri) }
 
+    fun autoplayFrom(track: Track): Continuation? =
+        if (track.source == TrackSource.SPOTIFY) autoplay(SpotifyTracks.uriOf(track)) else null
+
     fun of(key: ContinuationKey): Continuation? {
         if (key.value.isEmpty()) return null
         return when (key.kind) {

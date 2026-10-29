@@ -28,6 +28,16 @@ data class HeadShuffle(val head: List<Int>, val length: Int) {
         )
     }
 
+    fun joined(at: Int, count: Int, current: Int, after: Int, random: Random): HeadShuffle {
+        val shifted = inserted(at, count)
+        if (length == 0) return shifted
+        val position = head.indexOf(current)
+        val from = if (position < 0) head.size else (position + 1 + after).coerceAtMost(head.size)
+        val pass = shifted.head.toMutableList()
+        for (index in at until at + count) pass.add(random.nextInt(from, pass.size + 1), index)
+        return HeadShuffle(pass, length + count)
+    }
+
     fun removed(from: Int, until: Int): HeadShuffle {
         require(from in 0..until && until <= length) {
             "Cannot remove $from until $until from a length of $length"
