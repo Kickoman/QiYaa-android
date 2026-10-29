@@ -64,7 +64,7 @@ SpotifyException : IOException
 - `NotLoggedInException` — только «нет сохранённого входа»: ещё не входили, вышли или `BadCredentials` (он удаляет сохранённое). Пока AP подключается или переподключается, ключ ждёт входа до 20 с и падает `SpotifyNetworkException`, а не этой ошибкой: иначе холодный старт и обрыв давали бы ERR-08 вместо ожидания (SPOT-04, SPOT-18).
 - У `SpotifyNetworkException` причина есть всегда: исключение OkHttp или сокета; у таймаутов — `SocketTimeoutException`, у оборванного соединения — `EOFException` или ошибка сокета. Поэтому `yandex.ErrorKind.of` видит в ней сеть по цепочке причин и без классификатора Spotify.
 - `AuthorizationException` в списке плана нет: она — как `OAuthException` у `yandex`. Экран входа на неё отвечает «войдите снова», а не «нет сети» или «сервер упал», и ошибки OAuth — строки, а не коды.
-- Данные, а не исключения: `SpotifyState` (`Offline`, `Expired`, `PremiumRequired`, `Refused`), `null` от `SavedCredentials.load()`, `SpotifyProblem`. В каталоге: трек без метаданных (не 200 или без тела) или с телом, которое не разбирается, выпадает из списка; альбом или исполнитель без метаданных — пустой список; сохранённый альбом или исполнитель без имени выпадает; поиск без треков — `SpotifyFound.Tracks(emptyList())`; трек без Ogg Vorbis — `available = false`.
+- Данные, а не исключения: `SpotifyState` (`Offline`, `Expired`, `PremiumRequired`, `Refused`), `null` от `SavedCredentials.load()`, `SpotifyProblem`. В каталоге: трек без метаданных (не 200 или без тела) или с телом, которое не разбирается, выпадает из списка; альбом или исполнитель без метаданных — пустой список; сохранённый альбом или исполнитель без имени выпадает; поиск, где ничего не нашлось, — `SpotifyFound()` (`TRACKS` без лучшего, без треков, исполнителей и альбомов); трек без Ogg Vorbis — `available = false`.
 - Весь ответ, который нельзя прочесть (конверт `extended-metadata`, страница коллекции или списка, контекст, поиск и главная Pathfinder), — `SpotifyContentException` и `Content` в `problems` («Два вида нечитаемого» спеки, `expected/spotify/README.md`). Pathfinder, отвергнувший все хеши ответом 2xx без `data`, — `QueryOutdatedException` и `QueryOutdated` вместо `Content`; отвергнувший последний хеш статусом 400, 405 или 412 — `SpotifyHttpException` с этим статусом и тоже `QueryOutdated`.
 
 ### Вид ошибки для статуса
@@ -352,8 +352,8 @@ class SpotifyLibrary(
     suspend fun nextPage(pageUrl: String): ContextPage       // hm://… из ContextPage.next
 }
 data class SpotifyItem(val uri: String, val name: String)
-data class SpotifyFound(kind: Kind = TRACKS, best: SpotifyItem? = null, trackUris: List<String>, artists: List<SpotifyItem>, albums: List<SpotifyFoundAlbum>) { enum class Kind(key) { ARTIST, ALBUM, TRACK, TRACKS } }   // key — как kind в expected/spotify
-data class SpotifyFoundAlbum(uri: String, name: String, artists: List<String>, year: Int? = null, single: Boolean = false)   // year null — нет или 0
+data class SpotifyFound(kind: Kind = TRACKS, best: SpotifyItem? = null, trackUris: List<String> = emptyList(), artists: List<SpotifyItem> = emptyList(), albums: List<SpotifyFoundAlbum> = emptyList()) { enum class Kind(key) { ARTIST, ALBUM, TRACK, TRACKS } }   // key — как kind в expected/spotify
+data class SpotifyFoundAlbum(uri: String, name: String, artists: List<String> = emptyList(), year: Int? = null, single: Boolean = false)   // year null — нет или 0
 data class SpotifyPick(val best: SpotifyItem?, val contextUri: String, val tracks: List<Track>)   // best == null — найденные треки
 data class ContextPage(val tracks: List<Track>, val next: String)                                  // next == "" — страница последняя
 ```

@@ -236,7 +236,7 @@ class Library(val api: YandexApi) : AccountGateway {
         id = idString(album["id"]),
         title = album.string("title"),
         artists = album["artists"].arrayOrEmpty.map { it.objectOrEmpty.string("name") },
-        year = (album["year"] as? JsonPrimitive)?.doubleOrNull?.toInt(),
+        year = (album["year"] as? JsonPrimitive)?.doubleOrNull?.toInt()?.takeIf { it != 0 },
         single = album.string("type") == ALBUM_SINGLE,
     )
 
