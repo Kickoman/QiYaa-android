@@ -24,10 +24,10 @@ class JamClientTest {
         jam.transport.last.open()
         runCurrent()
         assertEquals(
-            Decoded.Message(Hello(1, JamApp.ANDROID, "test")),
+            Decoded.Message(Hello(2, JamApp.ANDROID, "test")),
             JamCodec.decodeClient(jam.transport.last.sent[0]),
         )
-        jam.transport.last.receive("""{"type":"welcome","protocol":1,"serverTime":${currentTime + 1_500}}""")
+        jam.transport.last.receive("""{"type":"welcome","protocol":2,"serverTime":${currentTime + 1_500}}""")
         runCurrent()
         assertEquals(JamStatus.ONLINE, jam.client.status.value)
         assertEquals(1, jam.handler.welcomes)
@@ -158,7 +158,7 @@ class JamClientTest {
         fun online() {
             scope.runCurrent()
             transport.last.open()
-            transport.last.receive("""{"type":"welcome","protocol":1,"serverTime":0}""")
+            transport.last.receive("""{"type":"welcome","protocol":2,"serverTime":0}""")
             scope.runCurrent()
         }
     }
