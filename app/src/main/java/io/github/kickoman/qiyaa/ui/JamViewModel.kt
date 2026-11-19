@@ -52,7 +52,7 @@ class JamViewModel(application: Application) : AndroidViewModel(application) {
     fun setHostName(name: String) = mutableUi.update { it.copy(hostName = JamNames.cut(name)) }
 
     fun start() {
-        if (!graph.session.state.value.signedIn) {
+        if (!graph.session.state.value.signedIn && !graph.spotifyAvailableForJam()) {
             notice(string(R.string.jam_needs_login))
             return
         }

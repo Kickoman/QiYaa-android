@@ -10,6 +10,7 @@ import io.github.kickoman.qiyaa.jam.GuestAddResult
 import io.github.kickoman.qiyaa.jam.GuestPhase
 import io.github.kickoman.qiyaa.jam.JamGuestState
 import io.github.kickoman.qiyaa.jam.JamNames
+import io.github.kickoman.qiyaa.jam.JamTrackSource
 import io.github.kickoman.qiyaa.playback.JamTracks
 import io.github.kickoman.qiyaa.track.Track
 import io.github.kickoman.qiyaa.yandex.Account
@@ -120,7 +121,7 @@ class JamGuestViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun toggleLike() {
-        val track = state.value.room?.nowPlaying?.track?.takeIf { it.isCatalog } ?: return
+        val track = state.value.room?.nowPlaying?.track?.takeIf { it.isCatalog && it.source != JamTrackSource.SPOTIFY } ?: return
         if (likeJob?.isActive == true) return
         val liked = !library.isLiked(track.id)
         likeJob =

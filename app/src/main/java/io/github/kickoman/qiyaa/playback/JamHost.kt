@@ -128,6 +128,8 @@ class JamHost(
     private val newId: () -> String = { UUID.randomUUID().toString() },
     clock: () -> Long = System::currentTimeMillis,
     private val log: (String, Throwable?) -> Unit = { _, _ -> },
+    private val searchSources: () -> List<String>? = { null },
+    private val spotifySearch: suspend (String) -> List<Track> = { emptyList() },
 ) : JamHandler,
     JamPlaybackListener {
     private data class CreateRequest(val hostName: String, val settings: JamSettingsPatch?)
@@ -288,7 +290,7 @@ class JamHost(
             create != null -> {
                 val id = newId()
                 requestId = id
-                client.send(Create(id, create.hostName, create.settings))
+                client.send(Create(id, create.hostName, create.settings, searchSources()))
             }
         }
         publish()
@@ -388,6 +390,12 @@ class JamHost(
 
     private fun request(build: (String) -> ClientMessage): Boolean = connected && client.send(build(newId()))
 
+    fun updateSearchSources() {
+        if (!connected) return
+        val sources = searchSources() ?: return
+        client.send(ChangeSettings(newId(), searchSources = sources))
+    }
+
     private fun sendResume(resumed: JamSession, outbox: List<String>) {
         val id = newId()
         requestId = id
@@ -398,6 +406,7 @@ class JamHost(
                 hostSecret = resumed.hostSecret,
                 snapshot = resumed.snapshot ?: JsonNull,
                 outbox = outbox.takeLast(MAX_OUTBOX).map { OutboxEntry(itemId = it) },
+                searchSources = searchSources(),
             ),
         )
     }
@@ -484,10 +493,15 @@ class JamHost(
         scope.launch {
             val reply =
                 try {
-                    val found = withContext(io) { catalog.searchTracks(message.text) }
+                    val spotify = message.source == "spotify"
+                    val found = withContext(io) {
+                        if (spotify) spotifySearch(message.text) else catalog.searchTracks(message.text)
+                    }
                     val tracks = found.filter {
                         it.available
-                    }.mapNotNull(JamTracks::toJam).take(SEARCH_RESULTS)
+                    }.mapNotNull {
+                        if (spotify) JamTracks.spotifyTrack(it) else JamTracks.toJam(it)
+                    }.take(SEARCH_RESULTS)
                     SearchResult(message.requestId, tracks = tracks)
                 } catch (failed: Exception) {
                     if (failed is CancellationException) throw failed

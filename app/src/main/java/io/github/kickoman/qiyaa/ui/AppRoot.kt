@@ -169,7 +169,7 @@ fun AppRoot(
 
                         Screen.JAM -> JamScreen(
                             jam,
-                            signedIn = sessionState.signedIn,
+                            signedIn = sessionState.signedIn || spotifyUi.access == SpotifyAccess.LOGGED_IN,
                             onSettings = { app.go(Screen.JAM_SETTINGS) },
                             onJoinLink = openLink,
                             onSignIn = { app.openLogin(returnTo = Screen.JAM) },
@@ -213,7 +213,7 @@ fun AppRoot(
                 if (!screen.isLogin) TabBar(screen, app::go)
             }
 
-            if (!screen.isLogin && sessionState.signedIn && jamState.storedSession) {
+            if (!screen.isLogin && (sessionState.signedIn || spotifyUi.access == SpotifyAccess.LOGGED_IN) && jamState.storedSession) {
                 JamContinueDialog(onContinue = jam::continueStored, onEnd = jam::discardStored)
             }
 

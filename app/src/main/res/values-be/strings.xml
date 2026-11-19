@@ -92,7 +92,7 @@
     <string name="login_open_jam_page">АДКРЫЦЬ ДЖЭМ У БРАЎЗЕРЫ</string>
     <string name="login_no_browser">На тэлефоне няма браўзера, які адкрые старонку.</string>
     <string name="jam_join_needs_login">Увайдзіце ў Яндэкс Музыку, каб далучыцца да джэма з праграмы. Без акаўнта адкрыйце яго ў браўзеры.</string>
-    <string name="jam_needs_login">Каб пачаць джэм, трэба ўвайсці ў Яндэкс Музыку: госці шукаюць трэкі праз ваш акаўнт.</string>
+    <string name="jam_needs_login">Каб пачаць джэм, увайдзіце ў Яндэкс Музыку ці Spotify. Госці шукаюць праз ваш акаўнт.</string>
     <string name="library_search_hint">Выканаўца, альбом ці трэк… (Enter)</string>
     <string name="library_my_wave">Мая хваля</string>
     <string name="library_my_wave_sub">БЯСКОНЦАЯ · ДАГРУЖАЕЦЦА</string>

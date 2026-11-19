@@ -18,6 +18,7 @@ object JamTracks {
     const val MAX_DURATION_MS = 86_400_000L
     private const val HMAC = "HmacSHA256"
     private const val HOST_ID_BYTES = 8
+    private val SPOTIFY_ID = Regex("^[0-9A-Za-z]{22}$")
     private val CATALOG_ID = Regex("^[0-9A-Za-z_-]{1,64}$")
     private val CONTROL = Regex("[\\u0000-\\u001F\\u007F]")
 
@@ -30,6 +31,11 @@ object JamTracks {
     fun baseTrack(track: Track, hostSecret: String): JamTrack? = when (track.source) {
         TrackSource.YANDEX -> toJam(track)
         TrackSource.LOCAL, TrackSource.SPOTIFY -> hostTrack(track, hostSecret)
+    }
+
+    fun spotifyTrack(track: Track): JamTrack? {
+        if (track.source != TrackSource.SPOTIFY || !SPOTIFY_ID.matches(track.id)) return null
+        return within(track)?.copy(id = track.id, source = JamTrackSource.SPOTIFY)
     }
 
     private fun hostTrack(track: Track, hostSecret: String): JamTrack? =
@@ -70,6 +76,7 @@ object JamTracks {
         albumId = track.albumId.orEmpty(),
         durationMs = track.durationMs,
         coverUrl = track.coverUri?.let { TrackParsing.coverUrl(it) },
+        source = if (track.source == JamTrackSource.SPOTIFY) TrackSource.SPOTIFY else TrackSource.YANDEX,
     )
 
     /** Back from the URL `TrackParsing.coverUrl` built to the Yandex template: no scheme, `%%` for the size. */
