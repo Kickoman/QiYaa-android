@@ -35,14 +35,12 @@ grep -nE '\\\\[sSpPdDwWbB]' app/src/main/java/io/github/kickoman/qiyaa/jam/{JamC
 `SearchResult`, `snapshot` → `Snapshot`, `state` → `State`.
 
 - `JamTrack.coverUri` — шаблон Яндекса с `%%`, как в протоколе; это не `track/Track.coverUrl`.
-- `JamTrack.source` — `null` (по умолчанию схемы, `yandex`), `YANDEX` или `HOST`: трек, который может
-  сыграть только хозяин, например свой файл десктопа или телефона (протокол, «Tracks»; HOST-37, LISTEN-14).
-  `null` при кодировании пропадает (`explicitNulls = false`), так что трек каталога уходит без ключа
-  `source`, как и раньше, и старый сервер его не видит. `JamTrack.isCatalog` — не `HOST`. Хозяин на
-  Android шлёт `host`-трек только для трека базы не из Яндекса, то есть своего файла или трека Spotify
-  (`playback/JamTracks.baseTrack`, HOST-37); трек каталога `playback/JamTracks.toJam` строит без `source`.
-  Гость в приложении показывает `host`-треки без обложки и ссылки (GUEST-14) и сам не добавляет
-  (`JamGuest.add`, ROOM-66).
+- `JamTrack.source` — `null` (значение по умолчанию `yandex`), `YANDEX`, `SPOTIFY` или `HOST`.
+  `null` при кодировании пропадает (`explicitNulls = false`). Треки Яндекса и Spotify могут входить
+  в очередь джема. `HOST` обозначает трек базы, который может сыграть только хозяин (HOST-37, LISTEN-14).
+  Хозяин Android использует его для своих файлов и треков Spotify из базы (`playback/JamTracks.baseTrack`).
+  Встроенный гость показывает треки `HOST` без обложки и ссылки (GUEST-14), а добавляет треки Яндекса
+  через `JamGuest.add` (GUEST-07).
 - `Rejected.reason` — строка, а не enum: причину, которой приложение не знает, показываем как общую
   ошибку (протокол, «Reasons»). Известные — `JamCodec.REASONS`.
 - `Resume.snapshot` и `Snapshot.data` — `JsonElement`: снимок хозяин не читает, только хранит и
@@ -114,7 +112,7 @@ class JamClient(transport: JamTransport, connectivity: Flow<Boolean>, scope: Cor
 interface JamHandler { fun onWelcome(); fun onMessage(message: ServerMessage) }
 ```
 
-- Открылся сокет — `hello{protocol: 1, app: android}`. `welcome` — `ONLINE`, смещение часов,
+- Открылся сокет — `hello{protocol: 2, app: android}`. `welcome` — `ONLINE`, смещение часов,
   `onWelcome()`: владелец шлёт `create`, `resume` или `join`. Смещение обновляется и по каждому `state`.
 - Обрыв — `OFFLINE` и новое соединение через 1, 2, 4, 8, 16, 30, 30 … с; `welcome` сбрасывает счёт.
   Сеть появилась (`connectivity` стал `true`, в приложении — `NetworkMonitor.available`) — сразу.

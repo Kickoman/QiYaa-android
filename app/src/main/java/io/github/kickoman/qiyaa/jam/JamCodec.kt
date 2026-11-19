@@ -243,7 +243,12 @@ object JamCodec {
                     require((it.track == null) != (it.reason == null)) {
                         "a result has either track or reason"
                     }
-                    it.track?.let { track -> catalogTrack("results[].track", track) }
+                    it.track?.let { track ->
+                        catalogTrack("results[].track", track)
+                        require(track.source != JamTrackSource.SPOTIFY) {
+                            "results[].track holds the Spotify track ${track.id}"
+                        }
+                    }
                 }
             }
 

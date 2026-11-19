@@ -48,6 +48,7 @@ import io.github.kickoman.qiyaa.queue.JamPlayback
 import io.github.kickoman.qiyaa.queue.JamPlaybackListener
 import io.github.kickoman.qiyaa.queue.QueueController
 import io.github.kickoman.qiyaa.track.Track
+import io.github.kickoman.qiyaa.track.TrackKey
 import io.github.kickoman.qiyaa.track.TrackSource
 import io.github.kickoman.qiyaa.yandex.ErrorKind
 import java.util.UUID
@@ -146,11 +147,12 @@ class JamHost(
     private var creating: CreateRequest? = null
     private var connected = false
     private var requestId: String? = null
+    private var handshakeSearchSources: List<String>? = null
     private var endId: String? = null
     private var lastVersion = -1L
-    private var pendingPin: String? = null
+    private var pendingPin: TrackKey? = null
     private var pendingPinAdd: String? = null
-    private val addRequests = LinkedHashMap<String, String>()
+    private val addRequests = LinkedHashMap<String, TrackKey>()
     private var serverUrl = ""
     private var retry: Job? = null
     private val writes = Channel<JamSession?>(Channel.CONFLATED)
@@ -236,20 +238,20 @@ class JamHost(
         val jamTrack = JamTracks.toJam(track) ?: return false
         val id = newId()
         if (!connected || !client.send(Add(id, track = jamTrack))) return false
-        addRequests[id] = jamTrack.id
+        addRequests[id] = track.key
         return true
     }
 
     /** "Play next": `pin` for a track already waiting, otherwise `add`, then `pin` once it is there. */
     fun playNext(track: Track): Boolean {
         val jamTrack = JamTracks.toJam(track) ?: return false
-        val waiting = mutableState.value.room?.queue?.firstOrNull { it.track.id == track.id }
+        val waiting = mutableState.value.room?.queue?.firstOrNull { JamTracks.keyOf(it.track) == track.key }
         if (waiting != null) return pin(waiting.itemId)
         val id = newId()
         if (!connected || !client.send(Add(id, track = jamTrack))) return false
-        pendingPin = track.id
+        pendingPin = track.key
         pendingPinAdd = id
-        addRequests[id] = jamTrack.id
+        addRequests[id] = track.key
         return true
     }
 
@@ -290,7 +292,8 @@ class JamHost(
             create != null -> {
                 val id = newId()
                 requestId = id
-                client.send(Create(id, create.hostName, create.settings, searchSources()))
+                handshakeSearchSources = searchSources()
+                client.send(Create(id, create.hostName, create.settings, handshakeSearchSources))
             }
         }
         publish()
@@ -399,6 +402,7 @@ class JamHost(
     private fun sendResume(resumed: JamSession, outbox: List<String>) {
         val id = newId()
         requestId = id
+        handshakeSearchSources = searchSources()
         client.send(
             Resume(
                 id = id,
@@ -406,7 +410,7 @@ class JamHost(
                 hostSecret = resumed.hostSecret,
                 snapshot = resumed.snapshot ?: JsonNull,
                 outbox = outbox.takeLast(MAX_OUTBOX).map { OutboxEntry(itemId = it) },
-                searchSources = searchSources(),
+                searchSources = handshakeSearchSources,
             ),
         )
     }
@@ -414,7 +418,7 @@ class JamHost(
     private fun created(message: Created) {
         creating = null
         requestId = null
-        connected = true
+        finishHandshake()
         save(JamSession(message.roomId, message.hostSecret, message.joinUrl, null, emptyList()))
         queue.startJam(this, config().waveFeedback)
     }
@@ -427,15 +431,24 @@ class JamHost(
             client.send(End(id))
             return
         }
-        connected = true
+        finishHandshake()
         client.clearOutbox()
         queue.reportJamPlayback()
+    }
+
+    private fun finishHandshake() {
+        connected = true
+        val sources = searchSources()
+        if (sources != null && sources != handshakeSearchSources) {
+            client.send(ChangeSettings(newId(), searchSources = sources))
+        }
+        handshakeSearchSources = null
     }
 
     private fun rejected(message: Rejected) {
         val id = message.id
         id?.let(addRequests::remove)?.let {
-            mutableEvents.tryEmit(JamHostEvent.AddRefused(it, message.reason))
+            mutableEvents.tryEmit(JamHostEvent.AddRefused(it.id, message.reason))
         }
         when {
             id != null && id == pendingPinAdd -> {
@@ -474,16 +487,17 @@ class JamHost(
         if (lastVersion >= 0 && message.version <= lastVersion) return
         lastVersion = message.version
         val room = message.room
-        addRequests.values.removeAll { trackId -> room.queue.any { it.track.id == trackId } }
+        addRequests.values.removeAll { key -> room.queue.any { JamTracks.keyOf(it.track) == key } }
         mutableState.value = mutableState.value.copy(room = room)
         queue.onJamQueue(
             room.queue.map { JamEntry(it.itemId, JamTracks.fromJam(it.track), it.addedBy) },
             room.fallback.seeds,
             room.fallback.seedsVersion,
         )
-        val trackId = pendingPin ?: return
-        val item =
-            room.queue.firstOrNull { it.track.id == trackId && it.addedBy == room.you.publicId } ?: return
+        val key = pendingPin ?: return
+        val item = room.queue.firstOrNull {
+            JamTracks.keyOf(it.track) == key && it.addedBy == room.you.publicId
+        } ?: return
         pendingPin = null
         pendingPinAdd = null
         if (!item.pinned) pin(item.itemId)

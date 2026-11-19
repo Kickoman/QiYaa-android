@@ -20,6 +20,7 @@ import io.github.kickoman.qiyaa.queue.Continuation
 import io.github.kickoman.qiyaa.queue.QueueController
 import io.github.kickoman.qiyaa.spotify.SpotifyTracks
 import io.github.kickoman.qiyaa.track.Track
+import io.github.kickoman.qiyaa.track.TrackSource
 import io.github.kickoman.qiyaa.yandex.signedIn
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CancellationException
@@ -97,7 +98,11 @@ class SearchViewModel(
         }
         val names = room?.participants.orEmpty().associate { it.publicId to it.name }
         val waiting = LinkedHashMap<String, String>()
-        for (item in room?.queue.orEmpty()) waiting.putIfAbsent(item.track.id, names[item.addedBy].orEmpty())
+        for (item in room?.queue.orEmpty()) {
+            if (JamTracks.keyOf(item.track).source == TrackSource.YANDEX) {
+                waiting.putIfAbsent(item.track.id, names[item.addedBy].orEmpty())
+            }
+        }
         mutableUi.update {
             it.copy(
                 jam = SearchJam(state.connected, waiting),

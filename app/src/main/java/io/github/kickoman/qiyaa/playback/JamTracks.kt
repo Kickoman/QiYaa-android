@@ -4,6 +4,7 @@ import io.github.kickoman.qiyaa.jam.JamCodec
 import io.github.kickoman.qiyaa.jam.JamTrack
 import io.github.kickoman.qiyaa.jam.JamTrackSource
 import io.github.kickoman.qiyaa.track.Track
+import io.github.kickoman.qiyaa.track.TrackKey
 import io.github.kickoman.qiyaa.track.TrackSource
 import io.github.kickoman.qiyaa.yandex.TrackParsing
 import javax.crypto.Mac
@@ -69,6 +70,14 @@ object JamTracks {
         )
     }
 
+    fun keyOf(track: JamTrack): TrackKey = TrackKey(sourceOf(track), track.id)
+
+    private fun sourceOf(track: JamTrack): TrackSource = when (track.source) {
+        JamTrackSource.SPOTIFY -> TrackSource.SPOTIFY
+        JamTrackSource.HOST -> TrackSource.LOCAL
+        JamTrackSource.YANDEX, null -> TrackSource.YANDEX
+    }
+
     fun fromJam(track: JamTrack): Track = Track(
         id = track.id,
         title = track.title,
@@ -76,7 +85,7 @@ object JamTracks {
         albumId = track.albumId.orEmpty(),
         durationMs = track.durationMs,
         coverUrl = track.coverUri?.let { TrackParsing.coverUrl(it) },
-        source = if (track.source == JamTrackSource.SPOTIFY) TrackSource.SPOTIFY else TrackSource.YANDEX,
+        source = sourceOf(track),
     )
 
     /** Back from the URL `TrackParsing.coverUrl` built to the Yandex template: no scheme, `%%` for the size. */
