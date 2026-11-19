@@ -108,7 +108,7 @@
     <string name="login_open_jam_page">OPEN THE JAM IN THE BROWSER</string>
     <string name="login_no_browser">No browser on this phone opens web pages.</string>
     <string name="jam_join_needs_login">Sign in to Yandex Music to join the jam from the app. Without an account, open it in the browser.</string>
-    <string name="jam_needs_login">Hosting a jam needs a Yandex Music sign-in: guests search through your account.</string>
+    <string name="jam_needs_login">Sign in to Yandex Music or Spotify to host a jam. Guests search through your account.</string>
     <string name="library_search_hint">Artist, album or track… (Enter)</string>
     <string name="library_my_wave">My Vibe</string>
     <string name="library_my_wave_sub">ENDLESS · LOADS AS YOU LISTEN</string>

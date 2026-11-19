@@ -4,6 +4,7 @@ import io.github.kickoman.qiyaa.jam.JamCodec
 import io.github.kickoman.qiyaa.jam.JamTrack
 import io.github.kickoman.qiyaa.jam.JamTrackSource
 import io.github.kickoman.qiyaa.track.Track
+import io.github.kickoman.qiyaa.track.TrackKey
 import io.github.kickoman.qiyaa.track.TrackSource
 import io.github.kickoman.qiyaa.yandex.TrackParsing
 import javax.crypto.Mac
@@ -18,6 +19,7 @@ object JamTracks {
     const val MAX_DURATION_MS = 86_400_000L
     private const val HMAC = "HmacSHA256"
     private const val HOST_ID_BYTES = 8
+    private val SPOTIFY_ID = Regex("^[0-9A-Za-z]{22}$")
     private val CATALOG_ID = Regex("^[0-9A-Za-z_-]{1,64}$")
     private val CONTROL = Regex("[\\u0000-\\u001F\\u007F]")
 
@@ -30,6 +32,11 @@ object JamTracks {
     fun baseTrack(track: Track, hostSecret: String): JamTrack? = when (track.source) {
         TrackSource.YANDEX -> toJam(track)
         TrackSource.LOCAL, TrackSource.SPOTIFY -> hostTrack(track, hostSecret)
+    }
+
+    fun spotifyTrack(track: Track): JamTrack? {
+        if (track.source != TrackSource.SPOTIFY || !SPOTIFY_ID.matches(track.id)) return null
+        return within(track)?.copy(id = track.id, source = JamTrackSource.SPOTIFY)
     }
 
     private fun hostTrack(track: Track, hostSecret: String): JamTrack? =
@@ -63,6 +70,14 @@ object JamTracks {
         )
     }
 
+    fun keyOf(track: JamTrack): TrackKey = TrackKey(sourceOf(track), track.id)
+
+    private fun sourceOf(track: JamTrack): TrackSource = when (track.source) {
+        JamTrackSource.SPOTIFY -> TrackSource.SPOTIFY
+        JamTrackSource.HOST -> TrackSource.LOCAL
+        JamTrackSource.YANDEX, null -> TrackSource.YANDEX
+    }
+
     fun fromJam(track: JamTrack): Track = Track(
         id = track.id,
         title = track.title,
@@ -70,6 +85,7 @@ object JamTracks {
         albumId = track.albumId.orEmpty(),
         durationMs = track.durationMs,
         coverUrl = track.coverUri?.let { TrackParsing.coverUrl(it) },
+        source = sourceOf(track),
     )
 
     /** Back from the URL `TrackParsing.coverUrl` built to the Yandex template: no scheme, `%%` for the size. */

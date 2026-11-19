@@ -2,6 +2,7 @@ package io.github.kickoman.qiyaa.playback
 
 import io.github.kickoman.qiyaa.jam.Ack
 import io.github.kickoman.qiyaa.jam.Add
+import io.github.kickoman.qiyaa.jam.ChangeSettings
 import io.github.kickoman.qiyaa.jam.ClientMessage
 import io.github.kickoman.qiyaa.jam.Command
 import io.github.kickoman.qiyaa.jam.CommandKind
@@ -500,6 +501,31 @@ class JamHostTest {
     }
 
     @Test
+    fun `catalog changes in flight are sent when the host handshake completes`() = runTest {
+        val h = Harness(this)
+        h.searchSources = listOf("yandex")
+        assertTrue(h.host.create("Маша"))
+        h.open()
+        assertEquals(listOf("yandex"), h.sent().filterIsInstance<Create>().single().searchSources)
+        h.searchSources = listOf("spotify")
+        h.host.updateSearchSources()
+        assertTrue(h.sent().none { it is ChangeSettings })
+        h.receive(Created("r1", ROOM, HOST_SECRET, JOIN_SECRET, JOIN_URL, HOST_ID))
+        assertEquals(listOf("spotify"), h.sent().filterIsInstance<ChangeSettings>().single().searchSources)
+
+        h.host.onServiceStopped()
+        h.host.onServiceStarted()
+        h.open()
+        val resume = h.sent().filterIsInstance<Resume>().single()
+        assertEquals(listOf("spotify"), resume.searchSources)
+        h.searchSources = emptyList()
+        h.host.updateSearchSources()
+        assertTrue(h.sent().none { it is ChangeSettings })
+        h.receive(Resumed(resume.id, restored = false))
+        assertEquals(emptyList<String>(), h.sent().filterIsInstance<ChangeSettings>().single().searchSources)
+    }
+
+    @Test
     fun `HOST-38 a refused add names its track before the refusal, an add the state listed does not`() =
         runTest {
             val h = Harness(this)
@@ -522,6 +548,27 @@ class JamHostTest {
                 h.events,
             )
         }
+
+    @Test
+    fun `HOST-20 HOST-38 a Spotify item with the same id does not match a Yandex add or pin`() = runTest {
+        val h = Harness(this)
+        h.created()
+        val track = Track(id = SPOTIFY_ID, title = "Yandex")
+        val spotify = item("i1", track.id, HOST_ID).let {
+            it.copy(track = it.track.copy(source = JamTrackSource.SPOTIFY))
+        }
+        h.state(1, spotify)
+        assertTrue(h.host.playNext(track))
+        assertEquals(Add("r2", track = JamTracks.toJam(track)), h.sent().last())
+        h.state(2, spotify)
+        assertTrue(h.sent().none { it is Pin })
+        h.receive(Rejected("r2", "queue-full"))
+        assertEquals(JamHostEvent.AddRefused(track.id, "queue-full"), h.events.first())
+
+        assertTrue(h.host.playNext(track))
+        h.state(3, spotify, item("i2", track.id, HOST_ID))
+        assertEquals(Pin("r4", "i2"), h.sent().last())
+    }
 
     @Test
     fun `HOST-20 ROOM-66 a local track is not added or played next, even with a guest's item of its id`() =
@@ -702,6 +749,7 @@ class JamHostTest {
         val catalog = FakeCatalog()
         val store = MemoryStore(stored?.let(JamSessionCodec::encode))
         var config = JamHostConfig("https://jam.example.org", waveFeedback = true)
+        var searchSources: List<String>? = null
         val signed = HashMap<String, String>()
         val events = ArrayList<JamHostEvent>()
         private var ids = 0
@@ -719,6 +767,7 @@ class JamHostTest {
                 signedLink = { signed[it] },
                 newId = { "r${++ids}" },
                 clock = { scope.testScheduler.currentTime },
+                searchSources = { searchSources },
             )
 
         init {

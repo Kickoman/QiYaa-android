@@ -55,6 +55,7 @@ import io.github.kickoman.qiyaa.jam.JamParticipant
 import io.github.kickoman.qiyaa.jam.JamQueueItem
 import io.github.kickoman.qiyaa.jam.JamRoom
 import io.github.kickoman.qiyaa.jam.JamStatus
+import io.github.kickoman.qiyaa.jam.JamTrackSource
 import io.github.kickoman.qiyaa.jam.NowPlayingSource
 import io.github.kickoman.qiyaa.jam.ParticipantKind
 import io.github.kickoman.qiyaa.jam.positionMsAt
@@ -488,7 +489,7 @@ private fun NowPlaying(
                 color = colors.textSecondary,
                 maxLines = 1,
             )
-            if (track.isCatalog) {
+            if (track.isCatalog && track.source != JamTrackSource.SPOTIFY) {
                 LikeButton(
                     track.id in likedIds,
                     Modifier.width(56.dp),

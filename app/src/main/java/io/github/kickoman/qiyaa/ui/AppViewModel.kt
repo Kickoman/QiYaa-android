@@ -486,12 +486,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun leaveSession(expired: Boolean) {
-        graph.jamHost.cancelCreate()
-        graph.jamHost.end()
+        val keepJam = graph.spotifyAvailableForJam() && graph.jamHost.state.value.phase == JamHostPhase.ACTIVE
+        if (!keepJam) {
+            graph.jamHost.cancelCreate()
+            graph.jamHost.end()
+        }
         if (expired) jamGuest.leave() else jamGuest.forgetAll()
         pendingLink = null
-        queue.clear()
+        if (!keepJam) queue.clear()
         session.signOut()
+        graph.jamHost.updateSearchSources()
         tokenStore.clear()
         for (list in lists + wheel) list.reset()
         mutableLibraryUi.value = LibraryUi()
