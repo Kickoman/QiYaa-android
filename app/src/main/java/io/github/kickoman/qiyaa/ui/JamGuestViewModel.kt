@@ -121,7 +121,8 @@ class JamGuestViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun toggleLike() {
-        val track = state.value.room?.nowPlaying?.track?.takeIf { it.isCatalog && it.source != JamTrackSource.SPOTIFY } ?: return
+        val track = state.value.room?.nowPlaying?.track ?: return
+        if (!track.isCatalog || track.source == JamTrackSource.SPOTIFY) return
         if (likeJob?.isActive == true) return
         val liked = !library.isLiked(track.id)
         likeJob =

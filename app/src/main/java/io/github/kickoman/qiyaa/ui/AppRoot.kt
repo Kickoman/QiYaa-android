@@ -213,7 +213,8 @@ fun AppRoot(
                 if (!screen.isLogin) TabBar(screen, app::go)
             }
 
-            if (!screen.isLogin && (sessionState.signedIn || spotifyUi.access == SpotifyAccess.LOGGED_IN) && jamState.storedSession) {
+            val canHostJam = sessionState.signedIn || spotifyUi.access == SpotifyAccess.LOGGED_IN
+            if (!screen.isLogin && canHostJam && jamState.storedSession) {
                 JamContinueDialog(onContinue = jam::continueStored, onEnd = jam::discardStored)
             }
 

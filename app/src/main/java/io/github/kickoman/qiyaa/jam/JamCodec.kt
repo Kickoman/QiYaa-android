@@ -217,7 +217,8 @@ object JamCodec {
             is ChangeSettings -> {
                 pattern("id", message.id, requestId)
                 message.settings?.let(::settingsPatch)
-                require(message.searchSources != null || (message.settings != null && message.settings != JamSettingsPatch())) {
+                val hasSettings = message.settings != null && message.settings != JamSettingsPatch()
+                require(message.searchSources != null || hasSettings) {
                     "settings changes nothing"
                 }
             }
@@ -379,7 +380,8 @@ object JamCodec {
             }
         }
         if (track.source == JamTrackSource.SPOTIFY) {
-            require(track.id.length == 22 && track.id.all { it in '0'..'9' || it in 'A'..'Z' || it in 'a'..'z' }) {
+            val isBase62 = track.id.all { it in '0'..'9' || it in 'A'..'Z' || it in 'a'..'z' }
+            require(track.id.length == 22 && isBase62) {
                 "invalid Spotify track ID"
             }
         }
