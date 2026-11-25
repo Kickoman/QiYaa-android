@@ -1,5 +1,5 @@
 name: Android PR preview
-run-name: Android preview PR #${{ inputs.pr }}
+run-name: "Android preview PR #${{ inputs.pr }}"
 
 on:
   workflow_dispatch:
