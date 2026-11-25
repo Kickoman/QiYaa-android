@@ -1,0 +1,103 @@
+name: Android PR preview
+run-name: Android preview PR #${{ inputs.pr }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Open pull request number
+        required: true
+        type: number
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  source:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr }}
+        run: |
+          [[ "$PR" =~ ^[1-9][0-9]*$ ]]
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq '. as $p | select(.state == "open" and .head.repo.full_name == .base.repo.full_name) | .head.sha')
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          printf 'Preview PR #%s at `%s`\n' "$PR" "$sha" >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    needs: source
+    runs-on: ubuntu-24.04
+    env:
+      SOURCE_SHA: ${{ needs.source.outputs.sha }}
+      PREVIEW_LINK_HOST: ${{ vars.PREVIEW_JAM_HOST }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.source.outputs.sha }}
+          submodules: true
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+      - name: Build unsigned Preview
+        run: |
+          test -n "$PREVIEW_LINK_HOST"
+          ./gradlew assemblePreview -PqiyaaWithTelemetry=false \
+            "-PqiyaaPreviewSha=${SOURCE_SHA::7}" "-PqiyaaPreviewCode=$GITHUB_RUN_NUMBER" \
+            "-PqiyaaPreviewLinkHost=$PREVIEW_LINK_HOST"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-apk
+          path: app/build/outputs/apk/preview/app-preview-unsigned.apk
+          retention-days: 1
+          if-no-files-found: error
+
+  sign:
+    needs: [source, build]
+    runs-on: ubuntu-24.04
+    environment: preview-signing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: unsigned-apk
+      - name: Verify package and sign
+        env:
+          SOURCE_SHA: ${{ needs.source.outputs.sha }}
+          KEYSTORE: ${{ secrets.PREVIEW_KEYSTORE_BASE64 }}
+          PASSWORD: ${{ secrets.PREVIEW_KEYSTORE_PASSWORD }}
+          FINGERPRINT: ${{ vars.PREVIEW_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE" && test -n "$PASSWORD" && test -n "$FINGERPRINT"
+          sdk="$ANDROID_HOME/build-tools/36.0.0"
+          version="0.0.0-preview.${SOURCE_SHA::7}"
+          badging=$("$sdk/aapt2" dump badging app-preview-unsigned.apk)
+          grep -Fq "package: name='io.github.kickoman.qiyaa.preview' versionCode='$GITHUB_RUN_NUMBER' versionName='$version'" <<< "$badging"
+          umask 077
+          keystore=$(mktemp "$RUNNER_TEMP/preview.XXXXXX")
+          trap 'rm -f "$keystore"' EXIT
+          printf '%s' "$KEYSTORE" | base64 --decode > "$keystore"
+          "$sdk/apksigner" sign --ks "$keystore" --ks-key-alias preview --ks-pass env:PASSWORD \
+            --out "QiYaa-$version.apk" app-preview-unsigned.apk
+          cert=$("$sdk/apksigner" verify --print-certs "QiYaa-$version.apk")
+          grep -Fxi "Signer #1 certificate SHA-256 digest: $FINGERPRINT" <<< "$cert"
+          sha256sum "QiYaa-$version.apk" > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: QiYaa-Android-preview-pr${{ inputs.pr }}-${{ needs.source.outputs.sha }}
+          path: |
+            QiYaa-*.apk
+            SHA256SUMS
+          retention-days: 14
+          if-no-files-found: error
