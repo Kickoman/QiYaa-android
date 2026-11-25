@@ -20,6 +20,13 @@ val releaseVersion: List<Int>? =
         parts
     }
 
+val previewSha = providers.gradleProperty("qiyaaPreviewSha").orElse("0000000").get()
+require(previewSha.matches(Regex("[0-9a-f]{7}"))) { "qiyaaPreviewSha must be seven lowercase hex characters" }
+val previewCode = providers.gradleProperty("qiyaaPreviewCode").orElse("1").get().toInt()
+require(previewCode in 1..2_100_000_000) { "qiyaaPreviewCode is out of range" }
+val previewLinkHost = providers.gradleProperty("qiyaaPreviewLinkHost").orElse("jam.invalid").get()
+require(previewLinkHost.matches(Regex("[a-z0-9.-]+"))) { "qiyaaPreviewLinkHost must be a hostname" }
+
 val signingEnvironment: Map<String, String?> =
     listOf("QIYAA_KEYSTORE_PATH", "QIYAA_KEYSTORE_PASSWORD", "QIYAA_KEY_ALIAS", "QIYAA_KEY_PASSWORD")
         .associateWith { providers.environmentVariable(it).orNull?.takeIf(String::isNotEmpty) }
@@ -49,6 +56,7 @@ android {
         val jamUrl = providers.gradleProperty("qiyaaJamUrl").orNull.orEmpty()
         buildConfigField("String", "JAM_URL", "\"$jamUrl\"")
         val jamUri = runCatching { URI(jamUrl) }.getOrNull()
+        manifestPlaceholders["appLabel"] = "@string/app_name"
         manifestPlaceholders["jamHost"] = jamUri?.host ?: "jam.invalid"
         manifestPlaceholders["jamPathPrefix"] = (jamUri?.path?.trimEnd('/') ?: "") + "/j/"
         val telemetryFlag = providers.gradleProperty("qiyaaWithTelemetry").orNull
@@ -91,6 +99,18 @@ android {
             if (canSign) signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
+        create("preview") {
+            applicationIdSuffix = ".preview"
+            isMinifyEnabled = true
+            isShrinkResources = true
+            matchingFallbacks += listOf("release")
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            manifestPlaceholders["appLabel"] = "QiYaa Preview"
+            manifestPlaceholders["jamHost"] = previewLinkHost
+            manifestPlaceholders["jamPathPrefix"] = "/j/"
+            buildConfigField("boolean", "TELEMETRY", "false")
+            buildConfigField("String", "TELEMETRY_URL", "\"\"")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -111,6 +131,15 @@ android {
         warningsAsErrors = true
         // Freshness checks: the verdict depends on what the machine has installed, not on the code.
         disable += setOf("GradleDependency", "AndroidGradlePluginVersion", "OldTargetApi")
+    }
+}
+
+androidComponents {
+    onVariants(selector().withBuildType("preview")) { variant ->
+        variant.outputs.forEach { output ->
+            output.versionName.set("0.0.0-preview.$previewSha")
+            output.versionCode.set(previewCode)
+        }
     }
 }
 
