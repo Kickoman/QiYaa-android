@@ -44,6 +44,9 @@ import io.github.kickoman.qiyaa.spotify.SpotifyLibrary
 import io.github.kickoman.qiyaa.spotify.SpotifySession
 import io.github.kickoman.qiyaa.spotify.SpotifyWeb
 import io.github.kickoman.qiyaa.track.Track
+import io.github.kickoman.qiyaa.ui.Found
+import io.github.kickoman.qiyaa.ui.SpotifyAccess
+import io.github.kickoman.qiyaa.ui.spotifyAccessOf
 import io.github.kickoman.qiyaa.yandex.DeviceAuth
 import io.github.kickoman.qiyaa.yandex.Library
 import io.github.kickoman.qiyaa.yandex.Quality
@@ -241,12 +244,25 @@ class AppGraph(val context: Context) {
             log = { message -> Log.d(LOG_TAG, message) },
         )
 
+    fun spotifyAvailableForJam(): Boolean =
+        spotifyAccessOf(spotifyAccount.state.value, spotifyAccount.hasSavedLogin()) == SpotifyAccess.LOGGED_IN
+
     val jamHost =
         JamHost(
             transport = OkHttpJamTransport(httpClient),
             connectivity = networkMonitor.available,
             queue = queue,
             catalog = library.asJamCatalog(),
+            searchSources = {
+                buildList {
+                    if (session.state.value.signedIn) add("yandex")
+                    if (spotifyAvailableForJam()) add("spotify")
+                }
+            },
+            spotifySearch = { text ->
+                val found = spotifyLibrary.search(text)
+                spotifyLibrary.tracks(Found.metadataUris(found))
+            },
             store = JamSessionStore(JamFile(context).asJamStore()),
             config = {
                 JamHostConfig(
@@ -295,6 +311,8 @@ class AppGraph(val context: Context) {
         )
 
     init {
+        mainScope.launch { session.state.collect { jamHost.updateSearchSources() } }
+        mainScope.launch { spotifyAccount.state.collect { jamHost.updateSearchSources() } }
         telemetry?.connect(
             api,
             session.state,

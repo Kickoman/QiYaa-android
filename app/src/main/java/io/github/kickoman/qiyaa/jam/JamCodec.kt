@@ -216,8 +216,11 @@ object JamCodec {
 
             is ChangeSettings -> {
                 pattern("id", message.id, requestId)
-                settingsPatch(message.settings)
-                require(message.settings != JamSettingsPatch()) { "settings changes nothing" }
+                message.settings?.let(::settingsPatch)
+                val hasSettings = message.settings != null && message.settings != JamSettingsPatch()
+                require(message.searchSources != null || hasSettings) {
+                    "settings changes nothing"
+                }
             }
 
             is RotateLink -> pattern("id", message.id, requestId)
@@ -240,7 +243,12 @@ object JamCodec {
                     require((it.track == null) != (it.reason == null)) {
                         "a result has either track or reason"
                     }
-                    it.track?.let { track -> catalogTrack("results[].track", track) }
+                    it.track?.let { track ->
+                        catalogTrack("results[].track", track)
+                        require(track.source != JamTrackSource.SPOTIFY) {
+                            "results[].track holds the Spotify track ${track.id}"
+                        }
+                    }
                 }
             }
 
@@ -353,11 +361,11 @@ object JamCodec {
 
     private fun catalogTrack(field: String, track: JamTrack) {
         track(track)
-        require(track.isCatalog) { "$field holds the host track ${track.id}, not one of the Yandex catalog" }
+        require(track.isCatalog) { "$field holds the host track ${track.id}, not a catalog track" }
     }
 
     private fun noListenLinksForHostTrack(track: JamTrack?, listenUrl: String?, listenNextUrl: String?) {
-        if (track == null || track.isCatalog) return
+        if (track == null || track.source == null || track.source == JamTrackSource.YANDEX) return
         require(listenUrl == null && listenNextUrl == null) {
             "the host track ${track.id} comes with a listenUrl or a listenNextUrl"
         }
@@ -371,8 +379,16 @@ object JamCodec {
         track.artists.forEach { require(it.codePointCount() in 1..64 && noControl(it)) { "bad artist $it" } }
         require(track.durationMs in 0..86_400_000) { "durationMs ${track.durationMs}" }
         track.coverUri?.let { require(isCoverUri(it)) { "coverUri is not a %% template" } }
-        require(track.isCatalog || (track.albumId == null && track.coverUri == null)) {
-            "the host track ${track.id} has an albumId or a coverUri"
+        if (track.source == JamTrackSource.HOST || track.source == JamTrackSource.SPOTIFY) {
+            require(track.albumId == null && track.coverUri == null) {
+                "track ${track.id} has an albumId or a coverUri"
+            }
+        }
+        if (track.source == JamTrackSource.SPOTIFY) {
+            val isBase62 = track.id.all { it in '0'..'9' || it in 'A'..'Z' || it in 'a'..'z' }
+            require(track.id.length == 22 && isBase62) {
+                "invalid Spotify track ID"
+            }
         }
     }
 

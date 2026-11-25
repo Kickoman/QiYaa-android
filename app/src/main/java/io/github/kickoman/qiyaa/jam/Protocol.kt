@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 
-const val JAM_PROTOCOL = 1
+const val JAM_PROTOCOL = 2
 
 @Serializable
 enum class JamTrackSource {
@@ -14,6 +14,9 @@ enum class JamTrackSource {
 
     @SerialName("host")
     HOST,
+
+    @SerialName("spotify")
+    SPOTIFY,
 }
 
 @Serializable
@@ -197,8 +200,12 @@ data class Hello(val protocol: Int, val app: JamApp, val appVersion: String) : C
 
 @Serializable
 @SerialName("create")
-data class Create(val id: String, val hostName: String, val settings: JamSettingsPatch? = null) :
-    ClientMessage
+data class Create(
+    val id: String,
+    val hostName: String,
+    val settings: JamSettingsPatch? = null,
+    val searchSources: List<String>? = null,
+) : ClientMessage
 
 @Serializable
 @SerialName("resume")
@@ -208,6 +215,7 @@ data class Resume(
     val hostSecret: String,
     val snapshot: JsonElement = JsonNull,
     val outbox: List<OutboxEntry>,
+    val searchSources: List<String>? = null,
 ) : ClientMessage
 
 @Serializable
@@ -245,7 +253,11 @@ data class Kick(val id: String, val publicId: String) : ClientMessage
 
 @Serializable
 @SerialName("settings")
-data class ChangeSettings(val id: String, val settings: JamSettingsPatch) : ClientMessage
+data class ChangeSettings(
+    val id: String,
+    val settings: JamSettingsPatch? = null,
+    val searchSources: List<String>? = null,
+) : ClientMessage
 
 @Serializable
 @SerialName("rotateLink")
@@ -334,7 +346,7 @@ data class LinkRotated(val id: String, val joinSecret: String, val joinUrl: Stri
 
 @Serializable
 @SerialName("searchRequest")
-data class SearchRequest(val requestId: String, val text: String) : ServerMessage
+data class SearchRequest(val requestId: String, val text: String, val source: String? = null) : ServerMessage
 
 @Serializable
 @SerialName("validateRequest")
